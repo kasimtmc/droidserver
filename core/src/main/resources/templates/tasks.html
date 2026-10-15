@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Görevler</title>
+<style>
+  :root { --bg: #f6f7f9; --fg: #111827; --muted: #6b7280; --line: #e5e7eb; --accent: #16a34a; --card: #fff; --high: #dc2626; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111827; --fg: #f9fafb; --muted: #9ca3af; --line: #374151; --accent: #4ade80; --card: #1f2937; --high: #f87171; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--card); }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .col { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; min-height: 120px; }
+  .task { border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 8px 0; }
+  .task.high { border-left: 4px solid var(--high); }
+  .muted { color: var(--muted); font-size: 13px; }
+  button { font: inherit; border: 0; background: var(--accent); color: var(--bg); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); padding: 2px 8px; font-size: 13px; }
+  input, select { font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+  .grow { flex: 1; min-width: 160px; }
+</style>
+</head>
+<body>
+<header><strong>Görevler</strong><div id="who" class="row"></div></header>
+<main id="out"></main>
+<script>
+const API = "__API__";
+const out = document.getElementById("out");
+const STATUSES = ["yapılacak", "sürüyor", "bitti"];
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) k.startsWith("on") ? e.addEventListener(k.slice(2), v) : e.setAttribute(k, v);
+  for (const k of kids.flat()) if (k != null) e.append(k instanceof Node ? k : String(k));
+  return e;
+}
+let token = null;
+try { token = localStorage.getItem("token"); } catch {}
+const save = (t) => { token = t; try { t ? localStorage.setItem("token", t) : localStorage.removeItem("token"); } catch {} };
+let project = null;
+async function call(path, opts = {}) {
+  const r = await fetch(API + path, { ...opts, headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) } });
+  const data = r.status === 204 ? null : await r.json().catch(() => null);
+  if (r.status === 401) { save(null); login(); throw new Error("Oturum kapandı"); }
+  if (!r.ok) throw new Error((data && data.message) || r.statusText);
+  return data;
+}
+function login() {
+  document.getElementById("who").replaceChildren();
+  const email = h("input", { type: "email", placeholder: "E-posta", required: "", class: "grow" });
+  const password = h("input", { type: "password", placeholder: "Parola", required: "", class: "grow" });
+  const msg = h("p", { class: "muted" });
+  const go = (path) => async (e) => {
+    e && e.preventDefault();
+    const r = await fetch(API + "/auth/" + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email.value, password: password.value }) });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.token) { msg.textContent = data.message || "Giriş yapılamadı"; return; }
+    save(data.token); board();
+  };
+  out.replaceChildren(h("form", { class: "col", onsubmit: go("login") }, h("h2", {}, "Giriş"), h("div", { class: "row" }, email, password),
+    h("div", { class: "row" }, h("button", { type: "submit" }, "Giriş yap"), h("button", { type: "button", class: "ghost", onclick: go("signup") }, "Hesap aç")), msg));
+}
+async function board() {
+  document.getElementById("who").replaceChildren(h("button", { class: "ghost", onclick: () => { save(null); login(); } }, "Çıkış"));
+  const projects = (await call("/collections/projects/records?sort=name&perPage=100")).items;
+  if (!project || !projects.some((p) => p.id === project)) project = projects[0] ? projects[0].id : null;
+  const newProject = h("input", { placeholder: "Yeni proje", class: "grow" });
+  const head = h("div", { class: "row" },
+    h("select", { onchange: (e) => { project = Number(e.target.value); board(); } }, projects.map((p) => {
+      const o = h("option", { value: p.id }, p.name); if (p.id === project) o.selected = true; return o; })),
+    h("form", { class: "row grow", onsubmit: async (e) => {
+      e.preventDefault(); if (!newProject.value.trim()) return;
+      project = (await call("/collections/projects/records", { method: "POST", body: JSON.stringify({ name: newProject.value.trim() }) })).id; board();
+    } }, newProject, h("button", { type: "submit" }, "Proje ekle")));
+  if (!project) { out.replaceChildren(head, h("p", { class: "muted" }, "Başlamak için bir proje ekleyin.")); return; }
+  const tasks = (await call("/collections/tasks/records?" + new URLSearchParams({ project, sort: "due", perPage: "200" }))).items;
+  const title = h("input", { placeholder: "Yeni görev", required: "", class: "grow" });
+  const priority = h("select", {}, ["düşük", "orta", "yüksek"].map((p) => { const o = h("option", { value: p }, p); if (p === "orta") o.selected = true; return o; }));
+  const due = h("input", { type: "date" });
+  const add = h("form", { class: "row", onsubmit: async (e) => {
+    e.preventDefault();
+    await call("/collections/tasks/records", { method: "POST", body: JSON.stringify({ project, title: title.value, priority: priority.value, due: due.value ? new Date(due.value).toISOString() : undefined }) });
+    board();
+  } }, title, priority, due, h("button", { type: "submit" }, "Ekle"));
+  const move = (t, status) => call("/collections/tasks/records/" + t.id, { method: "PATCH", body: JSON.stringify({ status }) }).then(board);
+  out.replaceChildren(head, add, h("div", { class: "cols" }, STATUSES.map((s, i) => h("div", { class: "col" },
+    h("h3", {}, s + " (" + tasks.filter((t) => t.status === s).length + ")"),
+    tasks.filter((t) => t.status === s).map((t) => h("div", { class: "task" + (t.priority === "yüksek" ? " high" : "") },
+      h("div", {}, t.title),
+      h("div", { class: "muted" }, t.priority + (t.due ? " · " + new Date(t.due).toLocaleDateString("tr-TR") : "")),
+      h("div", { class: "row" },
+        i > 0 ? h("button", { class: "ghost", onclick: () => move(t, STATUSES[i - 1]) }, "←") : null,
+        i < 2 ? h("button", { class: "ghost", onclick: () => move(t, STATUSES[i + 1]) }, "→") : null,
+        h("button", { class: "ghost", onclick: async () => { if (confirm("Silinsin mi?")) { await call("/collections/tasks/records/" + t.id, { method: "DELETE" }); board(); } } }, "Sil"))))))));
+}
+token ? board().catch((e) => out.replaceChildren(h("p", {}, e.message))) : login();
+</script>
+</body>
+</html>

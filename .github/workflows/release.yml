@@ -1,0 +1,103 @@
+# Uygulama sürümü: `v1.2.3` (ön sürüm: `v1.3.0-beta.1`) etiketi gönderilince veya bu iş akışı elle çalıştırılınca
+# testler koşar, imzalı APK üretilir ve GitHub Releases'a `droidserver-<sürüm>.apk` + `.sha256` olarak yüklenir.
+# Uygulama içi güncelleme bu sürümleri okur (Durum → Uygulama güncellemesi).
+#
+# Gerekli secrets (Settings → Secrets and variables → Actions); anahtarı oluşturma: README → "Sürüm yayınlama".
+#   ANDROID_KEYSTORE_BASE64    imza deposu, base64 (base64 -w0 release.jks)
+#   ANDROID_KEYSTORE_PASSWORD  deponun parolası
+#   ANDROID_KEY_ALIAS          anahtarın adı (ör. droidserver)
+#   ANDROID_KEY_PASSWORD       anahtarın parolası
+# Not: uygulama indirirken kimlik doğrulamaz; depo (veya sürümler) herkese açık olmalı.
+name: Uygulama sürümü
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Sürüm (örn. 1.2.3 veya 1.3.0-beta.1); v<sürüm> etiketi oluşturulur"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: app-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sürüm
+        id: v
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          V="${INPUT_VERSION:-$GITHUB_REF_NAME}"
+          V="${V#v}"
+          if ! echo "$V" | grep -Eq '^[0-9]+\.[0-9]{1,2}\.[0-9]{1,2}(-[A-Za-z]*\.?[0-9]*)?$'; then
+            echo "::error::Geçersiz sürüm: $V (beklenen 1.2.3 veya 1.3.0-beta.1; alt sürüm ve yama 100'den küçük)"
+            exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          case "$V" in *-*) echo "prerelease=true" ;; *) echo "prerelease=false" ;; esac >> "$GITHUB_OUTPUT"
+
+      - name: İmza anahtarı
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 secret'ı tanımlı değil (README → Sürüm yayınlama)"
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Android SDK lisansları
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: Test ve derleme
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon -PappVersion=${{ steps.v.outputs.version }} :core:test :app:testDebugUnitTest :app:assembleRelease
+
+      - name: APK, imza denetimi ve özet
+        run: |
+          V="${{ steps.v.outputs.version }}"
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/droidserver-$V.apk"
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          "$BT/apksigner" verify --print-certs "dist/droidserver-$V.apk"
+          (cd dist && sha256sum "droidserver-$V.apk" > "droidserver-$V.apk.sha256")
+          cat dist/*.sha256
+
+      - name: Sürüme yükle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${{ steps.v.outputs.version }}"
+          TAG="v$V"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            FLAGS="--generate-notes --target $GITHUB_SHA"
+            if [ "${{ steps.v.outputs.prerelease }}" = "true" ]; then FLAGS="$FLAGS --prerelease"; fi
+            gh release create "$TAG" dist/* --title "DroidServer $V" $FLAGS
+          fi
+
+      - name: İmza anahtarını sil
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"

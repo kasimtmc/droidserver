@@ -1,0 +1,73 @@
+# Bileşen paketlerini (PostgreSQL, cloudflared ve katalog: Redis, Node.js, Python, OpenJDK) üretip bu deponun "components" sürümüne (GitHub Releases) yükler.
+# Uygulamadaki bileşen deposu adresi:
+#   https://github.com/<sahip>/<depo>/releases/download/components/components.json
+# Not: uygulama indirirken kimlik doğrulamaz; depo (veya sürümler) herkese açık olmalı.
+name: Bileşen paketleri
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - tools/package-postgres.sh
+      - tools/package-cloudflared.sh
+      - tools/package-termux.sh
+      - tools/patch-termux-paths.py
+      - tools/make-manifest.sh
+      - docs/components.example.json
+      - .github/workflows/components.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: components-release
+  cancel-in-progress: false
+
+jobs:
+  packages:
+    runs-on: ubuntu-24.04
+    env:
+      TAG: components
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Araçlar
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends patchelf binutils xz-utils zip jq python3
+
+      - name: PostgreSQL (arm64-v8a, armeabi-v7a, x86_64)
+        run: |
+          for arch in aarch64 arm x86_64; do
+            ARCH="$arch" tools/package-postgres.sh dist
+          done
+          ls -l dist
+
+      - name: cloudflared (arm64-v8a, armeabi-v7a, x86_64)
+        run: |
+          for arch in aarch64 arm x86_64; do
+            ARCH="$arch" tools/package-cloudflared.sh dist
+          done
+          ls -l dist
+
+      - name: Katalog (Redis, Node.js, Python, OpenJDK)
+        run: |
+          for profile in redis nodejs python openjdk; do
+            for arch in aarch64 arm x86_64; do
+              # Çıkış 3: paket bu mimaride yok (atlanır); diğer hatalar iş akışını durdurur.
+              ARCH="$arch" tools/package-termux.sh "$profile" dist || { rc=$?; [ "$rc" = 3 ] || exit "$rc"; }
+            done
+          done
+          ls -l dist
+
+      - name: Manifest
+        run: tools/make-manifest.sh dist "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+
+      - name: Sürüme yükle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "Bileşen paketleri" --latest=false \
+              --notes "DroidServer bileşen deposu. Uygulamada adres: https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/components.json"
+          fi
+          gh release upload "$TAG" dist/*.zip dist/*.sha256 dist/components.json --clobber

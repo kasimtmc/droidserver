@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Modemde otomatik port yönlendirme (UPnP keşfi çoklu yayın yanıtı bekler) -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Telefon özellikleri (Sihirbaz → Genel): yalnızca açılınca ve kullanıcı izin verince kullanılır. -->
+    <!-- Uygulama kilidi (parmak izi/yüz; normal izin, kullanıcıya sorulmaz). -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
+    <!-- Uygulamanın kendini güncellemesi (her kurulumda kullanıcı onaylar) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <queries>
+        <package android:name="com.tailscale.ipn" />
+    </queries>
+
+    <application
+        android:name=".DroidServerApp"
+        android:label="@string/app_name"
+        android:icon="@drawable/ic_server"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:usesCleartextTraffic="true"
+        android:extractNativeLibs="true"
+        android:allowBackup="false"
+        android:supportsRtl="true"
+        tools:targetApi="34">
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Dil değişince uygulamayı yeniden açar; ayrı süreçte çalışır ki ana süreç kapanabilsin. -->
+        <activity
+            android:name=".ui.RestartActivity"
+            android:exported="false"
+            android:process=":restart"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <service
+            android:name=".service.ServerService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Kullanicinin kendi cihazinda barindirdigi HTTP sunucusu" />
+        </service>
+
+        <receiver
+            android:name=".service.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".service.UpdateReceiver"
+            android:exported="false" />
+
+        <!-- Bildirim panelindeki hızlı ayar kutucuğu: sunucuyu aç/kapat. -->
+        <service
+            android:name=".service.ServerTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_server"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- Tasker/MacroDroid komutları: açık yayın ve gizli anahtar (bkz. AutomationBridge). Otomasyon uygulamaları
+             izin tanımlayamadığı için yetki izinle değil, her komuttaki anahtarla denetlenir. -->
+        <receiver
+            android:name=".service.TaskerReceiver"
+            android:exported="true"
+            tools:ignore="ExportedReceiver">
+            <intent-filter>
+                <action android:name="dev.droidserver.action.START" />
+                <action android:name="dev.droidserver.action.STOP" />
+                <action android:name="dev.droidserver.action.DEPLOY" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Ana ekran widget'ı: durum, adres, istek ve pil. -->
+        <receiver
+            android:name=".service.StatusWidget"
+            android:exported="false"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/status_widget" />
+        </receiver>
+    </application>
+</manifest>

@@ -1,0 +1,39 @@
+{
+  "version": 15,
+  "name": "droidserver",
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "basePath": "/api",
+    "cors": { "enabled": true, "allowedHosts": ["*"] }
+  },
+  "auth": {
+    "mode": "api_key",
+    "apiKeys": ["degistir-beni-en-az-16-karakter"]
+  },
+  "database": {
+    "engine": "sqlite",
+    "file": "data.db"
+  },
+  "collections": [
+    {
+      "name": "todos",
+      "rules": { "list": "admin", "view": "admin", "create": "admin", "update": "admin", "delete": "admin" },
+      "fields": [
+        { "name": "title", "type": "text", "required": true },
+        { "name": "done", "type": "boolean", "default": false },
+        { "name": "due", "type": "datetime" },
+        { "name": "tags", "type": "json" }
+      ]
+    },
+    {
+      "name": "notes",
+      "rules": { "list": "public", "view": "public", "create": "admin", "update": "admin", "delete": "admin" },
+      "fields": [
+        { "name": "slug", "type": "text", "required": true, "unique": true },
+        { "name": "body", "type": "text" }
+      ]
+    }
+  ],
+  "components": []
+}

@@ -1,0 +1,240 @@
+{
+  "packages": [
+    {
+      "id": "cloudflared",
+      "version": "2026.10.0",
+      "description": "Cloudflare Tunnel (Termux derlemesi; tools/package-cloudflared.sh ile paketlenir): sunucuyu port açmadan internete HTTPS ile yayınlar",
+      "builds": {
+        "arm64-v8a": {
+          "url": "https://ornek-sunucunuz.com/components/cloudflared-2026.10.0-arm64-v8a.zip",
+          "sha256": "BURAYA_ZIP_DOSYASININ_SHA256_DEGERI"
+        }
+      },
+      "executables": [
+        "bin/cloudflared"
+      ],
+      "command": [
+        "${PKG}/bin/cloudflared",
+        "tunnel",
+        "--no-autoupdate",
+        "run"
+      ],
+      "env": {
+        "HOME": "${DATA}",
+        "GODEBUG": "netdns=cgo"
+      }
+    },
+    {
+      "id": "postgres",
+      "version": "18.6",
+      "description": "PostgreSQL (Termux derlemesi; tools/package-postgres.sh ile paketlenir). Yalnızca 127.0.0.1'i dinler.",
+      "builds": {
+        "arm64-v8a": {
+          "url": "https://ornek-sunucunuz.com/components/postgres-18.6-arm64-v8a.zip",
+          "sha256": "BURAYA_ZIP_DOSYASININ_SHA256_DEGERI"
+        }
+      },
+      "executables": [
+        "bin/postgres",
+        "bin/initdb",
+        "bin/pg_ctl",
+        "bin/psql",
+        "bin/pg_dump",
+        "bin/pg_restore",
+        "bin/pg_isready"
+      ],
+      "setupFiles": {
+        "${DATA}/.pwfile": "${env:PGPASSWORD}"
+      },
+      "setup": [
+        [
+          "${PKG}/bin/initdb",
+          "-D",
+          "${DATA}/pgdata",
+          "-U",
+          "droid",
+          "--auth=scram-sha-256",
+          "--pwfile=${DATA}/.pwfile",
+          "-E",
+          "UTF8",
+          "--no-locale",
+          "--set",
+          "dynamic_shared_memory_type=mmap"
+        ]
+      ],
+      "command": [
+        "${PKG}/bin/postgres",
+        "-D",
+        "${DATA}/pgdata",
+        "-p",
+        "5432",
+        "-k",
+        "${DATA}",
+        "-c",
+        "listen_addresses=127.0.0.1",
+        "-c",
+        "dynamic_shared_memory_type=mmap"
+      ],
+      "stopCommand": [
+        "${PKG}/bin/pg_ctl",
+        "stop",
+        "-D",
+        "${DATA}/pgdata",
+        "-m",
+        "fast"
+      ],
+      "lockFiles": [
+        "${DATA}/pgdata/postmaster.pid"
+      ],
+      "readiness": {
+        "tcpPort": 5432,
+        "timeoutSec": 60
+      },
+      "env": {
+        "LD_LIBRARY_PATH": "${PKG}/lib"
+      },
+      "tasks": {
+        "set-password": {
+          "title": "Parolayı sıfırla",
+          "description": "Eski parola bilinmese de ana kullanıcının (droid) parolasını konfigürasyondakiyle değiştirir. Postgres kısa süre durur.",
+          "command": [
+            "${PKG}/bin/postgres",
+            "--single",
+            "-D",
+            "${DATA}/pgdata",
+            "-c",
+            "dynamic_shared_memory_type=mmap",
+            "postgres"
+          ],
+          "stdin": "ALTER ROLE CURRENT_USER PASSWORD ${sqlstr:PGPASSWORD};\n"
+        }
+      }
+    },
+    {
+      "id": "redis",
+      "version": "8.10.2",
+      "description": "Redis (Termux derlemesi; tools/package-termux.sh redis): bellek içi anahtar-değer deposu, önbellek ve kuyruk. Yalnızca 127.0.0.1:6379'u dinler; parolası ortak ortamdaki REDIS_PASSWORD'dür (katalogdan çalıştırınca üretilir).",
+      "kind": "service",
+      "builds": {
+        "arm64-v8a": {
+          "url": "https://ornek-sunucunuz.com/components/redis-8.10.2-arm64-v8a.zip",
+          "sha256": "BURAYA_ZIP_DOSYASININ_SHA256_DEGERI"
+        }
+      },
+      "executables": [
+        "bin/redis-server",
+        "bin/redis-cli"
+      ],
+      "command": [
+        "${PKG}/bin/redis-server",
+        "--bind",
+        "127.0.0.1",
+        "--port",
+        "6379",
+        "--dir",
+        "${DATA}",
+        "--protected-mode",
+        "yes",
+        "--requirepass",
+        "${env:REDIS_PASSWORD}",
+        "--save",
+        "300 10",
+        "--daemonize",
+        "no"
+      ],
+      "env": {
+        "LD_LIBRARY_PATH": "${PKG}/lib"
+      },
+      "readiness": {
+        "tcpPort": 6379,
+        "timeoutSec": 20
+      },
+      "secrets": [
+        "REDIS_PASSWORD"
+      ]
+    },
+    {
+      "id": "nodejs",
+      "version": "24.18.0.1",
+      "description": "Node.js LTS ve npm (Termux derlemesi; tools/package-termux.sh nodejs). Uygulamalar ekranında örn. \"node server.js\"; kurulum komutu örn. \"npm ci --omit=dev\".",
+      "kind": "runtime",
+      "builds": {
+        "arm64-v8a": {
+          "url": "https://ornek-sunucunuz.com/components/nodejs-24.18.0.1-arm64-v8a.zip",
+          "sha256": "BURAYA_ZIP_DOSYASININ_SHA256_DEGERI"
+        }
+      },
+      "executables": [
+        "bin/node",
+        "bin/npm",
+        "bin/npx",
+        "bin/corepack"
+      ],
+      "paths": [
+        "${PKG}/bin"
+      ],
+      "env": {
+        "LD_LIBRARY_PATH": "${PKG}/lib",
+        "SSL_CERT_FILE": "${PKG}/etc/tls/cert.pem",
+        "npm_config_cache": "${DATA}/npm-cache",
+        "npm_config_update_notifier": "false",
+        "NODE_ENV": "production"
+      }
+    },
+    {
+      "id": "python",
+      "version": "3.14.6.1",
+      "description": "Python 3 ve pip (Termux derlemesi; tools/package-termux.sh python). Uygulamalar ekranında örn. \"python3 app.py\"; bağımlılıklar için kurulum komutu örn. \"pip install -r requirements.txt --target .deps\" ve PYTHONPATH=.deps.",
+      "kind": "runtime",
+      "builds": {
+        "arm64-v8a": {
+          "url": "https://ornek-sunucunuz.com/components/python-3.14.6.1-arm64-v8a.zip",
+          "sha256": "BURAYA_ZIP_DOSYASININ_SHA256_DEGERI"
+        }
+      },
+      "executables": [
+        "bin/python3",
+        "bin/python",
+        "bin/pip",
+        "bin/pip3"
+      ],
+      "paths": [
+        "${PKG}/bin"
+      ],
+      "env": {
+        "LD_LIBRARY_PATH": "${PKG}/lib",
+        "PYTHONHOME": "${PKG}",
+        "SSL_CERT_FILE": "${PKG}/etc/tls/cert.pem",
+        "PIP_CACHE_DIR": "${DATA}/pip-cache",
+        "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
+    {
+      "id": "openjdk",
+      "version": "21.0.12",
+      "description": "OpenJDK 21 (Termux derlemesi; tools/package-termux.sh openjdk): Java, Kotlin ve diğer JVM sunucuları için, örn. \"java -jar app.jar\". Bellek için komuta -Xmx256m gibi bir sınır ekleyin.",
+      "kind": "runtime",
+      "builds": {
+        "arm64-v8a": {
+          "url": "https://ornek-sunucunuz.com/components/openjdk-21.0.12-arm64-v8a.zip",
+          "sha256": "BURAYA_ZIP_DOSYASININ_SHA256_DEGERI"
+        }
+      },
+      "executables": [
+        "jdk/bin/java",
+        "jdk/bin/javac",
+        "jdk/bin/jar",
+        "jdk/bin/keytool",
+        "jdk/lib/jspawnhelper"
+      ],
+      "paths": [
+        "${PKG}/jdk/bin"
+      ],
+      "env": {
+        "LD_LIBRARY_PATH": "${PKG}/lib",
+        "JAVA_HOME": "${PKG}/jdk"
+      }
+    }
+  ]
+}

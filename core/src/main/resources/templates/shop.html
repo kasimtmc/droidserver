@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mağaza</title>
+<style>
+  :root { --bg: #f8fafc; --fg: #0f172a; --muted: #64748b; --line: #e2e8f0; --accent: #2563eb; --card: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f172a; --fg: #f1f5f9; --muted: #94a3b8; --line: #334155; --accent: #60a5fa; --card: #1e293b; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  header { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--card); }
+  main { max-width: 1000px; margin: 0 auto; padding: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  .card img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; background: var(--line); }
+  .muted { color: var(--muted); font-size: 14px; } .price { font-weight: 700; }
+  button { font: inherit; border: 0; background: var(--accent); color: #fff; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  input, textarea, select { width: 100%; font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); margin: 4px 0; }
+  table { width: 100%; border-collapse: collapse; } td, th { text-align: left; padding: 6px; border-bottom: 1px solid var(--line); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<header><strong>Mağaza</strong><div class="row" id="bar"></div></header>
+<main><div id="out"></div></main>
+<script>
+const API = "__API__";
+const out = document.getElementById("out");
+const money = (n) => Number(n).toLocaleString("tr-TR", { style: "currency", currency: "TRY" });
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) k.startsWith("on") ? e.addEventListener(k.slice(2), v) : e.setAttribute(k, v);
+  for (const k of kids.flat()) if (k != null) e.append(k instanceof Node ? k : String(k));
+  return e;
+}
+const store = { get: (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+let token = store.get("token", null);
+let cart = store.get("cart", {});
+async function call(path, opts = {}) {
+  const r = await fetch(API + path, { ...opts, headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) } });
+  const data = r.status === 204 ? null : await r.json().catch(() => null);
+  if (r.status === 401 && token) { token = null; store.set("token", null); bar(); }
+  if (!r.ok) throw new Error((data && data.message) || r.statusText);
+  return data;
+}
+function bar() {
+  const n = Object.values(cart).reduce((a, b) => a + b.qty, 0);
+  document.getElementById("bar").replaceChildren(...[
+    h("button", { class: "ghost", onclick: catalog }, "Ürünler"),
+    h("button", { class: "ghost", onclick: showCart }, "Sepet (" + n + ")"),
+    token ? h("button", { class: "ghost", onclick: orders }, "Siparişlerim") : null,
+    token ? h("button", { class: "ghost", onclick: () => { token = null; store.set("token", null); bar(); catalog(); } }, "Çıkış")
+      : h("button", { onclick: () => login(catalog) }, "Giriş")].filter(Boolean));
+}
+async function catalog() {
+  const r = await call("/collections/products/records?sort=name&perPage=100");
+  out.replaceChildren(h("div", { class: "grid" }, r.items.map((p) => h("div", { class: "card" },
+    p.image ? h("img", { src: API + "/files/products/" + p.id + "/" + encodeURIComponent(p.image) + "?thumb=400x400", alt: "" }) : h("img", { alt: "" }),
+    h("h3", {}, p.name), h("p", { class: "muted" }, p.description || ""),
+    h("div", { class: "row" }, h("span", { class: "price" }, money(p.price)),
+      p.stock > 0 ? h("button", { onclick: () => add(p) }, "Sepete ekle") : h("span", { class: "muted" }, "Tükendi"))))));
+}
+function add(p) {
+  const c = cart[p.id] || { id: p.id, name: p.name, price: p.price, qty: 0 };
+  c.qty = Math.min(c.qty + 1, p.stock);
+  cart[p.id] = c; store.set("cart", cart); bar();
+}
+function showCart() {
+  const items = Object.values(cart);
+  const total = items.reduce((a, c) => a + c.qty * c.price, 0);
+  if (!items.length) { out.replaceChildren(h("p", {}, "Sepetiniz boş.")); return; }
+  const address = h("textarea", { rows: "3", placeholder: "Teslimat adresi", required: "" });
+  const phone = h("input", { placeholder: "Telefon", required: "" });
+  const note = h("input", { placeholder: "Not (isteğe bağlı)" });
+  const msg = h("p", { class: "muted" });
+  out.replaceChildren(h("div", { class: "card" }, h("h2", {}, "Sepet"),
+    h("table", {}, items.map((c) => h("tr", {}, h("td", {}, c.name), h("td", {}, c.qty + " × " + money(c.price)),
+      h("td", {}, h("button", { class: "ghost", onclick: () => { delete cart[c.id]; store.set("cart", cart); bar(); showCart(); } }, "Çıkar"))))),
+    h("p", { class: "price" }, "Toplam: " + money(total)),
+    h("form", { onsubmit: async (e) => {
+      e.preventDefault();
+      if (!token) { login(showCart); return; }
+      try {
+        await call("/collections/orders/records", { method: "POST", body: JSON.stringify({
+          items: items.map((c) => ({ product: c.id, name: c.name, qty: c.qty, price: c.price })), total, address: address.value, phone: phone.value, note: note.value || undefined }) });
+        cart = {}; store.set("cart", cart); bar();
+        out.replaceChildren(h("p", {}, "Siparişiniz alındı, teşekkürler! Durumunu Siparişlerim'den izleyebilirsiniz."));
+      } catch (err) { msg.textContent = "Sipariş verilemedi: " + err.message; }
+    } }, address, phone, note, h("button", { type: "submit" }, token ? "Siparişi ver" : "Giriş yapıp sipariş ver"), msg)));
+}
+async function orders() {
+  const r = await call("/collections/orders/records?sort=-created_at&perPage=50");
+  out.replaceChildren(h("h2", {}, "Siparişlerim"), r.items.length ? h("table", {},
+    h("tr", {}, ["Tarih", "Ürünler", "Tutar", "Durum"].map((t) => h("th", {}, t))),
+    r.items.map((o) => h("tr", {}, h("td", {}, new Date(o.created_at).toLocaleString("tr-TR")),
+      h("td", {}, (o.items || []).map((i) => i.qty + "× " + i.name).join(", ")), h("td", {}, money(o.total)), h("td", {}, o.status))))
+    : h("p", { class: "muted" }, "Henüz sipariş yok."));
+}
+function login(next) {
+  const email = h("input", { type: "email", placeholder: "E-posta", required: "" });
+  const password = h("input", { type: "password", placeholder: "Parola (en az 8 karakter)", required: "" });
+  const msg = h("p", { class: "muted" });
+  const go = (path) => async (e) => {
+    e && e.preventDefault();
+    try {
+      const r = await call("/auth/" + path, { method: "POST", body: JSON.stringify({ email: email.value, password: password.value }) });
+      if (!r.token) { msg.textContent = r.message || "E-postanızı doğrulayıp giriş yapın."; return; }
+      token = r.token; store.set("token", token); bar(); next();
+    } catch (err) { msg.textContent = err.message; }
+  };
+  out.replaceChildren(h("form", { class: "card", onsubmit: go("login") }, h("h2", {}, "Giriş"), email, password,
+    h("div", { class: "row" }, h("button", { type: "submit" }, "Giriş yap"), h("button", { type: "button", class: "ghost", onclick: go("signup") }, "Hesap aç")), msg));
+}
+bar();
+catalog().catch((e) => out.replaceChildren(h("p", {}, "Yüklenemedi: " + e.message)));
+</script>
+</body>
+</html>

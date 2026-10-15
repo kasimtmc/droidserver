@@ -1,0 +1,187 @@
+package dev.droidserver.core.config
+
+import kotlinx.serialization.json.JsonPrimitive
+
+/**
+ * Kullanıcı hesaplarının tabloları. Koleksiyon olarak tanımlanır; böylece şema güncelleme, veri taşıma ve ilişki
+ * kuralları (kullanıcı silinince `onDelete`) kullanıcı koleksiyonlarıyla aynı yoldan çalışır. Adları `_` ile
+ * başladığı için kullanıcı koleksiyonlarıyla çakışmaz (koleksiyon adları harfle başlar). API'de `/collections`
+ * altında görünmezler; `/auth` uçlarıyla yönetilirler.
+ */
+object SystemCollections {
+    const val USERS = "_users"
+    const val SESSIONS = "_sessions"
+
+    /** `_users`'ın sabit alanları; ek alanlar bu adları kullanamaz. */
+    val USER_FIELDS = setOf("email", "password_hash", "verified", "role")
+
+    const val ROLE_USER = "user"
+    const val ROLE_ADMIN = "admin"
+
+    fun users(config: UsersConfig) = CollectionConfig(
+        name = USERS,
+        fields = listOf(
+            FieldConfig("email", FieldType.TEXT, required = true, unique = true),
+            FieldConfig("password_hash", FieldType.TEXT, required = true),
+            FieldConfig("verified", FieldType.BOOLEAN, default = JsonPrimitive(false)),
+            FieldConfig("role", FieldType.TEXT, required = true, default = JsonPrimitive(ROLE_USER)),
+        ) + config.extraFields,
+    )
+
+    /** Yenileme token'ları: yalnızca özetleri saklanır; kullanıcı silinince oturumları da silinir. */
+    val sessions = CollectionConfig(
+        name = SESSIONS,
+        fields = listOf(
+            FieldConfig("token_hash", FieldType.TEXT, required = true, unique = true),
+            FieldConfig("user", FieldType.RELATION, required = true, collection = USERS, onDelete = OnDelete.CASCADE),
+            FieldConfig("expires_at", FieldType.DATETIME, required = true),
+        ),
+    )
+
+    const val PUSH_SUBSCRIPTIONS = "_push_subscriptions"
+
+    /** Tarayıcı push abonelikleri: kullanıcıya bağlı; kullanıcı silinince abonelikleri de silinir. */
+    val pushSubscriptions = CollectionConfig(
+        name = PUSH_SUBSCRIPTIONS,
+        fields = listOf(
+            FieldConfig("endpoint", FieldType.TEXT, required = true, unique = true),
+            FieldConfig("p256dh", FieldType.TEXT, required = true),
+            FieldConfig("auth", FieldType.TEXT, required = true),
+            FieldConfig("user", FieldType.RELATION, required = true, collection = USERS, onDelete = OnDelete.CASCADE),
+        ),
+    )
+
+    const val HISTORY = "_history"
+    const val TRASH = "_trash"
+
+    /** Kayıt geçmişi: koleksiyon, kayıt, sürüm, işlem (create/update/delete/restore), kaydın o anki hali, kim. */
+    val history = CollectionConfig(
+        name = HISTORY,
+        fields = listOf(
+            FieldConfig("collection", FieldType.TEXT, required = true),
+            FieldConfig("record", FieldType.INTEGER, required = true, index = true),
+            FieldConfig("version", FieldType.INTEGER, required = true),
+            FieldConfig("action", FieldType.TEXT, required = true),
+            FieldConfig("data", FieldType.JSON),
+            FieldConfig("actor", FieldType.TEXT),
+        ),
+    )
+
+    /** Çöp kutusu: silinen kaydın hali ve kalıcı silineceği an. Dosyaları o ana kadar depoda kalır. */
+    val trash = CollectionConfig(
+        name = TRASH,
+        fields = listOf(
+            FieldConfig("collection", FieldType.TEXT, required = true),
+            FieldConfig("record", FieldType.INTEGER, required = true, index = true),
+            FieldConfig("data", FieldType.JSON, required = true),
+            FieldConfig("actor", FieldType.TEXT),
+            FieldConfig("expires_at", FieldType.DATETIME, required = true, index = true),
+        ),
+    )
+
+    const val SEARCH_TERMS = "_search_terms"
+
+    /** Tam metin dizini (bkz. SearchTerms): kelime, ilk 3 harfi (indeksli) ve kayıttaki geçme sayısı. */
+    val searchTerms = CollectionConfig(
+        name = SEARCH_TERMS,
+        fields = listOf(
+            FieldConfig("collection", FieldType.TEXT, required = true, index = true),
+            FieldConfig("record", FieldType.INTEGER, required = true, index = true),
+            FieldConfig("prefix", FieldType.TEXT, required = true, index = true),
+            FieldConfig("term", FieldType.TEXT, required = true),
+            FieldConfig("tf", FieldType.INTEGER, required = true),
+        ),
+    )
+
+    /** Geçmiş ve çöp kutusu tabloları: bir koleksiyonda açıksa. Kapatılınca tablo (ve içindekiler) kalır. */
+    fun archive(collections: List<CollectionConfig>): List<CollectionConfig> = listOfNotNull(
+        history.takeIf { collections.any { it.history != null } },
+        trash.takeIf { collections.any { it.trash != null } },
+        searchTerms.takeIf { collections.any { it.fullText } },
+    )
+
+    const val JOBS = "_jobs"
+
+    /**
+     * Arka plan işleri (bkz. JobQueue): tür, veri, durum (`queued`, `running`, `done`, `failed`, `cancelled`), deneme
+     * sayısı, sonraki çalışma zamanı, sonuç/hata. `key` doluysa aynı anahtarlı bitmemiş iş tekrar eklenmez.
+     */
+    val jobs = CollectionConfig(
+        name = JOBS,
+        fields = listOf(
+            FieldConfig("name", FieldType.TEXT, required = true, index = true),
+            FieldConfig("data", FieldType.JSON),
+            FieldConfig("status", FieldType.TEXT, required = true, index = true),
+            FieldConfig("attempts", FieldType.INTEGER, required = true),
+            FieldConfig("max_attempts", FieldType.INTEGER, required = true),
+            FieldConfig("run_at", FieldType.DATETIME, required = true, index = true),
+            FieldConfig("key", FieldType.TEXT, index = true),
+            FieldConfig("result", FieldType.JSON),
+            FieldConfig("error", FieldType.TEXT),
+            FieldConfig("started_at", FieldType.DATETIME),
+            FieldConfig("finished_at", FieldType.DATETIME),
+        ),
+    )
+
+    const val CHANGES = "_changes"
+
+    /** Canlı kopya için değişiklik günlüğü: sıra (id), tablo, kayıt kimliği, `upsert`/`delete`. Tetikleyiciler yazar. */
+    val changes = CollectionConfig(
+        name = CHANGES,
+        fields = listOf(
+            FieldConfig("collection", FieldType.TEXT, required = true),
+            FieldConfig("record", FieldType.INTEGER, required = true),
+            FieldConfig("action", FieldType.TEXT, required = true),
+        ),
+    )
+
+    const val TWO_FACTOR = "_two_factor"
+
+    /**
+     * İki adımlı doğrulama: kullanıcı başına bir satır. Gizli anahtar şifreli (bkz. UserService), onaylanana kadar
+     * `confirmed` false; yedek kodların yalnızca özetleri; `last_step` aynı kodun ikinci kez kullanılmasını engeller.
+     */
+    val twoFactor = CollectionConfig(
+        name = TWO_FACTOR,
+        fields = listOf(
+            FieldConfig("user", FieldType.RELATION, required = true, unique = true, collection = USERS, onDelete = OnDelete.CASCADE),
+            FieldConfig("secret", FieldType.TEXT, required = true),
+            FieldConfig("confirmed", FieldType.BOOLEAN, default = JsonPrimitive(false)),
+            FieldConfig("recovery", FieldType.TEXT),
+            FieldConfig("last_step", FieldType.INTEGER),
+        ),
+    )
+
+    const val TEAMS = "_teams"
+    const val TEAM_MEMBERS = "_team_members"
+    const val TEAM_OWNER = "owner"
+    const val TEAM_MEMBER = "member"
+
+    /** Takımlar: üyeleri görür (`expand` ile adı gelir); kuran kullanıcı silinince takım kalır. */
+    val teams = CollectionConfig(
+        name = TEAMS,
+        fields = listOf(
+            FieldConfig("name", FieldType.TEXT, required = true),
+            FieldConfig("created_by", FieldType.RELATION, collection = USERS, onDelete = OnDelete.SET_NULL),
+        ),
+        rules = Rules(list = Rule.TEAM, view = Rule.TEAM),
+    )
+
+    /** Takım üyelikleri: rol `owner` (üye ekler, çıkarır, takımı siler) veya `member`. Takım ya da kullanıcı silinince üyelik de. */
+    val teamMembers = CollectionConfig(
+        name = TEAM_MEMBERS,
+        fields = listOf(
+            FieldConfig("team", FieldType.RELATION, required = true, collection = TEAMS, onDelete = OnDelete.CASCADE),
+            FieldConfig("user", FieldType.RELATION, required = true, collection = USERS, onDelete = OnDelete.CASCADE),
+            FieldConfig("role", FieldType.TEXT, required = true, default = JsonPrimitive(TEAM_MEMBER)),
+        ),
+    )
+
+    fun of(config: UsersConfig, push: Boolean = false): List<CollectionConfig> = when {
+        !config.enabled -> emptyList()
+        else -> listOfNotNull(
+            users(config), sessions, pushSubscriptions.takeIf { push }, twoFactor.takeIf { config.twoFactor.enabled },
+            teams.takeIf { config.teams.enabled }, teamMembers.takeIf { config.teams.enabled },
+        )
+    }
+}

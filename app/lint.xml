@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- pgjdbc'nin NonValidatingFactory sınıfı (sertifika doğrulamayan SSL) yalnızca bağlantı adresinde açıkça
+         sslfactory=...NonValidatingFactory istenirse kullanılır; ConfigValidator bunu reddeder. Kural kendi
+         kodumuz için açık kalır, yalnızca pgjdbc jar'ındaki uyarı bastırılır. -->
+    <issue id="TrustAllX509TrustManager">
+        <ignore path="**/postgresql-*.jar" />
+    </issue>
+</lint>

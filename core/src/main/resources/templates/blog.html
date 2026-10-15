@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blog</title>
+<style>
+  :root { --bg: #fafaf9; --fg: #1c1917; --muted: #78716c; --line: #e7e5e4; --accent: #0f766e; --card: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1c1917; --fg: #f5f5f4; --muted: #a8a29e; --line: #44403c; --accent: #5eead4; --card: #292524; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 17px/1.6 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }
+  header a { color: inherit; text-decoration: none; } h1 { margin: 0 0 4px; }
+  nav button, button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: 999px; padding: 4px 14px; cursor: pointer; }
+  nav button.on { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  article { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; margin: 16px 0; cursor: pointer; }
+  article img, .cover { width: 100%; border-radius: 8px; }
+  .muted { color: var(--muted); font-size: 14px; } a { color: var(--accent); }
+  input, textarea { width: 100%; font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); margin: 4px 0; }
+  .comment { border-top: 1px solid var(--line); padding: 8px 0; } .body { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<main>
+  <header><a href="#"><h1 id="site">Blog</h1></a><p class="muted">Bir Android telefonda, DroidServer ile çalışıyor.</p></header>
+  <nav id="cats"></nav>
+  <input id="q" type="search" placeholder="Yazılarda ara…">
+  <div id="out"></div>
+</main>
+<script>
+const API = "__API__";
+const out = document.getElementById("out");
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) k.startsWith("on") ? e.addEventListener(k.slice(2), v) : e.setAttribute(k, v);
+  for (const k of kids.flat()) if (k != null) e.append(k instanceof Node ? k : String(k));
+  return e;
+}
+async function get(path) { const r = await fetch(API + path); if (!r.ok) throw new Error((await r.json()).message || r.statusText); return r.json(); }
+const date = (s) => s ? new Date(s).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" }) : "";
+const img = (p, size) => p.cover ? h("img", { src: API + "/files/posts/" + p.id + "/" + encodeURIComponent(p.cover) + (size ? "?thumb=" + size : ""), alt: "" }) : null;
+let category = "";
+
+async function list() {
+  const q = document.getElementById("q").value.trim();
+  const params = new URLSearchParams({ sort: "-published_at", perPage: "20", expand: "category" });
+  if (category) params.set("category", category);
+  if (q) params.set("q", q);
+  const r = await get("/collections/posts/records?" + params);
+  out.replaceChildren(...(r.items.length ? r.items.map((p) => h("article", { onclick: () => { location.hash = p.slug; } },
+    img(p, "800x0"), h("h2", {}, p.title),
+    h("p", { class: "muted" }, date(p.published_at), p.expand && p.expand.category ? " · " + p.expand.category.name : ""),
+    p.excerpt ? h("p", {}, p.excerpt) : null)) : [h("p", { class: "muted" }, "Yazı yok.")]));
+}
+
+async function show(slug) {
+  const r = await get("/collections/posts/records?" + new URLSearchParams({ slug, expand: "category" }));
+  const p = r.items[0];
+  if (!p) { out.replaceChildren(h("p", {}, "Yazı bulunamadı. ", h("a", { href: "#" }, "Tüm yazılar"))); return; }
+  const comments = await get("/collections/comments/records?" + new URLSearchParams({ post: p.id, sort: "created_at", perPage: "100" }));
+  const name = h("input", { placeholder: "Adınız", maxlength: "60", required: "" });
+  const body = h("textarea", { rows: "4", placeholder: "Yorumunuz", maxlength: "2000", required: "" });
+  const note = h("p", { class: "muted" });
+  const form = h("form", { onsubmit: async (e) => {
+    e.preventDefault();
+    const res = await fetch(API + "/collections/comments/records", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ post: p.id, name: name.value, body: body.value }) });
+    note.textContent = res.ok ? "Teşekkürler! Yorumunuz onaylandıktan sonra görünecek." : "Gönderilemedi: " + ((await res.json()).message || res.status);
+    if (res.ok) form.reset();
+  } }, h("h3", {}, "Yorum bırakın"), name, body, h("button", { type: "submit" }, "Gönder"), note);
+  out.replaceChildren(h("p", {}, h("a", { href: "#" }, "← Tüm yazılar")), img(p), h("h1", {}, p.title),
+    h("p", { class: "muted" }, date(p.published_at), p.expand && p.expand.category ? " · " + p.expand.category.name : ""),
+    h("div", { class: "body" }, p.body || ""),
+    h("h3", {}, "Yorumlar (" + comments.items.length + ")"),
+    comments.items.map((c) => h("div", { class: "comment" }, h("b", {}, c.name), h("span", { class: "muted" }, " · " + date(c.created_at)), h("div", { class: "body" }, c.body))),
+    form);
+}
+
+async function route() {
+  try { location.hash.length > 1 ? await show(decodeURIComponent(location.hash.slice(1))) : await list(); }
+  catch (e) { out.replaceChildren(h("p", {}, "Yüklenemedi: " + e.message)); }
+}
+async function categories() {
+  const r = await get("/collections/categories/records?sort=name&perPage=100");
+  const nav = document.getElementById("cats");
+  const render = () => nav.replaceChildren(...[["", "Tümü"], ...r.items.map((c) => [String(c.id), c.name])].map(([id, name]) =>
+    h("button", { class: category === id ? "on" : "", onclick: () => { category = id; render(); location.hash = ""; list(); } }, name)), " ");
+  render();
+}
+let timer;
+document.getElementById("q").addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => { location.hash = ""; list(); }, 300); });
+window.addEventListener("hashchange", route);
+categories().catch(() => {});
+route();
+</script>
+</body>
+</html>

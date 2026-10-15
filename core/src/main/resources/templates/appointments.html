@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Randevu</title>
+<style>
+  :root { --bg: #fdf4ff; --fg: #1e1b4b; --muted: #6b7280; --line: #e9d5ff; --accent: #7c3aed; --card: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1e1b4b; --fg: #f5f3ff; --muted: #c4b5fd; --line: #4c1d95; --accent: #c4b5fd; --card: #2e1065; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  main { max-width: 640px; margin: 0 auto; padding: 24px 16px 64px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 12px 0; }
+  label.service { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+  .muted { color: var(--muted); font-size: 14px; }
+  input, textarea, select { width: 100%; font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); margin: 4px 0 10px; }
+  input[type=radio] { width: auto; margin-top: 6px; }
+  button { font: inherit; border: 0; background: var(--accent); color: var(--bg); border-radius: 999px; padding: 10px 20px; cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Randevu alın</h1>
+  <p class="muted">Bir hizmet ve zaman seçin; talebiniz onaylanınca sizinle iletişime geçeceğiz.</p>
+  <form id="form">
+    <div id="services"></div>
+    <div class="card">
+      <label>Tarih ve saat<input id="when" type="datetime-local" required></label>
+      <label>Adınız<input id="name" maxlength="100" required></label>
+      <label>Telefon<input id="phone" type="tel" maxlength="30" required></label>
+      <label>E-posta (isteğe bağlı)<input id="email" type="email"></label>
+      <label>Not<textarea id="note" rows="3" maxlength="1000"></textarea></label>
+      <button type="submit">Randevu iste</button>
+      <p id="msg" class="muted"></p>
+    </div>
+  </form>
+</main>
+<script>
+const API = "__API__";
+const $ = (id) => document.getElementById(id);
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v);
+  for (const k of kids.flat()) if (k != null) e.append(k instanceof Node ? k : String(k));
+  return e;
+}
+const money = (n) => n == null ? "" : Number(n).toLocaleString("tr-TR", { style: "currency", currency: "TRY" });
+async function load() {
+  const r = await fetch(API + "/collections/services/records?sort=name&perPage=100").then((x) => x.json());
+  $("services").replaceChildren(...r.items.map((s, i) => h("label", { class: "card service" },
+    h("input", { type: "radio", name: "service", value: s.id, ...(i === 0 ? { checked: "" } : {}) }),
+    h("div", {}, h("strong", {}, s.name), h("div", { class: "muted" }, s.duration_min + " dk" + (s.price != null ? " · " + money(s.price) : "")),
+      s.description ? h("div", {}, s.description) : null))));
+  const t = new Date(Date.now() + 86400000); t.setMinutes(0, 0, 0);
+  $("when").min = new Date().toISOString().slice(0, 16);
+  $("when").value = new Date(t.getTime() - t.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+$("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const service = document.querySelector("input[name=service]:checked");
+  if (!service) { $("msg").textContent = "Bir hizmet seçin."; return; }
+  const body = { service: Number(service.value), starts_at: new Date($("when").value).toISOString(), name: $("name").value, phone: $("phone").value };
+  if ($("email").value) body.email = $("email").value;
+  if ($("note").value) body.note = $("note").value;
+  const r = await fetch(API + "/collections/appointments/records", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await r.json().catch(() => ({}));
+  $("msg").textContent = r.ok ? "Talebiniz alındı. Teşekkürler!" : "Gönderilemedi: " + (data.message || r.status) + (data.details ? " (" + Object.values(data.details).join(", ") + ")" : "");
+  if (r.ok) { $("name").value = $("phone").value = $("email").value = $("note").value = ""; }
+});
+load().catch((e) => { $("msg").textContent = "Hizmetler yüklenemedi: " + e.message; });
+</script>
+</body>
+</html>
