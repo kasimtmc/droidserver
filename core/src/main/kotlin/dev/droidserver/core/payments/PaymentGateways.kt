@@ -189,10 +189,22 @@ class StripeGateway(private val c: PaymentProviderConfig, private val base: Stri
         return PaymentEvent.Subscription(
             id, o.str("id") ?: return null, status, o.obj("metadata")?.str("ds_user")?.toLongOrNull(),
             item?.obj("price")?.str("id"), end?.longOrNull?.let(Instant::ofEpochSecond),
+            canceling = (o["cancel_at_period_end"] as? JsonPrimitive)?.booleanOrNull == true || o.str("cancel_at") != null,
         )
     }
 
     override fun status(external: String): PaymentEvent.Payment = session("refresh:$external", get("/v1/checkout/sessions/$external"))
+
+    /** Ödeme niyetinin tam iadesi; başarılıysa hemen, değilse `charge.refunded` bildirimiyle. */
+    override fun refund(payment: JsonObject, ip: String): PaymentEvent.Payment? {
+        val intent = payment.str("reference") ?: throw ApiException(409, tr("Ödemenin sağlayıcıdaki kaydı yok"))
+        val r = post("/v1/refunds", form("payment_intent" to intent, "metadata[ds_token]" to payment.str("token")))
+        return if (r.str("status") == "succeeded") PaymentEvent.Payment("refund:${r.str("id")}", null, null, PaymentStatus.REFUNDED, reference = intent) else null
+    }
+
+    override fun cancel(subscription: String) {
+        post("/v1/subscriptions/$subscription", form("cancel_at_period_end" to true))
+    }
 
     private fun missing(): Nothing = throw ApiException(502, tr("{0} API'sinin yanıtı anlaşılamadı", "Stripe"))
 }
@@ -203,12 +215,13 @@ class StripeGateway(private val c: PaymentProviderConfig, private val base: Stri
  * Tutarlar ondalık metin. Alıcı bilgisi zorunlu (bkz. [BUYER]); sepet tek sanal üründür.
  */
 class IyzicoGateway(private val c: PaymentProviderConfig, private val base: String) : PaymentGateway {
-    private fun post(path: String, body: JsonObject): JsonObject {
-        val text = body.toString()
+    /** IYZWSv2: imza `rnd + yol + gövde` (GET'te sorgu ve gövde imzaya girmez). */
+    private fun post(path: String, body: JsonObject?, query: String = ""): JsonObject {
+        val text = body?.toString()
         val rnd = System.currentTimeMillis().toString() + UUID.randomUUID().toString().take(8)
-        val signature = hmacHex(c.secretKey, rnd + path + text)
+        val signature = hmacHex(c.secretKey, rnd + path + text.orEmpty())
         val auth = Base64.getEncoder().encodeToString("apiKey:${c.apiKey}&randomKey:$rnd&signature:$signature".toByteArray())
-        val r = call(PaymentProvider.IYZICO, "POST", base + path, mapOf("Authorization" to "IYZWSv2 $auth", "x-iyzi-rnd" to rnd), text)
+        val r = call(PaymentProvider.IYZICO, if (body == null) "GET" else "POST", base + path + query, mapOf("Authorization" to "IYZWSv2 $auth", "x-iyzi-rnd" to rnd), text)
         if (r.str("status") != "success") throw ApiException(502, tr("{0} API hatası ({1}): {2}", "iyzico", r.str("errorCode").orEmpty(), r.str("errorMessage").orEmpty()))
         return r
     }
@@ -278,6 +291,25 @@ class IyzicoGateway(private val c: PaymentProviderConfig, private val base: Stri
     }
 
     override fun returned(form: Map<String, String>): PaymentEvent.Payment? = form["token"]?.takeIf { it.isNotBlank() }?.let(::status)
+
+    /** Tam iade (sepette tek ürün olduğu için ödeme kimliğiyle, `v2`). Onay hemen gelir. */
+    override fun refund(payment: JsonObject, ip: String): PaymentEvent.Payment {
+        val id = payment.str("reference") ?: throw ApiException(409, tr("Ödemenin sağlayıcıdaki kaydı yok"))
+        val currency = payment.str("currency") ?: "TRY"
+        post("/v2/payment/refund", buildJsonObject {
+            put("locale", JsonPrimitive("tr")); put("conversationId", JsonPrimitive(payment.str("token").orEmpty()))
+            put("paymentId", JsonPrimitive(id)); put("ip", JsonPrimitive(ip)); put("currency", JsonPrimitive(currency))
+            put("price", JsonPrimitive(Money.decimal((payment["amount"] as? JsonPrimitive)?.longOrNull ?: 0, currency).toPlainString()))
+        })
+        return PaymentEvent.Payment("refund:$id", null, null, PaymentStatus.REFUNDED, reference = id)
+    }
+
+    /** Panelden yapılan iade: raporlama servisinde ödemenin iade durumu. */
+    override fun refunded(payment: JsonObject): Boolean? {
+        val id = payment.str("reference") ?: return false
+        val r = post("/v2/reporting/payment/details", null, "?paymentId=" + URLEncoder.encode(id, "UTF-8"))
+        return r.arr("payments")?.any { (it as? JsonObject)?.str("paymentRefundStatus") == "TOTALLY_REFUNDED" } == true
+    }
 
     private fun missing(): Nothing = throw ApiException(502, tr("{0} API'sinin yanıtı anlaşılamadı", "iyzico"))
 
@@ -357,7 +389,7 @@ class PaddleGateway(private val c: PaymentProviderConfig, publicUrl: String, pri
                     PaymentEvent.Subscription(
                         id, d.str("id") ?: return emptyList(), status, d.obj("custom_data")?.str("ds_user")?.toLongOrNull(),
                         item?.obj("price")?.str("id"), d.obj("current_billing_period")?.str("ends_at")?.let { runCatching { Instant.parse(it) }.getOrNull() },
-                        d.obj("management_urls")?.str("cancel"),
+                        canceling = d.obj("scheduled_change")?.str("action") == "cancel",
                     ),
                 )
             }
@@ -375,6 +407,21 @@ class PaddleGateway(private val c: PaymentProviderConfig, publicUrl: String, pri
     override fun status(external: String): PaymentEvent.Payment {
         val d = call(PaymentProvider.PADDLE, "GET", "$base/transactions/$external", auth, null).obj("data") ?: missing()
         return PaymentEvent.Payment("status:$external", d.obj("custom_data")?.str("ds_token"), external, transactionStatus(d.str("status").orEmpty()), reference = d.str("invoice_number"))
+    }
+
+    /** Tam iade (düzeltme); canlıda çoğu iade Paddle'ın onayını bekler, sonuç `adjustment.updated` ile gelir. */
+    override fun refund(payment: JsonObject, ip: String): PaymentEvent.Payment? {
+        val txn = payment.str("external") ?: throw ApiException(409, tr("Ödemenin sağlayıcıdaki kaydı yok"))
+        val body = buildJsonObject {
+            put("action", JsonPrimitive("refund")); put("type", JsonPrimitive("full")); put("transaction_id", JsonPrimitive(txn))
+            put("reason", JsonPrimitive(tr("Satıcının isteğiyle iade")))
+        }
+        val d = call(PaymentProvider.PADDLE, "POST", "$base/adjustments", auth, body.toString()).obj("data")
+        return if (d?.str("status") == "approved") PaymentEvent.Payment("refund:${d.str("id")}", null, txn, PaymentStatus.REFUNDED) else null
+    }
+
+    override fun cancel(subscription: String) {
+        call(PaymentProvider.PADDLE, "POST", "$base/subscriptions/$subscription/cancel", auth, """{"effective_from":"next_billing_period"}""")
     }
 
     /** Paddle'ın faturası (adres bir saat geçerli; her istekte yeniden alınır). */

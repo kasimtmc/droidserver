@@ -1271,6 +1271,11 @@ başlar (panel eşitleme ve güvenli bağlantılar bunların temelidir). Dört g
   (siparişte bağlantı onaydan sonra, tutar istemciden geldiği için). Konfigürasyon denetimi yerel erişimi ve hızlı
   tüneli reddeder; ekranda adres denetimi. Sağlayıcıların gerçek ortamında (sandbox) deneme cihaz testi adımlarında;
   iyzico iadeleri kendiliğinden gelmez.
+- [x] Tamamlama: tam iade (yönetici API'si, uygulama ve panel; Stripe `refunds`, iyzico `v2/payment/refund`, Paddle
+  `adjustments` onay bekleyebilir), iyzico panelinden yapılan iadeler altı saatte bir raporlama servisinden, kullanıcının
+  aboneliğini dönem sonunda bitirmesi (Stripe `cancel_at_period_end`, Paddle `next_billing_period`; `canceling`),
+  Paddle'ın süreli yönetim adresleri saklanmaz. Ödeme testleri SQLite ve PostgreSQL'de. Stripe müşteri portalı yerine
+  API'yle iptal: portal her ortamda panelden ayrıca kurulmalı, iptal ise iki sağlayıcıda ayarsız çalışır.
 
 ### Kabul (her grup)
 - `:core:test`, `:app:testDebugUnitTest`, `:app:lintDebug` temiz; yeni uçlar OpenAPI ve SDK'da (golden güncel); yeni

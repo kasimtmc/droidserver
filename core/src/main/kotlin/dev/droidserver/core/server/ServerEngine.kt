@@ -132,6 +132,9 @@ class ServerEngine(
     @Volatile
     var localAi: dev.droidserver.core.ai.LocalAi? = null
 
+    /** Ödemeler: iade ve son ödemeler (uygulamadaki Ödemeler ekranı); sunucu çalışırken dolu. */
+    val payments = dev.droidserver.core.payments.PaymentHost()
+
     /** MQTT: bağlı cihazlar ve son mesajlar (uygulamadaki MQTT ekranı). */
     val mqtt = dev.droidserver.core.mqtt.MqttHost()
 
@@ -385,7 +388,7 @@ class ServerEngine(
             server = embeddedServer(CIO, port = config.server.port, host = config.server.host) {
                 droidServerModule(config, newDriver, startedAt, gate, fileStore, siteDir, resizer, scripts, metrics, adminSessions, adminHost, log = log, webhooks = webhooks, automationHost = automations, aiHost = ai, localAi = localAi, keyUsage = keyUsage, requestCounts = requestCounts, smsGuard = smsGuard, davDirs = mapOf("drive" to driveDir, "scripts" to scriptsDir), audit = audit, clientGuard = guard, health = health,
                     phone = PhoneService(config.phone, phone, device, dataDir?.let { File(it, "phone-sms.json") }, audit), appsHost = appsHost, failover = failoverPort, mqttHost = mqtt,
-                    mqttRetained = dataDir?.let { File(it, "mqtt-retained.json") })
+                    mqttRetained = dataDir?.let { File(it, "mqtt-retained.json") }, paymentHost = payments)
             }.start(wait = false)
             cron = scripts?.let { CronRunner(it, log) { !gate.isPaused }.apply { start() } }
             config.replication.replicaOf?.let { src ->

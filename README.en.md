@@ -1418,11 +1418,17 @@ copy button).
 - **Status:** `pending`, `paid`, `failed`, `canceled`, `refunded`. If the linked record has a `payment_status` field
   (`statusField`), the status is written there and automations, realtime subscribers and webhooks see it. A paid payment
   never goes back (out-of-order events), and a repeated notification is ignored (`_payment_events`). With iyzico the
-  result is always fetched from iyzico; refunds are not reported automatically.
+  result is always fetched from iyzico; refunds made in the iyzico panel are found through its reporting service every
+  six hours (last 90 days).
+- **Refund:** **Refund** next to a paid payment on the Payments screen or in the panel, `POST /api/_payments/<id>/refund`
+  in the API (full refund). Stripe and iyzico approve it right away; most Paddle refunds wait for approval, and the
+  status becomes `refunded` when the approval notification arrives.
 - **Subscriptions** (Stripe, Paddle): plans (`plans`: name, title, the provider's price ID, role, optional quota). A user
   goes to checkout with `POST /api/payments/subscribe {"plan"}`; while the subscription lasts they get the plan's role and
   return to their previous role when it ends (the admin role is never changed). The plan's `quotas` replace the global
-  quota for users with that role. `GET /api/payments/plans`, `GET /api/payments/subscriptions`; `payments` in the SDKs.
+  quota for users with that role. `GET /api/payments/plans`, `GET /api/payments/subscriptions`; a user ends their
+  subscription **at period end** with `POST /api/payments/subscriptions/<id>/cancel` (the role stays until the period
+  ends, `canceling: true`). `payments` in the SDKs (`plans`, `subscribe`, `subscriptions`, `cancel`).
 - **Receipt:** the provider's document if there is one (Stripe receipt, Paddle invoice), otherwise a simple PDF made by
   the server (seller from `merchant`). It is not an invoice.
 - **Templates:** with payments on, the **Shop and orders** and **Appointments** templates get payments. For appointments

@@ -239,7 +239,7 @@ object SystemCollections {
         ),
     )
 
-    /** Abonelikler: kullanıcı, plan, sağlayıcıdaki kimlik, durum ve abonelikten önceki rol (bitince geri verilir). */
+    /** Abonelikler: kullanıcı, plan, sağlayıcıdaki kimlik, durum, abonelikten önceki rol (bitince geri verilir), dönem sonunda bitecek mi. */
     val subscriptions = CollectionConfig(
         name = SUBSCRIPTIONS,
         fields = listOf(
@@ -250,7 +250,7 @@ object SystemCollections {
             FieldConfig("status", FieldType.TEXT, required = true),
             FieldConfig("period_end", FieldType.DATETIME),
             FieldConfig("previous_role", FieldType.TEXT),
-            FieldConfig("manage_url", FieldType.TEXT),
+            FieldConfig("canceling", FieldType.BOOLEAN, default = JsonPrimitive(false)),
         ),
     )
 

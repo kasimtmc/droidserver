@@ -128,7 +128,7 @@ object SdkGenerator {
                     appendLine("  });")
                 }
                 if (config.payments.enabled && config.payments.plans.isNotEmpty()) {
-                    appendLine("  readonly payments = new Payments(this, { plans: ${p(Endpoint.PAYMENT_PLANS)}, subscribe: ${p(Endpoint.PAYMENT_SUBSCRIBE)}, subscriptions: ${p(Endpoint.PAYMENT_SUBSCRIPTIONS)} });")
+                    appendLine("  readonly payments = new Payments(this, { plans: ${p(Endpoint.PAYMENT_PLANS)}, subscribe: ${p(Endpoint.PAYMENT_SUBSCRIBE)}, subscriptions: ${p(Endpoint.PAYMENT_SUBSCRIPTIONS)}, cancel: ${p(Endpoint.PAYMENT_SUBSCRIPTION_CANCEL)} });")
                 }
             }
             appendLine("  protected readonly realtimePath: string | null = ${p(Endpoint.REALTIME)};")
@@ -515,8 +515,8 @@ object SdkGenerator {
         |}
         |
         |export interface PaymentPlan { name: string; title: string; provider: string; role: string }
-        |export interface Subscription { id: number; plan: string; provider: string; status: "active" | "past_due" | "canceled"; period_end: string | null; manage_url?: string | null }
-        |type PaymentPaths = Record<"plans" | "subscribe" | "subscriptions", string | null>;
+        |export interface Subscription { id: number; plan: string; provider: string; status: "active" | "past_due" | "canceled"; period_end: string | null; canceling?: boolean }
+        |type PaymentPaths = Record<"plans" | "subscribe" | "subscriptions" | "cancel", string | null>;
         |
         |/** Abonelikler: planlar, ödeme sayfası (rol ödeme bildirimi gelince verilir) ve kullanıcının abonelikleri. */
         |export class Payments {
@@ -532,6 +532,8 @@ object SdkGenerator {
         |  /** Ödeme sayfasının adresi; kullanıcıyı oraya yönlendirin. */
         |  subscribe(plan: string): Promise<{ plan: string; url: string }> { return this.ds.request("POST", this.at("subscribe"), { json: { plan } }); }
         |  subscriptions(): Promise<{ items: Subscription[] }> { return this.ds.request("GET", this.at("subscriptions")); }
+        |  /** Aboneliği dönem sonunda bitirir; rol dönem bitene kadar kalır. */
+        |  cancel(id: number): Promise<Subscription> { return this.ds.request("POST", this.at("cancel").replace("{id}", String(id))); }
         |}
         |
         |export interface ConnectionLink { url: string; name?: string; token?: string; expiresAt?: Date }
@@ -635,7 +637,7 @@ object SdkGenerator {
                     appendLine("    )")
                 }
                 if (config.payments.enabled && config.payments.plans.isNotEmpty()) {
-                    appendLine("    val payments = Payments(this, plans = ${p(Endpoint.PAYMENT_PLANS)}, subscribe = ${p(Endpoint.PAYMENT_SUBSCRIBE)}, subscriptions = ${p(Endpoint.PAYMENT_SUBSCRIPTIONS)})")
+                    appendLine("    val payments = Payments(this, plans = ${p(Endpoint.PAYMENT_PLANS)}, subscribe = ${p(Endpoint.PAYMENT_SUBSCRIBE)}, subscriptions = ${p(Endpoint.PAYMENT_SUBSCRIPTIONS)}, cancel = ${p(Endpoint.PAYMENT_SUBSCRIPTION_CANCEL)})")
                 }
             }
             appendLine()
@@ -1034,7 +1036,13 @@ object SdkGenerator {
         |}
         |
         |/** Abonelikler: planlar, ödeme sayfası (rol ödeme bildirimi gelince verilir) ve kullanıcının abonelikleri. Yanıtlar JSON. */
-        |class Payments(private val client: DroidServerBase, private val plans: String?, private val subscribe: String?, private val subscriptions: String?) {
+        |class Payments(
+        |    private val client: DroidServerBase,
+        |    private val plans: String?,
+        |    private val subscribe: String?,
+        |    private val subscriptions: String?,
+        |    private val cancel: String?,
+        |) {
         |    private fun at(p: String?, key: String) = p ?: throw DroidServerException(404, "Bu ödeme ucu kapalı: " + key)
         |
         |    /** `{items: [{name, title, provider, role}]}` */
@@ -1043,8 +1051,11 @@ object SdkGenerator {
         |    /** `{plan, url}`: kullanıcıyı ödeme sayfasına ([url]) yönlendirin. */
         |    fun subscribe(plan: String): JsonObject = client.request("POST", at(subscribe, "subscribe"), json = buildJsonObject { put("plan", JsonPrimitive(plan)) })!!.jsonObject
         |
-        |    /** `{items: [{id, plan, provider, status, period_end, manage_url}]}` */
+        |    /** `{items: [{id, plan, provider, status, period_end, canceling}]}` */
         |    fun subscriptions(): JsonObject = client.request("GET", at(subscriptions, "subscriptions"))!!.jsonObject
+        |
+        |    /** Aboneliği dönem sonunda bitirir; rol dönem bitene kadar kalır. */
+        |    fun cancel(id: Long): JsonObject = client.request("POST", at(cancel, "cancel").replace("{id}", id.toString()))!!.jsonObject
         |}
         |
         |class Auth(
@@ -1347,7 +1358,8 @@ object SdkGenerator {
                 }
                 if (config.payments.enabled && config.payments.plans.isNotEmpty()) {
                     appendLine()
-                    appendLine("  late final payments = Payments(this, plans: ${p(Endpoint.PAYMENT_PLANS)}, subscribe: ${p(Endpoint.PAYMENT_SUBSCRIBE)}, subscriptions: ${p(Endpoint.PAYMENT_SUBSCRIPTIONS)});")
+                    appendLine("  late final payments = Payments(this,")
+                    appendLine("      plans: ${p(Endpoint.PAYMENT_PLANS)}, subscribe: ${p(Endpoint.PAYMENT_SUBSCRIBE)}, subscriptions: ${p(Endpoint.PAYMENT_SUBSCRIPTIONS)}, cancel: ${p(Endpoint.PAYMENT_SUBSCRIPTION_CANCEL)});")
                 }
             }
             appendLine()
@@ -1473,7 +1485,10 @@ object SdkGenerator {
                 if (config.payments.enabled && config.payments.plans.isNotEmpty()) {
                     appendLine()
                     appendLine("    public var payments: Payments {")
-                    appendLine("        Payments(client: self, plansPath: ${p(Endpoint.PAYMENT_PLANS)}, subscribePath: ${p(Endpoint.PAYMENT_SUBSCRIBE)}, subscriptionsPath: ${p(Endpoint.PAYMENT_SUBSCRIPTIONS)})")
+                    appendLine("        Payments(")
+                    appendLine("            client: self, plansPath: ${p(Endpoint.PAYMENT_PLANS)}, subscribePath: ${p(Endpoint.PAYMENT_SUBSCRIBE)},")
+                    appendLine("            subscriptionsPath: ${p(Endpoint.PAYMENT_SUBSCRIPTIONS)}, cancelPath: ${p(Endpoint.PAYMENT_SUBSCRIPTION_CANCEL)},")
+                    appendLine("        )")
                     appendLine("    }")
                 }
             }
