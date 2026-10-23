@@ -2,6 +2,7 @@ package dev.droidserver.core.payments
 
 import dev.droidserver.core.api.ApiException
 import dev.droidserver.core.api.RecordService
+import dev.droidserver.core.api.WriteGate
 import dev.droidserver.core.api.toJson
 import dev.droidserver.core.config.CollectionConfig
 import dev.droidserver.core.config.PaymentPlan
@@ -67,7 +68,8 @@ sealed interface PaymentEvent {
         val user: Long?,
         val price: String?,
         val periodEnd: Instant? = null,
-        val manageUrl: String? = null,
+        /** Dönem sonunda bitecek (iptal edildi ama süresi sürüyor); bilinmiyorsa null. */
+        val canceling: Boolean? = null,
     ) : PaymentEvent
 }
 
@@ -89,6 +91,18 @@ interface PaymentGateway {
 
     /** Saklanmayan (süreli) fatura adresi: Paddle; diğerleri null. */
     fun receipt(external: String): String? = null
+
+    /**
+     * Ödenmiş ödemenin tam iadesi ([payment] `_payments` satırı). Sağlayıcı hemen onayladıysa iade olayı, onay
+     * bekliyorsa null (sonuç bildirimle gelir).
+     */
+    fun refund(payment: JsonObject, ip: String): PaymentEvent.Payment?
+
+    /** Aboneliği dönem sonunda bitirir; asıl bitiş bildirimle gelir. */
+    fun cancel(subscription: String): Unit = throw ApiException(400, tr("Bu sağlayıcıda abonelik yok"))
+
+    /** Sağlayıcının panelinden yapılan iadeyi bulmak için (iyzico; diğerleri bildirim gönderir). */
+    fun refunded(payment: JsonObject): Boolean? = null
 }
 
 /** Ödeme durumları; sağlayıcıların durumları bunlara çevrilir. */
@@ -135,6 +149,22 @@ object Money {
     fun format(minor: Long, currency: String): String {
         val s = decimal(minor, currency).toPlainString()
         return (if (I18n.lang == Lang.TR) s.replace('.', ',') else s) + " " + currency
+    }
+}
+
+/** Uygulamanın çalışan sunucudaki ödemelere eriştiği yer (iade, son ödemeler). */
+class PaymentHost {
+    @Volatile
+    private var current: Pair<PaymentService, WriteGate>? = null
+
+    internal fun bind(service: PaymentService?, writes: WriteGate) { current = service?.let { it to writes } }
+
+    internal fun unbind(service: PaymentService?) { if (current?.first === service) current = null }
+
+    /** Tam iade (yönetici); ödemeler kurulu değilse [IllegalStateException]. Bloklayıcıdır. */
+    fun refund(id: Long): JsonObject {
+        val (svc, writes) = current ?: throw IllegalStateException(tr("Sunucu çalışmıyor veya ödemeler kapalı"))
+        return writes.write { svc.refund(id, "127.0.0.1") }
     }
 }
 
@@ -266,6 +296,48 @@ class PaymentService(
         return handled
     }
 
+    /** Tam iade (yönetici): yalnızca ödenmiş ödeme. Güncel kayıt döner (sağlayıcı onaylamadıysa durum hâlâ `paid`). */
+    fun refund(id: Long, ip: String): JsonObject {
+        val row = payments.get(id)
+        if (str(row, "status") != PaymentStatus.PAID) throw ApiException(409, tr("Yalnızca ödenmiş ödeme iade edilir"))
+        val gw = PaymentProvider.entries.firstOrNull { it.wire == str(row, "provider") }?.let { gateways[it] }
+            ?: throw ApiException(400, tr("{0} ayarlanmamış", str(row, "provider").orEmpty()))
+        gw.refund(row, ip)?.let { apply(it.copy(token = str(row, "token"))) }
+        return get(id)
+    }
+
+    /** Kullanıcının aboneliğini dönem sonunda bitirir; rol dönem bitene kadar kalır. */
+    fun cancelSubscription(user: Long, id: Long): JsonObject {
+        val row = runCatching { subscriptions.get(id) }.getOrNull()?.takeIf { (it["user"] as? JsonPrimitive)?.longOrNull == user }
+            ?: throw ApiException(404, tr("Abonelik bulunamadı"))
+        if (str(row, "status") == SubscriptionStatus.ENDED) throw ApiException(409, tr("Abonelik zaten bitmiş"))
+        val provider = PaymentProvider.entries.firstOrNull { it.wire == str(row, "provider") }
+        val gw = provider?.let { gateways[it] }?.takeIf { config.provider(provider) != null } ?: throw ApiException(400, tr("{0} ayarlanmamış", str(row, "provider").orEmpty()))
+        gw.cancel(str(row, "external").orEmpty())
+        return JsonObject(subscriptions.update(id, JsonObject(mapOf("canceling" to JsonPrimitive(true)))) - "previous_role")
+    }
+
+    /**
+     * Sağlayıcı panelinden yapılan iadeler (bildirim göndermeyen sağlayıcılar, iyzico): son [days] günde ödenmiş en çok
+     * [limit] ödeme sorulur. İade bulunan sayısı.
+     */
+    fun syncRefunds(days: Long = 90, limit: Int = 100): Int {
+        val since = Instant.now().minusSeconds(days * 86_400)
+        var found = 0
+        for ((type, gw) in gateways) {
+            if (config.provider(type) == null) continue
+            val rows = payments.list(1, limit, "-id", listOf("provider" to type.wire, "status" to PaymentStatus.PAID, "paid_at[gte]" to since.toString())).items
+            for (row in rows) {
+                val refunded = runCatching { gw.refunded(row) }.onFailure { log(tr("İade durumu sorgulanamadı: {0}", it.message ?: it.toString())) }.getOrNull() ?: break
+                if (refunded) {
+                    apply(PaymentEvent.Payment("sync", str(row, "token"), null, PaymentStatus.REFUNDED))
+                    found++
+                }
+            }
+        }
+        return found
+    }
+
     /** Dönüş sayfası: ödeme bekliyorsa sağlayıcıya sorulur (bildirim gecikmiş olabilir). */
     fun refresh(token: String, form: Map<String, String> = emptyMap()): JsonObject? {
         val row = byToken(token) ?: return null
@@ -354,7 +426,7 @@ class PaymentService(
             put("external", JsonPrimitive(e.external))
             put("status", JsonPrimitive(e.status))
             put("period_end", e.periodEnd?.let { JsonPrimitive(it.toString()) } ?: JsonNull)
-            e.manageUrl?.let { put("manage_url", JsonPrimitive(it)) }
+            (if (active) e.canceling else false)?.let { put("canceling", JsonPrimitive(it)) }
             // Etkinleşince önceki rol saklanır, bitince geri verilip silinir.
             if (active && previous == null && role != plan.role) put("previous_role", JsonPrimitive(role))
             if (!active) put("previous_role", JsonNull)

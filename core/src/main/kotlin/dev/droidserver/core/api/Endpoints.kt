@@ -51,6 +51,7 @@ enum class Endpoint(val key: String, val method: String, val path: String, val t
     PAYMENTS_LIST("payments.list", "GET", "/_payments", tr("Ödemeler"), EndpointGroup.ADMIN),
     PAYMENTS_CREATE("payments.create", "POST", "/_payments", tr("Ödeme bağlantısı oluştur"), EndpointGroup.ADMIN),
     PAYMENTS_GET("payments.get", "GET", "/_payments/{id}", tr("Ödeme"), EndpointGroup.ADMIN),
+    PAYMENTS_REFUND("payments.refund", "POST", "/_payments/{id}/refund", tr("Ödemeyi iade et"), EndpointGroup.ADMIN),
     REPLICATION_REPLICAS("replication.replicas", "GET", "/_replication/replicas", tr("Kopyalar: gecikme ve son temas"), EndpointGroup.ADMIN),
     REPLICATION_ROLE("replication.role", "GET", "/_replication/role", tr("Kopya: sunucunun rolü"), EndpointGroup.ADMIN),
     REPLICATION_FENCE("replication.fence", "POST", "/_replication/fence", tr("Kopya: devredildin (kopyaya dön)"), EndpointGroup.ADMIN),
@@ -143,6 +144,7 @@ enum class Endpoint(val key: String, val method: String, val path: String, val t
     PAYMENT_PLANS("payments.plans", "GET", "/payments/plans", tr("Abonelik planları"), EndpointGroup.PAYMENTS),
     PAYMENT_SUBSCRIBE("payments.subscribe", "POST", "/payments/subscribe", tr("Abone ol (ödeme sayfası)"), EndpointGroup.PAYMENTS),
     PAYMENT_SUBSCRIPTIONS("payments.subscriptions", "GET", "/payments/subscriptions", tr("Aboneliklerim"), EndpointGroup.PAYMENTS),
+    PAYMENT_SUBSCRIPTION_CANCEL("payments.subscriptions.cancel", "POST", "/payments/subscriptions/{id}/cancel", tr("Aboneliği dönem sonunda bitir"), EndpointGroup.PAYMENTS),
     ;
 
     companion object {
@@ -231,7 +233,7 @@ class ApiPaths(private val config: ServerConfig) {
             Endpoint.AUTH_PASSKEY_REGISTER_OPTIONS, Endpoint.AUTH_PASSKEY_REGISTER, Endpoint.AUTH_PASSKEYS, Endpoint.AUTH_PASSKEY_DELETE,
             Endpoint.AUTH_PASSKEY_LOGIN_OPTIONS, Endpoint.AUTH_PASSKEY_LOGIN,
         )
-        val PAYMENT_ADMIN_ENDPOINTS = setOf(Endpoint.PAYMENTS_LIST, Endpoint.PAYMENTS_CREATE, Endpoint.PAYMENTS_GET)
+        val PAYMENT_ADMIN_ENDPOINTS = setOf(Endpoint.PAYMENTS_LIST, Endpoint.PAYMENTS_CREATE, Endpoint.PAYMENTS_GET, Endpoint.PAYMENTS_REFUND)
 
         private val SEGMENT = Regex("^([A-Za-z0-9_.~-]+|\\{[A-Za-z]+\\})$")
         private val PARAM = Regex("\\{([A-Za-z]+)\\}")

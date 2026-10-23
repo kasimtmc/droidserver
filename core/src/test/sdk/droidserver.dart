@@ -514,12 +514,13 @@ class RecordCollection<T, I> {
 /// Abonelikler: planlar, ödeme sayfası (rol ödeme bildirimi gelince verilir) ve kullanıcının abonelikleri. Yanıtlar JSON.
 class Payments {
   final DroidServerBase _client;
-  final String? _plans, _subscribe, _subscriptions;
+  final String? _plans, _subscribe, _subscriptions, _cancel;
 
-  Payments(this._client, {String? plans, String? subscribe, String? subscriptions})
+  Payments(this._client, {String? plans, String? subscribe, String? subscriptions, String? cancel})
       : _plans = plans,
         _subscribe = subscribe,
-        _subscriptions = subscriptions;
+        _subscriptions = subscriptions,
+        _cancel = cancel;
 
   String _at(String? p, String key) {
     if (p == null) throw DroidServerException(404, 'Bu ödeme ucu kapalı: $key');
@@ -533,8 +534,12 @@ class Payments {
   Future<Map<String, dynamic>> subscribe(String plan) async =>
       await _client.request('POST', _at(_subscribe, 'subscribe'), json: {'plan': plan}) as Map<String, dynamic>;
 
-  /// `{items: [{id, plan, provider, status, period_end, manage_url}]}`
+  /// `{items: [{id, plan, provider, status, period_end, canceling}]}`
   Future<Map<String, dynamic>> subscriptions() async => await _client.request('GET', _at(_subscriptions, 'subscriptions')) as Map<String, dynamic>;
+
+  /// Aboneliği dönem sonunda bitirir; rol dönem bitene kadar kalır.
+  Future<Map<String, dynamic>> cancel(int id) async =>
+      await _client.request('POST', _at(_cancel, 'cancel').replaceAll('{id}', '$id')) as Map<String, dynamic>;
 }
 
 /// Takımlar (`team` kuralı): kullanıcının takımları; üye ekleme, rol ve silme takım sahibinindir. Yanıtlar JSON.
