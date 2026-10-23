@@ -102,6 +102,16 @@ object ConfigValidator {
                 f.encrypted -> error("auth.users.phoneField", tr("'{0}' telefon alanı şifreli olamaz (numarayla hesap aranır)", f.name))
             }
         }
+        with(config.auth.passkeys) {
+            if (enabled) {
+                if (!users.enabled && !config.adminPanel.enabled) error("auth.passkeys.enabled", tr("Passkey için kullanıcı hesapları veya web paneli açık olmalı"))
+                val id = rpId.trim().lowercase()
+                when {
+                    id.isEmpty() -> error("auth.passkeys.rpId", tr("Passkey için alan adı gerekli (örn. ev.duckdns.org); yerel IP ile çalışmaz"))
+                    id != "localhost" && !HOSTNAME.matches(id) -> error("auth.passkeys.rpId", tr("'{0}' bir alan adı değil; IP adresi, port veya https:// olmadan yazın (örn. ev.duckdns.org)", rpId))
+                }
+            }
+        }
         users.emailLoginUrl?.takeIf { it.isNotBlank() }?.let { u ->
             if (!u.startsWith("https://") && !u.startsWith("http://")) error("auth.users.emailLoginUrl", tr("Giriş bağlantısı http:// veya https:// ile başlamalı"))
         }
@@ -702,6 +712,32 @@ object ConfigValidator {
         ai(config, ::error)
         webdav(config, ::error)
         mqtt(config, ::error)
+        sensors(config, ::error)
+    }
+
+    private fun sensors(config: ServerConfig, error: (String, String) -> Unit) {
+        if (config.sensors.size > 50) error("sensors", tr("En çok 50 sensör olabilir"))
+        val byName = config.collections.associateBy { it.name }
+        val keys = mutableSetOf<String>()
+        config.sensors.forEachIndexed { i, s ->
+            val at = "sensors[$i]"
+            val f = byName[s.collection]?.fields?.firstOrNull { it.name == s.field }
+            when {
+                s.collection !in byName -> error("$at.collection", tr("'{0}' koleksiyonu yok", s.collection))
+                f == null -> error("$at.field", tr("'{0}' koleksiyonunda '{1}' alanı yok", s.collection, s.field))
+                f.type !in setOf(FieldType.INTEGER, FieldType.REAL, FieldType.BOOLEAN) -> error("$at.field", tr("Sensör alanı sayı veya evet/hayır olmalı: {0}", s.key))
+                f.encrypted -> error("$at.field", tr("Şifreli alan sensör olamaz: {0}", s.key))
+            }
+            if (!keys.add(s.key)) error("$at.field", tr("'{0}' sensörü iki kez eklenmiş", s.key))
+            if (s.min != null && s.max != null && s.min >= s.max) error("$at.max", tr("Üst eşik alt eşikten büyük olmalı"))
+        }
+        val ha = config.mqtt.homeAssistant
+        if (ha.enabled) {
+            if (!config.mqtt.enabled) error("mqtt.homeAssistant.enabled", tr("Home Assistant keşfi için MQTT'yi açın"))
+            if (!dev.droidserver.core.mqtt.MqttBroker.validFilter(ha.prefix) || '+' in ha.prefix || '#' in ha.prefix) {
+                error("mqtt.homeAssistant.prefix", tr("Keşif öneki joker içermeyen bir konu olmalı, örn. homeassistant"))
+            }
+        }
     }
 
     private fun mqtt(config: ServerConfig, error: (String, String) -> Unit) {
@@ -711,7 +747,29 @@ object ConfigValidator {
         val taken = listOfNotNull(config.server.port, config.access.direct.port.takeIf { config.access.mode == AccessMode.DIRECT })
         if (m.port in taken) error("mqtt.port", tr("MQTT portu sunucunun portuyla aynı olamaz ({0})", m.port))
         if (!Regex("^[A-Za-z0-9._-]{1,32}$").matches(m.username)) error("mqtt.username", tr("Kullanıcı adı harf, rakam, . _ - olmalı (en çok 32)"))
-        if (!ConfigSecrets.isRef(m.password) && m.password.length < 8) error("mqtt.password", tr("Parola en az 8 karakter olmalı"))
+        // Cihaz listesi varken ortak parola boş bırakılabilir (ortak girişi kapatır).
+        if ((m.devices.isEmpty() || m.password.isNotEmpty()) && !ConfigSecrets.isRef(m.password) && m.password.length < 8) {
+            error("mqtt.password", tr("Parola en az 8 karakter olmalı"))
+        }
+        val seen = mutableSetOf<String>()
+        m.devices.forEachIndexed { i, d ->
+            val path = "mqtt.devices[$i]"
+            if (!Regex("^[A-Za-z0-9._-]{1,32}$").matches(d.name)) error("$path.name", tr("Cihaz adı harf, rakam, . _ - olmalı (en çok 32)"))
+            if (!seen.add(d.name) || (d.name == m.username && m.password.isNotEmpty())) error("$path.name", tr("'{0}' adı birden çok kez kullanılmış", d.name))
+            if (!ConfigSecrets.isRef(d.password) && d.password.length < 8) error("$path.password", tr("Parola en az 8 karakter olmalı"))
+        }
+        if (m.devices.size > 200) error("mqtt.devices", tr("En çok 200 cihaz eklenebilir"))
+        if (m.scenes.size > 50) error("mqtt.scenes", tr("En çok 50 sahne olabilir"))
+        val scenes = mutableSetOf<String>()
+        m.scenes.forEachIndexed { i, sc ->
+            val path = "mqtt.scenes[$i]"
+            if (!Regex("^[\\p{L}\\p{N}_ -]{1,32}$").matches(sc.name) || sc.name.isBlank()) error("$path.name", tr("Sahne adı harf, rakam, boşluk, - ve _ olmalı (en çok 32)"))
+            else if (!scenes.add(sc.name)) error("$path.name", tr("'{0}' adı birden çok kez kullanılmış", sc.name))
+            if (sc.messages.isEmpty() || sc.messages.size > 20) error("$path.messages", tr("{0}: sahnede 1-20 mesaj olmalı", sc.name))
+            sc.messages.forEachIndexed { j, msg ->
+                if (msg.topic.isBlank() || '+' in msg.topic || '#' in msg.topic) error("$path.messages[$j].topic", tr("{0}: konu boş veya joker içeriyor", sc.name))
+            }
+        }
         if (m.maxClients !in 1..1_000) error("mqtt.maxClients", tr("Bağlantı sınırı 1-1000 olmalı"))
         if (!dev.droidserver.core.mqtt.MqttBroker.validFilter(m.eventPrefix) || '+' in m.eventPrefix || '#' in m.eventPrefix) {
             error("mqtt.eventPrefix", tr("Olay öneki joker içermeyen bir konu olmalı, örn. droidserver"))
@@ -864,7 +922,12 @@ object ConfigValidator {
             else if (!names.add(a.name)) error("$at.name", tr("'{0}' adı iki kez kullanılmış", a.name))
             val t = a.trigger
             val collection = t.collection?.let { name -> byName[name] ?: null.also { error("$at.trigger.collection", tr("{0}: '{1}' koleksiyonu yok", a.name, name)) } }
-            if (t.scheduled) {
+            if (t.onMqtt) {
+                if (!config.mqtt.enabled) error("$at.trigger.mqtt", tr("{0}: MQTT tetikleyicisi için MQTT'yi açın", a.name))
+                if (!dev.droidserver.core.mqtt.MqttBroker.validFilter(t.mqtt!!)) error("$at.trigger.mqtt", tr("{0}: geçersiz konu süzgeci: '{1}'", a.name, t.mqtt))
+                if (t.scheduled) error("$at.trigger.mqtt", tr("{0}: MQTT tetikleyicisi zamanlamayla birlikte olamaz", a.name))
+                if (!a.condition.isNullOrBlank()) error("$at.condition", tr("{0}: MQTT tetikleyicisinde koşul kullanılamaz", a.name))
+            } else if (t.scheduled) {
                 runCatching { dev.droidserver.core.script.CronSchedule.parse(t.schedule!!) }.exceptionOrNull()?.let {
                     error("$at.trigger.schedule", tr("{0}: zamanlama geçersiz: {1}", a.name, it.message))
                 }
@@ -905,7 +968,13 @@ object ConfigValidator {
                         val hook = act.webhook
                         if (hook.isNullOrBlank() || config.webhooks.none { it.name == hook }) error("$ap.webhook", tr("{0}: tanımlı bir webhook seçin", a.name))
                     }
+                    AutomationActionType.MQTT -> {
+                        if (!config.mqtt.enabled) error(ap, tr("{0}: MQTT eylemi için MQTT'yi açın", a.name))
+                        val topic = act.topic.orEmpty()
+                        if (topic.isBlank() || '+' in topic || '#' in topic) error("$ap.topic", tr("{0}: MQTT konusu boş veya joker içeriyor", a.name))
+                    }
                     AutomationActionType.UPDATE -> when {
+                        t.onMqtt -> error(ap, tr("{0}: MQTT tetikleyicisinde kayıt güncellenemez; kayıt oluşturun", a.name))
                         collection == null -> error(ap, tr("{0}: kayıt güncellemek için koleksiyon seçin", a.name))
                         !t.scheduled && t.events == listOf("delete") -> error(ap, tr("{0}: silinen kayıt güncellenemez", a.name))
                         else -> writable(collection, act.values, ap, a.name)

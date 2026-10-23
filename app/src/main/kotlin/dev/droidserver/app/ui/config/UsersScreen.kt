@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -63,6 +64,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
@@ -84,6 +87,7 @@ fun UsersScreen(g: AppGraph, onBack: () -> Unit) {
     var resetting by remember { mutableStateOf<JsonObject?>(null) }
     var deleting by remember { mutableStateOf<JsonObject?>(null) }
     var roleFor by remember { mutableStateOf<JsonObject?>(null) }
+    var sessionsFor by remember { mutableStateOf<JsonObject?>(null) }
     val users = remember(engineState) { runCatching { g.configRepo.loadActiveOrNull()?.auth?.users }.getOrNull() }
 
     LaunchedEffect(query, reload, running) {
@@ -153,7 +157,7 @@ fun UsersScreen(g: AppGraph, onBack: () -> Unit) {
                             value = if (admin) null else withContext(Dispatchers.IO) { runCatching { g.engine.usage(id) }.getOrNull() }
                         }
                         usage?.let { Text(usageLine(it), style = MaterialTheme.typography.bodySmall) }
-                        Row {
+                        FlowRow {
                             TextButton(onClick = { resetting = u }) { Text(tr("Parola")) }
                             TextButton(onClick = { roleFor = u }) { Text(tr("Rol")) }
                             TextButton(onClick = {
@@ -164,6 +168,7 @@ fun UsersScreen(g: AppGraph, onBack: () -> Unit) {
                                     act(tr("{0}: iki adımlı doğrulama sıfırlandı", email)) { it.adminUpdate(id, JsonObject(mapOf("twoFactor" to JsonPrimitive(false)))) }
                                 }) { Text(tr("2FA sıfırla")) }
                             }
+                            TextButton(onClick = { sessionsFor = u }) { Text(tr("Oturumlar")) }
                             TextButton(onClick = { deleting = u }) { Text(tr("Sil"), color = MaterialTheme.colorScheme.error) }
                         }
                     }
@@ -229,6 +234,45 @@ fun UsersScreen(g: AppGraph, onBack: () -> Unit) {
                 }
             },
             confirmButton = { TextButton(onClick = { roleFor = null }) { Text(tr("Kapat")) } },
+        )
+    }
+
+    sessionsFor?.let { u ->
+        val id = u.getValue("id").jsonPrimitive.content.toLong()
+        val sessions by produceState<List<JsonObject>?>(null, id, reload) {
+            value = withContext(Dispatchers.IO) {
+                runCatching { g.engine.users()?.sessions(id)?.getValue("items")?.jsonArray?.map { it.jsonObject } }.getOrNull()
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { sessionsFor = null },
+            title = { Text(tr("{0} oturumları", u.text("email"))) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val list = sessions
+                    when {
+                        list == null -> Text(tr("Yükleniyor…"))
+                        list.isEmpty() -> Text(tr("Açık oturum yok."))
+                        else -> list.forEach { s ->
+                            Text(
+                                listOfNotNull(
+                                    s.text("device").takeIf { it.isNotBlank() && it != "null" } ?: tr("bilinmeyen cihaz"),
+                                    s.text("ip").takeIf { it.isNotBlank() && it != "null" },
+                                    tr("son kullanım: {0}", s.text("lastUsedAt").take(16).replace('T', ' ')),
+                                ).joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !sessions.isNullOrEmpty(), onClick = {
+                    sessionsFor = null
+                    act(tr("{0}: tüm oturumlar kapatıldı", u.text("email"))) { it.closeAllSessions(id) }
+                }) { Text(tr("Hepsini kapat"), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { sessionsFor = null }) { Text(tr("Kapat")) } },
         )
     }
 

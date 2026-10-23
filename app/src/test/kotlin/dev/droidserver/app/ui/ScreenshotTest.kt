@@ -16,7 +16,15 @@ import dev.droidserver.core.config.AutomationAction
 import dev.droidserver.core.config.AutomationActionType
 import dev.droidserver.core.config.AutomationConfig
 import dev.droidserver.core.config.AutomationTrigger
+import dev.droidserver.core.config.CollectionConfig
+import dev.droidserver.core.config.FieldConfig
+import dev.droidserver.core.config.FieldType
 import dev.droidserver.core.config.FormConfig
+import dev.droidserver.core.config.HomeAssistantConfig
+import dev.droidserver.core.config.MqttConfig
+import dev.droidserver.core.config.MqttMessage
+import dev.droidserver.core.config.MqttScene
+import dev.droidserver.core.config.SensorConfig
 import dev.droidserver.core.config.ServerConfig
 import org.junit.After
 import org.junit.Assume.assumeTrue
@@ -201,16 +209,15 @@ class ScreenshotTest {
         shot("19-saglayici-openai")
     }
 
-    @Test
-    fun widget() {
-        running()
-        for ((name, dark) in listOf("20-widget" to false, "21-widget-koyu" to true)) {
+    /** Widget'ı açık ve koyu temada 360x150 dp olarak çizer. */
+    private fun widgetShots(light: String, darkName: String, views: () -> android.widget.RemoteViews) {
+        for ((file, dark) in listOf(light to false, darkName to true)) {
             val ctx = if (!dark) app else app.createConfigurationContext(
                 android.content.res.Configuration(app.resources.configuration).apply {
                     uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES or (uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK.inv())
                 },
             )
-            val v = dev.droidserver.app.service.StatusWidget.views(app).apply(ctx, android.widget.FrameLayout(ctx))
+            val v = views().apply(ctx, android.widget.FrameLayout(ctx))
             val w = (360 * app.resources.displayMetrics.density).toInt()
             val h = (150 * app.resources.displayMetrics.density).toInt()
             v.measure(android.view.View.MeasureSpec.makeMeasureSpec(w, android.view.View.MeasureSpec.EXACTLY), android.view.View.MeasureSpec.makeMeasureSpec(h, android.view.View.MeasureSpec.EXACTLY))
@@ -218,8 +225,14 @@ class ScreenshotTest {
             val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
             v.draw(android.graphics.Canvas(bmp))
             dir.mkdirs()
-            File(dir, "$name.png").outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            File(dir, "$file.png").outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
         }
+    }
+
+    @Test
+    fun widget() {
+        running()
+        widgetShots("20-widget", "21-widget-koyu") { dev.droidserver.app.service.StatusWidget.views(app) }
     }
 
     @Test
@@ -241,4 +254,32 @@ class ScreenshotTest {
         click("Ağ sürücüsü")
         shot("23-ag-surucusu")
     }
+
+    @Test
+    fun sensorPanosu() {
+        running { c ->
+            val readings = CollectionConfig("readings", listOf(FieldConfig("temp", FieldType.REAL), FieldConfig("device", FieldType.TEXT)))
+            c.copy(
+                collections = c.collections + readings,
+                mqtt = MqttConfig(enabled = true, password = "cihaz-parolasi", homeAssistant = HomeAssistantConfig(enabled = true)),
+                sensors = listOf(SensorConfig("readings", "temp", name = "Salon", unit = "°C", min = 15.0, max = 28.0)),
+            )
+        }
+        render()
+        click("Sunucu")
+        click("Sensör panosu")
+        shot("24-sensor-panosu")
+    }
+
+    @Test
+    fun sahneWidgeti() {
+        running { c ->
+            c.copy(mqtt = MqttConfig(enabled = true, password = "cihaz-parolasi", scenes = listOf(
+                MqttScene("Akşam", listOf(MqttMessage("ev/salon/lamba", "on"))), MqttScene("Sabah", listOf(MqttMessage("ev/perde", "acik"))),
+                MqttScene("Dışarıdayım", listOf(MqttMessage("ev/hepsi", "off"))),
+            )))
+        }
+        widgetShots("25-sahne-widget", "26-sahne-widget-koyu") { dev.droidserver.app.service.SceneWidget.views(app) }
+    }
 }
+

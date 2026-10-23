@@ -66,6 +66,8 @@ enum class Endpoint(val key: String, val method: String, val path: String, val t
     APPS("apps", "GET", "/_apps", tr("Uygulamalar: durum"), EndpointGroup.ADMIN),
     MQTT("mqtt", "GET", "/_mqtt", tr("MQTT: bağlı cihazlar ve son mesajlar"), EndpointGroup.ADMIN),
     MQTT_PUBLISH("mqtt.publish", "POST", "/_mqtt/publish", tr("MQTT: cihazlara mesaj gönder"), EndpointGroup.ADMIN),
+    MQTT_SCENE("mqtt.scene", "POST", "/_mqtt/scenes/{name}", tr("MQTT: sahneyi çalıştır"), EndpointGroup.ADMIN),
+    SENSORS("sensors", "GET", "/_sensors", tr("Sensör panosu: son değerler ve grafik"), EndpointGroup.ADMIN),
     APP_DEPLOY("apps.deploy", "POST", "/_apps/{name}/deploy", tr("Uygulamayı çek ve deploy et"), EndpointGroup.ADMIN),
     APP_HOOK("apps.hook", "POST", "/_apps/{name}/hook", tr("Uygulama: Git push webhook'u"), EndpointGroup.SERVER),
 
@@ -90,6 +92,12 @@ enum class Endpoint(val key: String, val method: String, val path: String, val t
     AUTH_LOGIN_CODE("auth.loginCode", "POST", "/auth/login-code", tr("E-posta koduyla giriş"), EndpointGroup.AUTH),
     AUTH_REQUEST_SMS_CODE("auth.requestSmsCode", "POST", "/auth/request-sms-code", tr("SMS ile giriş kodu iste"), EndpointGroup.AUTH),
     AUTH_SMS_CODE("auth.smsCode", "POST", "/auth/sms-code", tr("SMS koduyla giriş"), EndpointGroup.AUTH),
+    AUTH_PASSKEY_REGISTER_OPTIONS("auth.passkeys.registerOptions", "POST", "/auth/passkeys/register-options", tr("Passkey ekleme seçenekleri"), EndpointGroup.AUTH),
+    AUTH_PASSKEY_REGISTER("auth.passkeys.register", "POST", "/auth/passkeys", tr("Passkey ekle"), EndpointGroup.AUTH),
+    AUTH_PASSKEYS("auth.passkeys.list", "GET", "/auth/passkeys", tr("Passkey'lerim"), EndpointGroup.AUTH),
+    AUTH_PASSKEY_DELETE("auth.passkeys.delete", "DELETE", "/auth/passkeys/{id}", tr("Passkey'i sil"), EndpointGroup.AUTH),
+    AUTH_PASSKEY_LOGIN_OPTIONS("auth.passkeys.loginOptions", "POST", "/auth/passkeys/login-options", tr("Passkey ile giriş seçenekleri"), EndpointGroup.AUTH),
+    AUTH_PASSKEY_LOGIN("auth.passkeys.login", "POST", "/auth/passkeys/login", tr("Passkey ile giriş"), EndpointGroup.AUTH),
     TEAMS("teams.list", "GET", "/teams", tr("Takımlarım"), EndpointGroup.TEAMS),
     TEAMS_CREATE("teams.create", "POST", "/teams", tr("Takım kur"), EndpointGroup.TEAMS),
     TEAM("teams.get", "GET", "/teams/{id}", tr("Takım ve üyeleri"), EndpointGroup.TEAMS),
@@ -102,6 +110,11 @@ enum class Endpoint(val key: String, val method: String, val path: String, val t
     USERS_CREATE("auth.users.create", "POST", "/auth/users", tr("Kullanıcı aç (yönetici)"), EndpointGroup.AUTH),
     USERS_UPDATE("auth.users.update", "PATCH", "/auth/users/{id}", tr("Kullanıcıyı güncelle (yönetici)"), EndpointGroup.AUTH),
     USERS_DELETE("auth.users.delete", "DELETE", "/auth/users/{id}", tr("Kullanıcıyı sil (yönetici)"), EndpointGroup.AUTH),
+    USERS_SESSIONS("auth.users.sessions", "GET", "/auth/users/{id}/sessions", tr("Kullanıcının oturumları (yönetici)"), EndpointGroup.AUTH),
+    USERS_SESSIONS_CLOSE("auth.users.sessions.close", "DELETE", "/auth/users/{id}/sessions", tr("Kullanıcının tüm oturumlarını kapat (yönetici)"), EndpointGroup.AUTH),
+    AUTH_SESSIONS("auth.sessions", "GET", "/auth/sessions", tr("Açık oturumlarım"), EndpointGroup.AUTH),
+    AUTH_SESSIONS_CLOSE("auth.sessions.close", "DELETE", "/auth/sessions", tr("Diğer oturumlarımı kapat"), EndpointGroup.AUTH),
+    AUTH_SESSION_CLOSE("auth.sessions.closeOne", "DELETE", "/auth/sessions/{id}", tr("Oturumu kapat"), EndpointGroup.AUTH),
 
     OAUTH_PROVIDERS("oauth.providers", "GET", "/auth/oauth/providers", tr("Sağlayıcılar"), EndpointGroup.OAUTH),
     OAUTH_START("oauth.start", "GET", "/auth/oauth/{provider}", tr("Girişi başlat"), EndpointGroup.OAUTH),
@@ -165,6 +178,7 @@ class ApiPaths(private val config: ServerConfig) {
         if (e in TWO_FACTOR_ENDPOINTS && !users.twoFactor.enabled) return null
         if (e in EMAIL_LOGIN_ENDPOINTS && !(users.emailLogin && config.email.enabled)) return null
         if (e in SMS_LOGIN_ENDPOINTS && !(users.smsLogin && config.phone.sms)) return null
+        if (e in PASSKEY_ENDPOINTS && !(users.enabled && config.auth.passkeys.enabled)) return null
         if (e.group == EndpointGroup.TEAMS && !(users.enabled && users.teams.enabled)) return null
         val c = config.api.endpoints[e.key] ?: return e.path
         return if (!c.enabled) null else c.path?.takeIf { it.isNotBlank() } ?: e.path
@@ -187,6 +201,10 @@ class ApiPaths(private val config: ServerConfig) {
         )
         val EMAIL_LOGIN_ENDPOINTS = setOf(Endpoint.AUTH_REQUEST_LOGIN_CODE, Endpoint.AUTH_LOGIN_CODE)
         val SMS_LOGIN_ENDPOINTS = setOf(Endpoint.AUTH_REQUEST_SMS_CODE, Endpoint.AUTH_SMS_CODE)
+        val PASSKEY_ENDPOINTS = setOf(
+            Endpoint.AUTH_PASSKEY_REGISTER_OPTIONS, Endpoint.AUTH_PASSKEY_REGISTER, Endpoint.AUTH_PASSKEYS, Endpoint.AUTH_PASSKEY_DELETE,
+            Endpoint.AUTH_PASSKEY_LOGIN_OPTIONS, Endpoint.AUTH_PASSKEY_LOGIN,
+        )
 
         private val SEGMENT = Regex("^([A-Za-z0-9_.~-]+|\\{[A-Za-z]+\\})$")
         private val PARAM = Regex("\\{([A-Za-z]+)\\}")

@@ -125,3 +125,44 @@ internal fun PanelTotpSection(vm: WizardViewModel, draft: ServerConfig) {
         style = MaterialTheme.typography.bodySmall,
     )
 }
+
+/**
+ * Güvenlik adımı: passkey ile parolasız giriş (kullanıcı hesapları ve web paneli). WebAuthn bir alan adına bağlanır:
+ * DuckDNS adı veya adlandırılmış tünel önerilir; hızlı tünelin adresi her başlatmada değiştiği için uygun değil.
+ */
+@Composable
+internal fun PasskeySection(vm: WizardViewModel, draft: ServerConfig) {
+    val passkeys = draft.auth.passkeys
+    val suggested = draft.access.direct.ddns?.domain?.takeIf { it.isNotBlank() }?.let { "$it.duckdns.org" }
+        ?: draft.access.cloudflare.hostname?.takeIf { it.isNotBlank() }
+    SwitchRow(
+        tr("Passkey ile giriş"),
+        tr("Parola yerine telefonun veya bilgisayarın kilidiyle (parmak izi, yüz, PIN) giriş: kullanıcılar hesaplarına, siz web paneline passkey eklersiniz. " +
+            "HTTPS ve gerçek bir alan adı gerekir (DuckDNS veya adlandırılmış tünel); yerel IP adresiyle çalışmaz."),
+        passkeys.enabled,
+    ) { on ->
+        vm.update { c -> c.copy(auth = c.auth.copy(passkeys = c.auth.passkeys.copy(enabled = on, rpId = c.auth.passkeys.rpId.ifBlank { suggested.orEmpty() }))) }
+    }
+    ErrorText(vm.errorAt("auth.passkeys.enabled"))
+    if (passkeys.enabled) {
+        var rpId by remember { mutableStateOf(passkeys.rpId) }
+        OutlinedTextField(
+            value = rpId,
+            onValueChange = { v -> rpId = v; vm.update { c -> c.copy(auth = c.auth.copy(passkeys = c.auth.passkeys.copy(rpId = v.trim().lowercase()))) } },
+            label = { Text(tr("Alan adı")) },
+            placeholder = { Text(suggested ?: "ev.duckdns.org") },
+            supportingText = {
+                Text(vm.errorAt("auth.passkeys.rpId") ?: tr("Sunucuyu tarayıcıda açtığınız ad, https:// ve port olmadan. Ad değişirse eklenen passkey'ler çalışmaz."))
+            },
+            isError = vm.errorAt("auth.passkeys.rpId") != null,
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (suggested == null) {
+            Text(
+                tr("Henüz alan adınız yok: Erişim adımında DuckDNS (doğrudan erişim) veya adlandırılmış Cloudflare tüneli kurun."),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
+            )
+        }
+    }
+}

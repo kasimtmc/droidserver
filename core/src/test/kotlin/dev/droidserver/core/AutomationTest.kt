@@ -67,6 +67,7 @@ class AutomationTest {
     private lateinit var services: Map<String, RecordService>
     private val mails = mutableListOf<Triple<String, String, String>>()
     private val hooks = mutableListOf<Pair<String, String>>()
+    private val published = mutableListOf<Triple<String, String, Boolean>>()
     private val changes = mutableListOf<String>()
 
     @Before
@@ -86,6 +87,7 @@ class AutomationTest {
             AutomationOutputs(
                 mail = { to, subject, text -> mails += Triple(to, subject, text) },
                 webhook = { name, event, _, _ -> hooks += name to event },
+                mqtt = { topic, payload, retain -> published += Triple(topic, payload, retain); 1 },
             ),
             changed = { c, a, r, depth ->
                 changes += "$c.${a.wire}#${r["id"]}@$depth"
@@ -272,6 +274,33 @@ class AutomationTest {
         val listed = json(client.get("/api/_automations") { bearerAuth(key) }.bodyAsText())
         assertEquals(listOf("isaretle", "gece"), listed.getValue("rules").jsonArray.map { it.jsonObject.getValue("name").jsonPrimitive.content })
         assertEquals(setOf("orders.create", "test"), listed.getValue("runs").jsonArray.map { it.jsonObject.getValue("trigger").jsonPrimitive.content }.toSet())
+    }
+
+    @Test
+    fun `mqtt eylemi ve tetikleyicisi`() {
+        val e = engine(
+            AutomationConfig("lamba", AutomationTrigger("orders"), actions = listOf(
+                AutomationAction(AutomationActionType.MQTT, topic = "ev/{item}/lamba", body = "{\"durum\":\"{status}\"}", retain = true),
+            )),
+            AutomationConfig("hareket", AutomationTrigger(mqtt = "ev/+/hareket"), actions = listOf(
+                AutomationAction(AutomationActionType.CREATE, collection = "events", values = mapOf("text" to "{topic}: {kim}")),
+            )),
+        )
+        create(e, "item" to "salon", "status" to "on")
+        assertEquals(Triple("ev/salon/lamba", "{\"durum\":\"on\"}", true), published.single())
+        assertEquals(0, services.getValue("events").list(1, 10, null, emptyList()).totalItems, "kayıt olayı MQTT kuralını tetiklemez")
+
+        e.onMqtt("ev/mutfak/hareket", "{\"kim\":\"kedi\"}".toByteArray())
+        e.onMqtt("ev/mutfak/sicaklik", "21".toByteArray())
+        val logged = services.getValue("events").list(1, 10, null, emptyList()).items
+        assertEquals(listOf("ev/mutfak/hareket: kedi"), logged.map { it.getValue("text").jsonPrimitive.content })
+        assertTrue(e.runNow("hareket").ok, "Şimdi dene MQTT kuralında da çalışır")
+
+        val off = ConfigValidator.validateDetailed(base.copy(automations = listOf(
+            AutomationConfig("x", AutomationTrigger(mqtt = "ev/#"), actions = listOf(AutomationAction(AutomationActionType.MQTT, topic = "ev/+/lamba", body = "on"))),
+        ))).map { it.path }
+        assertTrue("automations[0].trigger.mqtt" in off, "MQTT kapalı: $off")
+        assertTrue("automations[0].actions[0].topic" in off, "eylem konusunda joker olmaz: $off")
     }
 
     @Test

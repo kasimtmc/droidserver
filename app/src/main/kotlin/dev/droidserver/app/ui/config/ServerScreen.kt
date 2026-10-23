@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.DynamicForm
 import androidx.compose.material.icons.filled.FolderShared
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Backup
@@ -124,6 +125,7 @@ fun ServerScreen(
         if (cfg != null) add(Tool(data, Icons.Default.AutoAwesome, tr("Yapay zekâ"), if (cfg.ai.enabled) tr("{0} açık · sohbet, kayıtlara soru, anlamsal arama", cfg.ai.provider.title) else tr("Claude, OpenAI veya Gemini: sohbet, kayıtlara soru, anlamsal arama"), { onOpen(Routes.AI) }))
         if (cfg != null) add(Tool(data, Icons.Default.FolderShared, tr("Ağ sürücüsü"), if (cfg.webdav.enabled) tr("Açık · bilgisayarda klasör olarak bağla (WebDAV)") else tr("Telefondaki klasörleri bilgisayarda sürücü gibi aç (WebDAV)"), { onOpen(Routes.DRIVE) }))
         if (cfg != null) add(Tool(data, Icons.Default.Sensors, tr("MQTT (IoT)"), if (cfg.mqtt.enabled) tr("Açık · port {0}", cfg.mqtt.port) else tr("Sensörler ve ESP32: mesajları kayda yaz, komut gönder"), { onOpen(Routes.MQTT) }))
+        if (cfg != null) add(Tool(data, Icons.Default.ShowChart, tr("Sensör panosu"), if (cfg.sensors.isEmpty()) tr("Sayısal alanların grafiği, eşik uyarısı, Home Assistant") else tr("{0} sensör", cfg.sensors.size), { onOpen(Routes.SENSORS) }))
         if (cfg != null) add(Tool(data, Icons.Default.Api, tr("API gezgini"), tr("Uçları dene, örnek kodlar"), onApi))
         add(Tool(dev, Icons.Default.Terminal, tr("Komut satırı (CLI)"), tr("Bilgisayardan kayıtlar, loglar, deploy, yedek"), { onOpen(Routes.CLI) }))
         add(Tool(dev, Icons.Default.RocketLaunch, tr("Uygulamalar ({0})", cfg?.apps?.size ?: 0), tr("Kendi Node.js, Python, Java sunucunuz"), { onOpen(Routes.APPS) }))

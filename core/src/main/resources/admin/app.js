@@ -98,11 +98,23 @@ async function showLogin(message) {
       } catch (e) { status.textContent = e.message; }
     },
   }, input, totp, el("div", { class: "row" }, el("button", { class: "btn", type: "submit" }, T("Giriş"))));
+  // Passkey: bu panele bir passkey eklenmişse ve tarayıcı destekliyorsa kodsuz giriş.
+  const passkey = login.passkey && window.PublicKeyCredential ? el("button", { class: "ghost", type: "button", onclick: async () => {
+    status.textContent = "";
+    try {
+      const options = await api("/_admin/api/passkeys/login-options", { method: "POST" });
+      const cred = await navigator.credentials.get({ publicKey: passkeyOptions(options) });
+      const r = await api("/_admin/api/passkeys/login", { method: "POST", body: { credential: credentialJson(cred) } });
+      state.token = r.token;
+      sessionStorage.setItem("ds-token", r.token);
+      await start();
+    } catch (e) { status.textContent = e.message; }
+  } }, T("Passkey ile giriş")) : null;
   main.append(el("div", { class: "card login" },
     el("h2", {}, T("Panele giriş")),
     el("p", { class: "muted" }, T("Telefonda DroidServer → Durum → Web paneli → \"Eşleştirme kodu oluştur\". Kod 5 dakika geçerlidir ve bir kez kullanılır.") +
       (totp ? T(" Ayrıca doğrulayıcı uygulamanızdaki DroidServer panel kodunu girin.") : "")),
-    form, status));
+    form, passkey ? el("div", { class: "row" }, passkey) : null, status));
   // QR ile giriş: telefondaki "Bağlan (QR)" ekranı adrese #pair=<kod> ekler (parça sunucuya gitmez); kod adresten silinir.
   const paired = /^#pair=(\d{6})$/.exec(location.hash);
   if (paired) {
@@ -112,6 +124,58 @@ async function showLogin(message) {
     return;
   }
   input.focus();
+}
+
+// ---- passkey (WebAuthn): sunucu ikili değerleri base64url verir ve bekler.
+
+function b64urlDecode(s) {
+  const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (s.length % 4)) % 4));
+  return Uint8Array.from(b, (c) => c.charCodeAt(0));
+}
+function b64urlEncode(buf) {
+  return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function passkeyOptions(o) {
+  const ids = (list) => (list || []).map((c) => Object.assign({}, c, { id: b64urlDecode(c.id) }));
+  const out = Object.assign({}, o, { challenge: b64urlDecode(o.challenge) });
+  if (o.user) out.user = Object.assign({}, o.user, { id: b64urlDecode(o.user.id) });
+  if (o.excludeCredentials) out.excludeCredentials = ids(o.excludeCredentials);
+  if (o.allowCredentials) out.allowCredentials = ids(o.allowCredentials);
+  return out;
+}
+function credentialJson(cred) {
+  const r = cred.response, out = {};
+  for (const k of ["clientDataJSON", "attestationObject", "authenticatorData", "signature", "userHandle"]) if (r[k]) out[k] = b64urlEncode(r[k]);
+  return { id: cred.id, type: cred.type, response: out };
+}
+
+// Panelin passkey'leri (Konfigürasyon sekmesinde); passkey ayarı kapalıysa uçlar yoktur, kart gösterilmez.
+async function panelPasskeys() {
+  const res = await api("/_admin/api/passkeys", { raw: true });
+  if (res.status === 404) return null;
+  const out = el("div");
+  const load = () => guard(out, async () => {
+    clear(out);
+    const r = await api("/_admin/api/passkeys");
+    if (!r.items.length) out.append(el("p", { class: "muted" }, T("Henüz passkey yok.")));
+    else out.append(el("ul", {}, r.items.map((k) => el("li", {}, k.name + " · " + T("son kullanım: ") + when(k.lastUsedAt) + " ",
+      el("button", { class: "ghost danger", onclick: async () => {
+        if (!confirm("'" + k.name + T("' silinsin mi?"))) return;
+        await guard(out, async () => { await api("/_admin/api/passkeys/" + k.id, { method: "DELETE" }); await load(); });
+      } }, T("Sil"))))));
+  });
+  const name = el("input", { placeholder: T("ad (örn. dizüstü)") });
+  const add = el("button", { class: "btn", disabled: !window.PublicKeyCredential, onclick: () => guard(out, async () => {
+    const options = await api("/_admin/api/passkeys/register-options", { method: "POST" });
+    const cred = await navigator.credentials.create({ publicKey: passkeyOptions(options) });
+    await api("/_admin/api/passkeys", { method: "POST", body: { name: name.value.trim() || undefined, credential: credentialJson(cred) } });
+    name.value = "";
+    await load();
+  }) }, T("Passkey ekle"));
+  await load();
+  return el("div", { class: "card" }, el("h3", {}, T("Panel passkey'leri")),
+    el("p", { class: "muted" }, T("Bu tarayıcıyı veya bir güvenlik anahtarını ekleyin; sonra panele eşleştirme kodu olmadan girersiniz. Panel, passkey ayarındaki alan adıyla (HTTPS) açılmış olmalı.")),
+    el("div", { class: "row" }, name, add), out);
 }
 
 async function logout(callServer = true) {
@@ -490,6 +554,7 @@ async function showUsers() {
                   const p = prompt(who + T(" için yeni parola (tüm oturumları kapanır):"));
                   if (p) userAction(u.id, { [passKey]: p });
                 } }, T("Parola")) : null, " ",
+                u.id !== undefined && gp("auth.users.sessions", { id: u.id }, null) ? el("button", { class: "ghost", onclick: () => sessionsDialog(who, u.id) }, T("Oturumlar")) : null, " ",
                 del ? el("button", { class: "ghost danger", onclick: async () => {
                   if (!confirm(who + T(" silinsin mi? Bağlı kayıtlar onDelete ayarına göre etkilenir."))) return;
                   await guard(out, async () => { await api(del, { method: "DELETE" }); await load(); });
@@ -505,6 +570,20 @@ async function showUsers() {
   main.append(el("div", { class: "card" }, el("div", { class: "row" }, search, el("button", { class: "ghost", onclick: load }, T("Ara"))), out));
   await load();
   if (state.info.teams) await showTeams();
+}
+
+// Kullanıcının açık oturumları (cihaz, adres, son kullanım); hepsi kapatılabilir.
+function sessionsDialog(who, id) {
+  listDialog(who + T(" oturumları"), async (body, refresh) => {
+    const r = await api(gp("auth.users.sessions", { id }, null));
+    if (!r.items.length) { body.append(el("p", { class: "muted" }, T("Açık oturum yok."))); return; }
+    body.append(el("ul", {}, r.items.map((s) => el("li", {}, [s.device || T("bilinmeyen cihaz"), s.ip, T("son kullanım: ") + when(s.lastUsedAt)].filter(Boolean).join(" · ")))));
+    body.append(el("div", { class: "row" }, el("button", { class: "ghost danger", onclick: () => guard(body, async () => {
+      if (!confirm(who + T(": tüm oturumlar kapatılsın mı? Her cihazda yeniden giriş gerekir."))) return;
+      await api(gp("auth.users.sessions.close", { id }, null), { method: "DELETE" });
+      await refresh();
+    }) }, T("Hepsini kapat"))));
+  });
 }
 
 // Takımlar: panel yönetici olarak tüm takımları görür (uygulamadaki Sunucu → Takımlar gibi).
@@ -1208,6 +1287,8 @@ async function showSchema() {
 }
 
 async function showConfig() {
+  const keys = await panelPasskeys().catch((e) => errorBox(e));
+  if (keys) main.append(keys);
   const r = await api("/_admin/api/config");
   const text = el("textarea", { spellcheck: "false" }, r.text);
   const out = el("div");
@@ -1311,7 +1392,7 @@ function when(iso) { return iso ? new Date(iso).toLocaleString() : "—"; }
 
 const EVENTS = [["create", T("eklenince")], ["update", T("değişince")], ["delete", T("silinince")]];
 const ACTION_TYPES = [["log", T("Loga yaz")], ["email", T("E-posta gönder")], ["push", T("Bildirim gönder")], ["webhook", T("Webhook'a gönder")],
-  ["update", T("Kaydı güncelle")], ["create", T("Kayıt oluştur")]];
+  ["update", T("Kaydı güncelle")], ["create", T("Kayıt oluştur")], ["mqtt", T("MQTT mesajı gönder")]];
 
 async function showAutomation() {
   const cfg = await loadConfig();
@@ -1350,9 +1431,12 @@ function runLine(r) { return el("li", { class: r.ok ? "" : "error" }, when(r.at)
 function ruleCard(cfg, a, i, status, rerender) {
   a.trigger = a.trigger || {};
   const scheduled = !!a.trigger.schedule;
+  const onMqtt = !!a.trigger.mqtt;
   const saved = status && status.rules.some((r) => r.name === a.name);
   const out = el("div");
-  const trigger = scheduled
+  const trigger = onMqtt
+    ? line(T("Konu süzgeci"), textIn(a.trigger, "mqtt", { placeholder: "ev/+/hareket" }))
+    : scheduled
     ? line(T("Zamanlama (cron)"), textIn(a.trigger, "schedule", { placeholder: "0 8 * * *" }))
     : line(T("Olay"), el("span", {}, EVENTS.map(([k, t]) => el("label", {}, el("input", { type: "checkbox", checked: (a.trigger.events || ["create"]).includes(k), onchange: (e) => {
         const set = new Set(a.trigger.events || ["create"]);
@@ -1364,12 +1448,15 @@ function ruleCard(cfg, a, i, status, rerender) {
     grid(
       line(T("Ad"), textIn(a, "name")),
       line(T("Ne zaman?"), el("select", { onchange: (e) => {
-        if (e.target.value === "schedule") { a.trigger.schedule = "0 3 * * *"; delete a.trigger.events; } else delete a.trigger.schedule;
+        delete a.trigger.schedule; delete a.trigger.mqtt;
+        if (e.target.value === "schedule") { a.trigger.schedule = "0 3 * * *"; delete a.trigger.events; }
+        if (e.target.value === "mqtt") { a.trigger.mqtt = "ev/+/hareket"; delete a.trigger.events; delete a.trigger.collection; delete a.condition; }
         rerender();
-      } }, options([["event", T("Kayıt olayında")], ["schedule", T("Belirli zamanlarda")]], scheduled ? "schedule" : "event"))),
-      line(T("Koleksiyon"), pick(collectionNames(cfg), a.trigger.collection, (v) => setProp(a.trigger, "collection", v), scheduled ? T("(yok)") : undefined)),
+      } }, options([["event", T("Kayıt olayında")], ["schedule", T("Belirli zamanlarda")]].concat(cfg.mqtt && cfg.mqtt.enabled || onMqtt ? [["mqtt", T("MQTT mesajında")]] : []),
+        onMqtt ? "mqtt" : scheduled ? "schedule" : "event"))),
+      onMqtt ? [] : line(T("Koleksiyon"), pick(collectionNames(cfg), a.trigger.collection, (v) => setProp(a.trigger, "collection", v), scheduled ? T("(yok)") : undefined)),
       trigger,
-      line(T("Koşul (isteğe bağlı)"), textIn(a, "condition", { placeholder: "status=open&qty[gt]=0" })),
+      onMqtt ? [] : line(T("Koşul (isteğe bağlı)"), textIn(a, "condition", { placeholder: "status=open&qty[gt]=0" })),
       line("", enabledIn(a, T("Açık")))),
     el("h4", {}, T("Eylemler")),
     a.actions.map((x, j) => actionRow(cfg, a, x, j, rerender)),
@@ -1385,7 +1472,7 @@ function ruleCard(cfg, a, i, status, rerender) {
 }
 
 function actionRow(cfg, a, x, j, rerender) {
-  const values = () => el("textarea", { rows: "2", placeholder: T("alan=değer (satır başına bir)"),
+  const values = () => el("textarea", { class: "short", rows: "2", placeholder: T("alan=değer (satır başına bir)"),
     onchange: (e) => setProp(x, "values", Object.fromEntries(e.target.value.split("\n").map((l) => l.trim()).filter((l) => l.includes("=")).map((l) => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1).trim()]))) },
     Object.entries(x.values || {}).map(([k, v]) => k + "=" + v).join("\n"));
   const fields = {
@@ -1395,6 +1482,7 @@ function actionRow(cfg, a, x, j, rerender) {
     webhook: [pick((cfg.webhooks || []).map((w) => w.name), x.webhook, (v) => setProp(x, "webhook", v), T("(webhook seçin)"))],
     update: [values()],
     create: [pick(collectionNames(cfg), x.collection, (v) => setProp(x, "collection", v), T("(koleksiyon)")), values()],
+    mqtt: [textIn(x, "topic", { placeholder: "ev/salon/lamba" }), textIn(x, "body", { placeholder: T("içerik") }), checkIn(x, "retain", T("tutulsun"))],
   }[x.type] || [];
   return el("div", { class: "row" },
     el("select", { onchange: (e) => { a.actions[j] = { type: e.target.value }; rerender(); } }, options(ACTION_TYPES, x.type)),
@@ -1436,6 +1524,7 @@ async function showServices() {
   for (const k of ["mqtt", "webdav", "replication"]) cfg[k] = cfg[k] || {};
   await guard(main, () => mqttCard(cfg));
   webdavCard(cfg);
+  await guard(main, () => sensorsCard(cfg));
   await guard(main, () => replicaCard(cfg));
   await guard(main, aiCard);
   await guard(main, appsCard);
@@ -1445,6 +1534,58 @@ async function showServices() {
 async function mqttCard(cfg) {
   const m = cfg.mqtt;
   m.routes = m.routes || [];
+  m.devices = m.devices || [];
+  m.scenes = m.scenes || [];
+  const scenesBox = el("div");
+  const sceneOut = el("div");
+  const renderScenes = () => {
+    clear(scenesBox);
+    m.scenes.forEach((sc, i) => {
+      // Satır başına "konu = içerik"; aynı konudaki mesajın "tutulsun" ayarı korunur.
+      const parse = (text) => text.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => {
+        const topic = l.split("=")[0].trim(), payload = l.includes("=") ? l.slice(l.indexOf("=") + 1).trim() : "";
+        const old = sc.messages.find((x) => x.topic === topic);
+        const out = { topic };
+        if (payload) out.payload = payload;
+        if (old && old.retain) out.retain = true;
+        return out;
+      });
+      const saved = status && (status.scenes || []).includes(sc.name);
+      scenesBox.append(el("div", { class: "row" },
+        el("input", { value: sc.name, size: "14", onchange: (e) => { sc.name = e.target.value.trim(); } }),
+        el("textarea", { class: "short", rows: "2", cols: "34", placeholder: "ev/salon/lamba = on", onchange: (e) => { sc.messages = parse(e.target.value); } },
+          sc.messages.map((x) => x.topic + " = " + (x.payload || "")).join("\n")),
+        saved ? el("button", { class: "ghost", onclick: () => guard(sceneOut, async () => {
+          clear(sceneOut);
+          const r = await api(gp("mqtt.scene", { name: sc.name }, "/_mqtt/scenes/{name}"), { method: "POST" });
+          sceneOut.append(el("p", { class: "ok" }, sc.name + ": " + r.delivered + T(" cihaza gönderildi")));
+        }) }, T("Çalıştır")) : null,
+        el("button", { class: "ghost danger", title: T("Kaldır"), onclick: () => { m.scenes.splice(i, 1); renderScenes(); } }, "✕")));
+    });
+  };
+  // Yeni cihazın parolası tarayıcıda üretilir ve kaydedilene kadar burada gösterilir (sonra telefonda).
+  const fresh = {};
+  const devices = el("div");
+  const newName = el("input", { placeholder: T("cihaz adı (örn. esp-salon)") });
+  const renderDevices = () => {
+    clear(devices);
+    m.devices.forEach((d, i) => devices.append(el("div", { class: "row" },
+      el("code", {}, d.name), fresh[d.name] ? el("span", { class: "muted" }, T("parola: ") + fresh[d.name] + T(" (kaydedin; sonra telefonda)")) : null,
+      el("button", { class: "ghost danger", title: T("Kaldır"), onclick: () => { m.devices.splice(i, 1); renderDevices(); } }, "✕"))));
+    if (m.devices.length) devices.append(el("label", {}, el("input", { type: "checkbox", checked: !!m.password, onchange: (e) => {
+      if (!e.target.checked) m.password = "";
+      else if (!m.password) alert(T("Ortak giriş için Yeni parola alanına bir parola yazın veya üretin."));
+    } }), " " + T("Ortak kullanıcı adı ve parolayla girişe de izin ver")));
+  };
+  const addDevice = el("button", { class: "ghost", onclick: () => {
+    const name = newName.value.trim();
+    if (!/^[A-Za-z0-9._-]{1,32}$/.test(name) || m.devices.some((d) => d.name === name)) { alert(T("Geçersiz veya kullanılan ad: ") + name); return; }
+    const a = new Uint8Array(15); crypto.getRandomValues(a);
+    fresh[name] = btoa(String.fromCharCode(...a)).replace(/[+/=]/g, "x");
+    m.devices.push({ name, password: fresh[name] });
+    newName.value = "";
+    renderDevices();
+  } }, T("Ekle"));
   const status = await optional(gp("mqtt", null, "/_mqtt"));
   const routes = el("div");
   const renderRoutes = () => {
@@ -1470,14 +1611,22 @@ async function mqttCard(cfg) {
   }) }, T("Gönder"));
   main.append(el("div", { class: "card" }, el("h3", {}, "MQTT (IoT)"),
     status && status.listening
-      ? el("p", {}, T("Açık · port ") + status.port + " · " + status.received + T(" mesaj alındı · ") + status.delivered + T(" iletildi · ") + status.failed + T(" hata"))
+      ? el("p", {}, T("Açık · port ") + status.port + " · " + status.received + T(" mesaj alındı · ") + status.delivered + T(" iletildi · ") + status.failed + T(" hata · ") + status.retained + T(" tutulan mesaj"))
       : el("p", { class: "muted" }, T("Kapalı")),
     grid(
       line("", checkIn(m, "enabled", T("MQTT açık"))),
       line(T("Port"), numIn(m, "port", 1883)),
       line(T("Kullanıcı adı"), textIn(m, "username", { placeholder: "device" })),
       line(T("Yeni parola"), passwordIn(m))),
-    el("p", { class: "muted" }, T("Bağlantı şifresizdir (düz TCP): yalnızca yerel ağda kullanın.")),
+    el("p", { class: "muted" }, T("Bağlantı şifresizdir (düz TCP) ve yalnızca yerel ağda çalışır: internetten gelen bağlantılar reddedilir.")),
+    el("h4", {}, T("Cihazlar")),
+    el("p", { class: "muted" }, T("Her cihaza ayrı kullanıcı adı ve parola: birini silmek diğerlerini etkilemez.")),
+    devices, el("div", { class: "row" }, newName, addDevice),
+    el("h4", {}, T("Sahneler")),
+    el("p", { class: "muted" }, T("Tek dokunuşla gönderilen mesaj grupları; satır başına \"konu = içerik\". Telefondaki Sahneler widget'ından da çalışır.")),
+    scenesBox,
+    el("button", { class: "ghost", onclick: () => { m.scenes.push({ name: T("Sahne") + " " + (m.scenes.length + 1), messages: [] }); renderScenes(); } }, T("Sahne ekle")),
+    sceneOut,
     el("h4", {}, T("Mesajları kaydet")),
     el("p", { class: "muted" }, T("Konu süzgeci, koleksiyon, değer alanı (düz değer için), konu alanı (+ bölümü için).")),
     routes,
@@ -1486,10 +1635,67 @@ async function mqttCard(cfg) {
     saveRow(cfg),
     status && status.listening ? el("div", {},
       el("h4", {}, T("Bağlı cihazlar (") + status.clients.length + ")"),
-      el("ul", {}, status.clients.map((c) => el("li", {}, c.id + " · " + c.address + " · " + c.subscriptions.join(", ")))),
+      el("ul", {}, status.clients.map((c) => el("li", {}, [c.id, c.address, c.user, c.subscriptions.join(", ")].filter(Boolean).join(" · ")))),
       el("details", {}, el("summary", {}, T("Son mesajlar")), el("ul", {}, status.recent.map((r) => el("li", {}, when(r.at) + " · " + r.topic + " · " + r.result)))),
       el("h4", {}, T("Cihazlara mesaj gönder")), el("div", { class: "row" }, topic, payload, publish), out) : null));
   renderRoutes();
+  renderDevices();
+  renderScenes();
+}
+
+// Sensör panosu: son 24 saatin grafiği (eşikler kesikli çizgi) ve sensör listesi; Home Assistant keşfi.
+function lineChart(points, min, max) {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("class", "chart");
+  svg.setAttribute("viewBox", "0 0 600 120");
+  svg.setAttribute("preserveAspectRatio", "none");
+  if (points.length < 2) return svg;
+  const values = points.map((p) => p[1]).concat([min, max].filter((v) => v !== null && v !== undefined));
+  const lo = Math.min(...values), hi = Math.max(...values) === lo ? lo + 1 : Math.max(...values);
+  const t0 = points[0][0], span = Math.max(points[points.length - 1][0] - t0, 1);
+  const x = (t) => ((t - t0) / span) * 600, y = (v) => 115 - ((v - lo) / (hi - lo)) * 110;
+  const line = document.createElementNS(ns, "polyline");
+  line.setAttribute("points", points.map((p) => x(p[0]).toFixed(1) + "," + y(p[1]).toFixed(1)).join(" "));
+  svg.append(line);
+  for (const v of [min, max]) {
+    if (v === null || v === undefined) continue;
+    const l = document.createElementNS(ns, "line");
+    l.setAttribute("class", "limit");
+    l.setAttribute("x1", "0"); l.setAttribute("x2", "600"); l.setAttribute("y1", String(y(v))); l.setAttribute("y2", String(y(v)));
+    svg.append(l);
+  }
+  return svg;
+}
+
+async function sensorsCard(cfg) {
+  cfg.sensors = cfg.sensors || [];
+  cfg.mqtt.homeAssistant = cfg.mqtt.homeAssistant || {};
+  const series = await optional(gp("sensors", null, "/_sensors"));
+  const numeric = [];
+  for (const c of cfg.collections || []) for (const f of c.fields || []) if (["integer", "real", "boolean"].includes(f.type) && !f.encrypted) numeric.push(c.name + "." + f.name);
+  const rows = el("div");
+  const render = () => {
+    clear(rows);
+    cfg.sensors.forEach((s, i) => rows.append(el("div", { class: "row" },
+      el("code", {}, s.collection + "." + s.field),
+      textIn(s, "name", { placeholder: T("ad"), size: "14" }), textIn(s, "unit", { placeholder: T("birim"), size: "4" }),
+      el("input", { type: "number", step: "any", value: s.min ?? "", placeholder: T("alt eşik"), onchange: (e) => setProp(s, "min", e.target.value === "" ? undefined : Number(e.target.value)) }),
+      el("input", { type: "number", step: "any", value: s.max ?? "", placeholder: T("üst eşik"), onchange: (e) => setProp(s, "max", e.target.value === "" ? undefined : Number(e.target.value)) }),
+      el("button", { class: "ghost danger", title: T("Kaldır"), onclick: () => { cfg.sensors.splice(i, 1); render(); } }, "✕"))));
+    const free = numeric.filter((k) => !cfg.sensors.some((s) => s.collection + "." + s.field === k));
+    if (free.length) rows.append(el("div", { class: "row" }, el("span", { class: "muted" }, T("Ekle:")),
+      free.map((k) => el("button", { class: "ghost", onclick: () => { const [collection, field] = k.split("."); cfg.sensors.push({ collection, field }); render(); } }, k))));
+  };
+  render();
+  main.append(el("div", { class: "card" }, el("h3", {}, T("Sensör panosu")),
+    (series || []).map((s) => el("div", {},
+      el("p", {}, el("strong", {}, s.name), " · " + (s.last ? s.last.value + (s.unit || "") + " · " + when(s.last.at) : T("henüz değer yok"))),
+      lineChart(s.points, s.min, s.max))),
+    el("p", { class: "muted" }, T("Sayısal alanlar: grafikte görünür, eşik dışındaki yeni değer sağlık uyarısı verir.")),
+    rows,
+    el("div", { class: "row" }, checkIn(cfg.mqtt.homeAssistant, "enabled", T("Home Assistant'ta göster (MQTT keşfi)"))),
+    saveRow(cfg)));
 }
 
 function webdavCard(cfg) {

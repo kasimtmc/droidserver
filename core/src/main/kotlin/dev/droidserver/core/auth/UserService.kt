@@ -33,6 +33,7 @@ import java.time.Instant
 import java.util.Base64
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 /** İsteği yapan. */
 sealed interface Caller {
@@ -58,6 +59,8 @@ sealed interface Caller {
         val role: String = ROLE_USER,
         /** Üyesi olduğu takımlar (takımlar açıksa; istek başına okunur). */
         val teams: Set<Long> = emptySet(),
+        /** Erişim token'ının oturumu (`_sessions` satırı); eski token'larda null. */
+        val session: Long? = null,
     ) : Caller
 
     /**
@@ -191,20 +194,83 @@ class UserService(
         return complete(id)
     }
 
-    /** Yenileme token'ını kullanır (siler) ve yenisini verir; kullanılmış veya süresi dolmuş token 401. */
+    /**
+     * Yenileme token'ını kullanır ve aynı oturuma yenisini verir (oturum kimliği değişmez); kullanılmış veya süresi dolmuş
+     * token 401. Aynı token'la eşzamanlı iki istekten yalnızca biri başarır.
+     */
     fun refresh(refreshToken: String?): Tokens {
-        val userId = refreshToken?.let(::consume)
-            ?: throw ApiException(401, tr("Yenileme token'ı geçersiz veya süresi dolmuş; yeniden giriş yapın"))
-        return issue(userId)
+        val invalid = ApiException(401, tr("Yenileme token'ı geçersiz veya süresi dolmuş; yeniden giriş yapın"))
+        val hash = refreshToken?.let(::sha256) ?: throw invalid
+        return db.transaction {
+            val row = db.query("SELECT \"id\", \"user\", \"expires_at\" FROM $sessions WHERE \"token_hash\" = ?", listOf(hash)).firstOrNull() ?: throw invalid
+            val sessionId = (row["id"] as Number).toLong()
+            if ((dialect.decode(FieldType.DATETIME, row["expires_at"]) as Instant).isBefore(clock())) {
+                db.execute("DELETE FROM $sessions WHERE \"id\" = ?", listOf(sessionId))
+                throw invalid
+            }
+            issue((dialect.decode(FieldType.RELATION, row["user"]) as Number).toLong(), sessionId to hash) ?: throw invalid
+        }
     }
 
     fun logout(refreshToken: String?) {
-        if (refreshToken != null) db.execute("DELETE FROM $sessions WHERE \"token_hash\" = ?", listOf(sha256(refreshToken)))
+        if (refreshToken == null) return
+        val ids = db.query("SELECT \"id\" FROM $sessions WHERE \"token_hash\" = ?", listOf(sha256(refreshToken))).map { (it["id"] as Number).toLong() }
+        db.execute("DELETE FROM $sessions WHERE \"token_hash\" = ?", listOf(sha256(refreshToken)))
+        revoke(ids)
     }
 
-    /** Erişim token'ı geçerliyse ve kullanıcı hâlâ varsa kullanıcı; değilse null. */
+    /** Girişte ve yenilemede oturumun cihazı (User-Agent) ve adresi; cihaz ilk girişteki kalır. */
+    fun noteSession(refreshToken: String, device: String?, ip: String?) {
+        db.execute(
+            "UPDATE $sessions SET \"device\" = COALESCE(\"device\", ?), \"ip\" = ? WHERE \"token_hash\" = ?",
+            listOf(device?.take(200), ip, sha256(refreshToken)),
+        )
+    }
+
+    /** Kullanıcının açık oturumları (en yeni önce); [current] isteği yapan oturum. */
+    fun sessions(userId: Long, current: Long? = null): JsonObject {
+        val rows = db.query(
+            "SELECT \"id\", \"device\", \"ip\", \"created_at\", \"last_used_at\" FROM $sessions WHERE \"user\" = ? AND " +
+                "${dialect.comparable(FieldType.DATETIME, "\"expires_at\"")} > ${dialect.comparable(FieldType.DATETIME, "?")} ORDER BY \"id\" DESC",
+            listOf(dialect.encode(FieldType.RELATION, userId), dialect.encode(FieldType.DATETIME, clock())),
+        )
+        return buildJsonObject {
+            put("items", JsonArray(rows.map { r ->
+                val id = (r["id"] as Number).toLong()
+                buildJsonObject {
+                    put("id", JsonPrimitive(id))
+                    put("device", JsonPrimitive(r["device"]?.toString()))
+                    put("ip", JsonPrimitive(r["ip"]?.toString()))
+                    put("createdAt", JsonPrimitive(dialect.decode(FieldType.DATETIME, r["created_at"])?.toString()))
+                    put("lastUsedAt", JsonPrimitive((dialect.decode(FieldType.DATETIME, r["last_used_at"]) ?: dialect.decode(FieldType.DATETIME, r["created_at"]))?.toString()))
+                    put("current", JsonPrimitive(id == current))
+                }
+            }))
+        }
+    }
+
+    /** Tek oturumu kapatır: yenileme token'ı silinir, erişim token'ı da hemen geçersiz olur. */
+    fun closeSession(userId: Long, sessionId: Long) {
+        val n = db.execute("DELETE FROM $sessions WHERE \"id\" = ? AND \"user\" = ?", listOf(sessionId, dialect.encode(FieldType.RELATION, userId)))
+        if (n == 0) throw ApiException(404, tr("Oturum bulunamadı"))
+        revoke(listOf(sessionId))
+    }
+
+    /** Kullanıcının oturumlarını kapatır ([except] hariç); kapatılan sayısı. */
+    fun closeSessions(userId: Long, except: Long? = null): Int {
+        val ids = db.query("SELECT \"id\" FROM $sessions WHERE \"user\" = ?", listOf(dialect.encode(FieldType.RELATION, userId)))
+            .map { (it["id"] as Number).toLong() }.filter { it != except }
+        ids.forEach { db.execute("DELETE FROM $sessions WHERE \"id\" = ?", listOf(it)) }
+        revoke(ids)
+        return ids.size
+    }
+
+    /** Erişim token'ı geçerliyse, oturumu kapatılmamışsa ve kullanıcı hâlâ varsa kullanıcı; değilse null. */
     fun resolve(token: String): Caller.User? {
-        val id = runCatching { verifier.verify(token).subject?.toLongOrNull() }.getOrNull() ?: return null
+        val jwt = runCatching { verifier.verify(token) }.getOrNull() ?: return null
+        val id = jwt.subject?.toLongOrNull() ?: return null
+        val session = jwt.getClaim(SESSION_CLAIM).asLong()
+        if (session != null && revoked().containsKey(session)) return null
         val row = db.query("SELECT \"role\" FROM $table WHERE \"id\" = ?", listOf(id)).firstOrNull() ?: return null
         val restricted = setupRequired(id)
         val role = row["role"]?.toString() ?: ROLE_USER
@@ -212,16 +278,16 @@ class UserService(
             db.query("SELECT \"team\" FROM ${quoteIdent(SystemCollections.TEAM_MEMBERS)} WHERE \"user\" = ?", listOf(id))
                 .mapNotNull { (it["team"] as? Number)?.toLong() }.toSet()
         }
-        return Caller.User(id, role == ROLE_ADMIN && !restricted, restricted, role, teams)
+        return Caller.User(id, role == ROLE_ADMIN && !restricted, restricted, role, teams, session)
     }
 
     fun me(id: Long): JsonObject = clean(records.get(id))
 
     /**
      * Kullanıcının kendi ek alanlarını ve parolasını değiştirmesi. Parola için `currentPassword` gerekir; parola değişince
-     * tüm oturumlar kapanır (her cihazda yeniden giriş).
+     * [session] (değiştiren cihazın oturumu) dışındaki tüm oturumlar kapanır (diğer cihazlarda yeniden giriş).
      */
-    fun updateMe(id: Long, bodyRaw: JsonObject): JsonObject {
+    fun updateMe(id: Long, bodyRaw: JsonObject, session: Long? = null): JsonObject {
         val body = withPhone(bodyRaw)
         checkKeys(body, extraNames + setOf("password", "currentPassword"))
         val newPassword = body["password"]?.let { password(it) }
@@ -233,7 +299,7 @@ class UserService(
                 throw ApiException(400, tr("Doğrulama hatası"), mapOf("currentPassword" to tr("mevcut parola hatalı")))
             }
         }
-        return update(id, JsonObject(body.filterKeys { it in extraNames }), newPassword)
+        return update(id, JsonObject(body.filterKeys { it in extraNames }), newPassword, keepSession = session)
     }
 
     // ---- e-posta ile doğrulama ve parola sıfırlama ----
@@ -351,6 +417,13 @@ class UserService(
         val email = credentials(id)?.first
         records.delete(id)
         audit?.record(by, "user.delete", email ?: "#$id", null, ip)
+    }
+
+    /** Yönetici: kullanıcının tüm oturumlarını kapatır (denetim kaydına). */
+    fun closeAllSessions(id: Long, by: String = AuditLog.APP, ip: String? = null) {
+        val email = credentials(id)?.first ?: throw ApiException(404, tr("Kullanıcı bulunamadı"))
+        val n = closeSessions(id)
+        audit?.record(by, "user.sessions.close", email, tr("{0} oturum", n), ip)
     }
 
     private fun JsonObject.str(k: String) = (this[k] as? JsonPrimitive)?.content
@@ -561,6 +634,12 @@ class UserService(
         return code
     }
 
+    /**
+     * Passkey ile giriş (imza [PasskeyService] ile doğrulandı). Passkey cihaz ve kilit ekranıyla iki etkenli olduğu
+     * için iki adımlı doğrulamanın ikinci adımı istenmez.
+     */
+    fun loginWithPasskey(userId: Long): Tokens = issue(userId)
+
     /** SMS'le gelen kodla giriş; iki adımlı doğrulama kuruluysa ikinci adım istenir. */
     fun loginWithSms(client: String, phoneRaw: String?, code: String?): LoginResult {
         if (!users.smsLogin) throw ApiException(404, tr("SMS ile giriş kapalı"))
@@ -621,13 +700,13 @@ class UserService(
         }
     }
 
-    private fun update(id: Long, fields: JsonObject, newPassword: String?): JsonObject {
+    private fun update(id: Long, fields: JsonObject, newPassword: String?, keepSession: Long? = null): JsonObject {
         val hash = newPassword?.let(hasher::hash)
         return db.transaction {
             (fields["email"] as? JsonPrimitive)?.let { emailTaken(it.content, except = id) }
             val values = hash?.let { JsonObject(fields + ("password_hash" to JsonPrimitive(it))) } ?: fields
             val out = clean(records.update(id, values))
-            if (hash != null) db.execute("DELETE FROM $sessions WHERE \"user\" = ?", listOf(dialect.encode(FieldType.RELATION, id)))
+            if (hash != null) closeSessions(id, except = keepSession)
             out
         }
     }
@@ -637,38 +716,64 @@ class UserService(
         if (other != null && (other["id"] as Number).toLong() != except) throw ApiException(409, tr("Bu e-posta adresiyle bir hesap var"))
     }
 
-    private fun issue(userId: Long): Tokens {
+    private fun issue(userId: Long): Tokens = issue(userId, null)!!
+
+    /**
+     * Token çifti. [rotate] (oturum kimliği, eski yenileme token'ının özeti) verilirse yeni oturum açılmaz, o oturumun
+     * yenileme token'ı değiştirilir; eski token o arada başka istekte kullanıldıysa null.
+     */
+    private fun issue(userId: Long, rotate: Pair<Long, String>?): Tokens? {
         val raw = ByteArray(32).also(random::nextBytes).let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
         val now = clock()
         val nowSql = dialect.encode(FieldType.DATETIME, now)
-        db.insert(
-            dialect.insertReturningId(SESSIONS, listOf("token_hash", "user", "expires_at", "created_at", "updated_at")),
-            listOf(
-                sha256(raw),
-                dialect.encode(FieldType.RELATION, userId),
-                dialect.encode(FieldType.DATETIME, now.plusSeconds(users.refreshTokenDays * 86_400L)),
-                nowSql,
-                nowSql,
-            ),
-        )
+        val expires = dialect.encode(FieldType.DATETIME, now.plusSeconds(users.refreshTokenDays * 86_400L))
+        val sessionId = if (rotate != null) {
+            val n = db.execute(
+                "UPDATE $sessions SET \"token_hash\" = ?, \"expires_at\" = ?, \"last_used_at\" = ?, \"updated_at\" = ? WHERE \"id\" = ? AND \"token_hash\" = ?",
+                listOf(sha256(raw), expires, nowSql, nowSql, rotate.first, rotate.second),
+            )
+            if (n == 0) return null
+            rotate.first
+        } else {
+            db.insert(
+                dialect.insertReturningId(SESSIONS, listOf("token_hash", "user", "expires_at", "last_used_at", "created_at", "updated_at")),
+                listOf(sha256(raw), dialect.encode(FieldType.RELATION, userId), expires, nowSql, nowSql, nowSql),
+            )
+        }
         val ttl = users.accessTokenMinutes * 60L
         val token = JWT.create()
             .withIssuer(issuer)
             .withAudience(AUDIENCE)
             .withSubject(userId.toString())
+            .withClaim(SESSION_CLAIM, sessionId)
             .withIssuedAt(Date.from(now))
             .withExpiresAt(Date.from(now.plusSeconds(ttl)))
             .sign(algorithm)
         return Tokens(token, raw, ttl, me(userId), setupRequired = setupRequired(userId))
     }
 
-    /** Oturumu siler ve kullanıcısını döndürür; yoksa, başka istek önce kullandıysa veya süresi dolduysa null. */
-    private fun consume(raw: String): Long? = db.transaction {
-        val row = db.query("SELECT \"id\", \"user\", \"expires_at\" FROM $sessions WHERE \"token_hash\" = ?", listOf(sha256(raw)))
-            .firstOrNull() ?: return@transaction null
-        if (db.execute("DELETE FROM $sessions WHERE \"id\" = ?", listOf(row["id"])) == 0) return@transaction null
-        val expires = dialect.decode(FieldType.DATETIME, row["expires_at"]) as Instant
-        if (expires.isBefore(clock())) null else (dialect.decode(FieldType.RELATION, row["user"]) as Number).toLong()
+    /**
+     * Kapatılan oturumlar → onların erişim token'larının en geç süresinin dolacağı an (epoch sn). Erişim token'ları
+     * durumsuz olduğu için oturum kapatılınca bu listeye girer; `_ds_meta`'da kalıcı, süresi geçenler atılır. Kopyada ve
+     * devralmada token'lar oturum tablosuna bakılmadan geçerli kalsın diye "oturum var mı" yerine bu liste tutulur.
+     */
+    private val revokedMap: ConcurrentHashMap<Long, Long> by lazy {
+        ConcurrentHashMap<Long, Long>().also { map ->
+            metaGet(REVOKED_KEY)?.split(',')?.forEach { e ->
+                val parts = e.split(':')
+                if (parts.size == 2) parts[0].toLongOrNull()?.let { id -> parts[1].toLongOrNull()?.let { map[id] = it } }
+            }
+        }
+    }
+
+    private fun revoked(): Map<Long, Long> = revokedMap
+
+    private fun revoke(ids: List<Long>) {
+        if (ids.isEmpty()) return
+        val now = clock().epochSecond
+        revokedMap.entries.removeIf { it.value < now }
+        ids.forEach { revokedMap[it] = now + users.accessTokenMinutes * 60L }
+        metaPut(REVOKED_KEY, revokedMap.entries.joinToString(",") { "${it.key}:${it.value}" })
     }
 
     /** İmza anahtarı `_ds_meta`'da; ilk kullanımda üretilir. */
@@ -737,6 +842,8 @@ class UserService(
         /** İkinci adım belirtecinin hedefi. */
         const val CHALLENGE_AUDIENCE = "droidserver-2fa"
         private const val CHALLENGE_SECONDS = 300L
+        private const val SESSION_CLAIM = "sid"
+        private const val REVOKED_KEY = "revoked_sessions"
         private const val RECOVERY_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
         private const val KEY_NAME = "auth:token_key"
         private val EMAIL = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")

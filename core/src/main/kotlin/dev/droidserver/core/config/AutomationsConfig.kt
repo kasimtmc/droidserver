@@ -38,8 +38,15 @@ data class AutomationTrigger(
     /** Cron ifadesi (`0 8 * * *`: her gün 08:00, telefonun saatiyle). Verilirse kural kayıt olayında değil bu zamanlarda çalışır. */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val schedule: String? = null,
+    /**
+     * MQTT konu süzgeci (`ev/+/hareket`): cihazdan gelen mesaj kayda yazılmadan kuralı tetikler. İçerik JSON nesnesiyse
+     * alanları `{alan}`, ayrıca `{topic}` ve `{payload}` kullanılır.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val mqtt: String? = null,
 ) {
     val scheduled: Boolean get() = !schedule.isNullOrBlank()
+    val onMqtt: Boolean get() = !mqtt.isNullOrBlank()
 }
 
 @Serializable
@@ -50,6 +57,7 @@ enum class AutomationActionType(val title: String) {
     @SerialName("update") UPDATE(tr("Kaydı güncelle")),
     @SerialName("create") CREATE(tr("Kayıt oluştur")),
     @SerialName("log") LOG(tr("Loga yaz")),
+    @SerialName("mqtt") MQTT(tr("MQTT mesajı gönder")),
 }
 
 /**
@@ -60,6 +68,7 @@ enum class AutomationActionType(val title: String) {
  *  - `update`: [values] (alan → değer şablonu); olayda tetikleyen kayıt, zamanlamada koşula uyan tüm kayıtlar güncellenir.
  *  - `create`: [collection] ve [values].
  *  - `log`: [body].
+ *  - `mqtt`: [topic] (joker olmadan; `{alan}` kullanılabilir), [body] içerik, [retain] tutulan mesaj.
  */
 @Serializable
 data class AutomationAction(
@@ -71,6 +80,8 @@ data class AutomationAction(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val webhook: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val collection: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val values: Map<String, String> = emptyMap(),
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val topic: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val retain: Boolean = false,
 ) {
     companion object {
         /** `push` eyleminde kaydın sahibi. */

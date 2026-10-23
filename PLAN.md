@@ -952,29 +952,59 @@ oturtmasın), sonra panelin eksiklerini kapatma, sonra güvenlik, en son yeni ö
 **17.5 MQTT ve ağ sürücüsü için TLS**
 - [ ] MQTT'ye TLS dinleyicisi (8883), doğrudan erişimdeki sertifikayla (Let's Encrypt veya kendinden imzalı); düz 1883
   isteğe bağlı kapatılabilir.
-- [ ] Ağ sürücüsünün HTTPS adresi (doğrudan erişim/tünel) için talimat ve uygulamada ayrı adres.
+  *Ertelendi:* MQTT yalnızca yerel ağda kalacağı için (karar aşağıda) cihazlara sertifika dağıtma yükü kazanca değmez;
+  kullanıcı isterse yerel ağ için eklenebilir.
+- [x] Ağ sürücüsünün HTTPS adresi (doğrudan erişim/tünel) için talimat ve uygulamada ayrı adres.
+  *Durum:* Ağ sürücüsü ekranında "İnternetten (HTTPS)" adresi ve kopyalama; adres hesabı `publicUrl()` (sorun giderici
+  ile ortak).
 - Karar: internetten MQTT'ye izin verilsin mi (yalnızca TLS ile, cihaz başına parola ile) yoksa her zaman yerel ağ mı.
+  *Karar (kullanıcı, 23 Ekim 2026):* **yalnızca yerel ağ.** Sunucu internetten gelen bağlantıyı kabul etmez (genel adres
+  ve telefonla aynı IPv6 /64'ten değilse; Tailscale 100.64/10 yerel sayılır); ret dakikada en çok bir kez loglanır.
 
 **17.6 Passkey (WebAuthn) ile giriş**
-- [ ] Kullanıcı hesaplarında parolasız giriş: kayıt ve doğrulama uçları, birden çok anahtar, anahtar listesi ve silme;
+- [x] Kullanıcı hesaplarında parolasız giriş: kayıt ve doğrulama uçları, birden çok anahtar, anahtar listesi ve silme;
   panel girişinde de seçenek.
-- [ ] SDK'da (TS) yardımcılar; tarayıcı örneği.
+- [x] SDK'da (TS) yardımcılar; tarayıcı örneği.
+  *Durum:* `auth.passkeys` (`rpId`, konfigürasyon v17), bağımlılıksız WebAuthn (`WebAuthn`, `PasskeyService`; CBOR,
+  ES256/RS256, attestation "none", sayaç denetimi), `_passkeys` / `_panel_passkeys`, `/auth/passkeys/...` ve
+  `/_admin/api/passkeys/...`, panelde giriş düğmesi ve Panel passkey'leri kartı, sihirbazda Güvenlik → Passkey (alan adı
+  önerisi ve uyarı), TS SDK `registerPasskey` / `loginWithPasskey` / `passkeys` / `deletePasskey`. Passkey girişi ikinci
+  adımı istemez; giriş seçenekleri e-posta almaz (hesap sızmaz). Testler: `WebAuthnTest`, `PasskeyHttpTest`. Bu makinede
+  `tsc` olmadığı için TS tip denetimi koşmadı (Node ile çalıştırma testi geçti).
 - Not: WebAuthn alan adı (RP ID) ister; HTTPS + gerçek ad (DuckDNS veya tünel) gerekli, yerel IP ile çalışmaz — sihirbaz
   bunu açıkça söylemeli.
 
 **17.7 Oturum yönetimi ve varsayılan şifreleme**
-- [ ] Kullanıcının açık oturumları (cihaz, IP, son kullanım) ve tek tek/hepsini kapatma; yönetici de görebilir.
-- [ ] Bulut yedeğinde şifrelemenin varsayılan açık olması (mevcut kurulumlar için uyarı ve tek dokunuşla geçiş).
-- [ ] Cihaz başına MQTT kimliği (ortak parola yerine isteğe bağlı cihaz listesi; birini iptal etmek diğerlerini etkilemez).
+- [x] Kullanıcının açık oturumları (cihaz, IP, son kullanım) ve tek tek/hepsini kapatma; yönetici de görebilir.
+  *Durum:* `_sessions`'a `device`, `ip`, `last_used_at`; yenileme aynı oturumu döndürür (kimlik sabit), erişim token'ında
+  `sid`. Kapatılan oturum iptal listesine girer (erişim token'ı ömrü kadar, `_ds_meta`'da kalıcı): token hemen düşer;
+  "oturum var mı" denetimi yerine liste tutuldu ki canlı kopyada ve devralmada token'lar geçerli kalsın. Uçlar
+  `/auth/sessions[/{id}]`, `/auth/users/{id}/sessions`; uygulamada Kullanıcılar → Oturumlar, panelde Kullanıcılar, TS SDK.
+  Kendi parolasını değiştiren kullanıcının bu oturumu kalır, diğerleri kapanır. Test: `SessionsTest`.
+- [x] Bulut yedeğinde şifrelemenin varsayılan açık olması (mevcut kurulumlar için uyarı ve tek dokunuşla geçiş).
+  *Durum:* zaten zorunlu: her yükleme AES-256-GCM ile şifrelenir, `backup.remote.passphrase` en az 12 karakter (doğrulayıcı)
+  ve şifresiz mod yok; mevcut kurulumlar için geçiş gerekmez. (Klasöre kopya şifresiz; ayrı bir konu.)
+- [x] Cihaz başına MQTT kimliği (ortak parola yerine isteğe bağlı cihaz listesi; birini iptal etmek diğerlerini etkilemez).
+  *Durum:* `mqtt.devices` (ad = kullanıcı adı, parola şifreli depoda); cihaz varken ortak giriş kapatılabilir; durumda
+  bağlantının kimliği; uygulamada ve panelde Cihazlar. Test: `MqttTest`.
 
 **17.8 Ev otomasyonu (IoT 2)**
-- [ ] Otomasyon eylemi "MQTT mesajı gönder" (konu ve içerik şablonu kayıt alanlarıyla); otomasyon tetikleyicisi olarak
+- [x] Otomasyon eylemi "MQTT mesajı gönder" (konu ve içerik şablonu kayıt alanlarıyla); otomasyon tetikleyicisi olarak
   doğrudan MQTT konusu (kayda yazmadan).
-- [ ] Home Assistant MQTT keşfi: seçilen koleksiyon/alanlar için `homeassistant/sensor/...` yapılandırma mesajları.
-- [ ] Sahneler: adlı komut grupları (birden çok konu/içerik), uygulamadan, widget'tan ve API'den tek dokunuşla.
-- [ ] Sensör panosu: koleksiyondaki sayısal alanlar için zaman grafiği (uygulama ve panel), eşik uyarısı (sağlık
+- [x] Home Assistant MQTT keşfi: seçilen koleksiyon/alanlar için `homeassistant/sensor/...` yapılandırma mesajları.
+- [x] Sahneler: adlı komut grupları (birden çok konu/içerik), uygulamadan, widget'tan ve API'den tek dokunuşla.
+- [x] Sensör panosu: koleksiyondaki sayısal alanlar için zaman grafiği (uygulama ve panel), eşik uyarısı (sağlık
   uyarıları kanalına).
+  *Durum:* `trigger.mqtt` ve `mqtt` eylemi (uygulama ve panel düzenleyicileri); `mqtt.scenes` + `POST /_mqtt/scenes/{ad}`
+  + MQTT ekranı + "DroidServer sahneler" widget'ı; tek `sensors` listesi hem pano (`GET /_sensors`, uygulamada Sensör panosu,
+  panelde Servisler) hem eşik uyarısı (`AlertKind.SENSOR`) hem Home Assistant keşfi (`mqtt.homeAssistant`, `binary_sensor`
+  evet/hayır için; listeden çıkan sensörün keşfi silinir) için. Testler: `AutomationTest`, `MqttTest` (ev otomasyonu).
+  Ek düzeltme: MQTT ekranındaki "Gönder" yayını ana iş parçacığında yapıyordu (Android soket yazımını engeller;
+  mesaj sessizce gitmiyordu), arka plana alındı.
+  Ekran görüntüsü testleri: `24-sensor-panosu`, `25-sahne-widget`, `26-sahne-widget-koyu`; cihaz testi f17m1-f17h4.
 - Karar: tutulan (retained) mesaj desteği eklensin mi (Home Assistant için yararlı; bellek ve kalıcılık maliyeti var).
+  *Karar (kullanıcı, 23 Ekim 2026):* **eklensin.** Durum: konu başına son mesaj, yeni aboneliğe RETAIN bayrağıyla, boş
+  içerik siler; `mqtt-retained.json` (en çok 5 sn'de bir yazılır), en çok 1000 konu / 4 MB; `/_mqtt/publish` `retain`.
 
 ### Grup 3 — Geliştirici ve veri araçları
 

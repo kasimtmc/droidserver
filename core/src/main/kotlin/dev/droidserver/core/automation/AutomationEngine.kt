@@ -9,6 +9,7 @@ import dev.droidserver.core.config.AutomationConfig
 import dev.droidserver.core.config.CollectionConfig
 import dev.droidserver.core.config.FieldType
 import dev.droidserver.core.i18n.tr
+import dev.droidserver.core.mqtt.MqttBroker
 import dev.droidserver.core.realtime.RecordEvent
 import dev.droidserver.core.script.CronSchedule
 import kotlinx.serialization.json.Json
@@ -65,6 +66,8 @@ class AutomationOutputs(
     val mail: ((to: String, subject: String, text: String) -> Unit)? = null,
     val push: ((user: Long, title: String, body: String, url: String?) -> Unit)? = null,
     val webhook: ((name: String, event: String, collection: String?, record: JsonObject) -> Unit)? = null,
+    /** MQTT yayını (konu, içerik, tutulsun mu); kaç cihaza gittiği. */
+    val mqtt: ((topic: String, payload: String, retain: Boolean) -> Int)? = null,
 )
 
 /**
@@ -105,7 +108,7 @@ class AutomationEngine(
     fun onRecord(collection: String, action: RecordEvent.Action, record: JsonObject, depth: Int = 0) {
         if (depth >= MAX_DEPTH) return
         val matching = active.filter { r ->
-            !r.trigger.scheduled && r.trigger.collection == collection && action.wire in r.trigger.events
+            !r.trigger.scheduled && !r.trigger.onMqtt && r.trigger.collection == collection && action.wire in r.trigger.events
         }
         if (matching.isEmpty()) return
         val task = Runnable {
@@ -114,6 +117,17 @@ class AutomationEngine(
                 execute(rule, "$collection.${action.wire}", record, depth)
             }
         }
+        worker?.execute(task) ?: task.run()
+    }
+
+    /** Cihazdan gelen MQTT mesajı: konusu süzgece uyan kurallar arka planda çalışır (mesaj kayda yazılmaz). */
+    fun onMqtt(topic: String, payload: ByteArray) {
+        val matching = active.filter { r -> r.trigger.onMqtt && MqttBroker.matches(r.trigger.mqtt!!, topic) }
+        if (matching.isEmpty()) return
+        val text = payload.decodeToString()
+        val rec = runCatching { Json.parseToJsonElement(text) as? JsonObject }.getOrNull() ?: JsonObject(emptyMap())
+        val vars = mapOf("topic" to topic, "payload" to text)
+        val task = Runnable { for (rule in matching) execute(rule, "mqtt:$topic", rec, 0, vars) }
         worker?.execute(task) ?: task.run()
     }
 
@@ -131,6 +145,7 @@ class AutomationEngine(
     fun runNow(name: String): AutomationRun {
         val rule = rules.firstOrNull { it.name == name } ?: throw IllegalArgumentException(tr("'{0}' adlı otomasyon kuralı yok", name))
         if (rule.trigger.scheduled) return runScheduled(rule, "test")
+        if (rule.trigger.onMqtt) return execute(rule, "test", JsonObject(emptyMap()), 0, mapOf("topic" to rule.trigger.mqtt!!, "payload" to ""))
         val collection = rule.trigger.collection!!
         val latest = services.getValue(collection).list(1, 1, "-id", conditionParams(rule)).items.firstOrNull()
             ?: return record(rule, "test", false, tr("Koşula uyan kayıt yok; denemek için önce bir kayıt ekleyin"), System.nanoTime())
@@ -195,11 +210,11 @@ class AutomationEngine(
         return out.take(MAX_BULK)
     }
 
-    private fun execute(rule: AutomationConfig, trigger: String, rec: JsonObject, depth: Int): AutomationRun {
+    private fun execute(rule: AutomationConfig, trigger: String, rec: JsonObject, depth: Int, extra: Map<String, String> = emptyMap()): AutomationRun {
         val started = System.nanoTime()
         val collection = rule.trigger.collection
         return try {
-            val vars = mapOf("collection" to (collection ?: ""), "event" to trigger, "count" to "1")
+            val vars = mapOf("collection" to (collection ?: ""), "event" to trigger, "count" to "1") + extra
             val done = rule.actions.map { action ->
                 if (action.type == AutomationActionType.UPDATE) {
                     if (update(rule, collection!!, rec, action, vars, depth)) tr("kayıt güncellendi") else tr("değişiklik yok")
@@ -251,6 +266,13 @@ class AutomationEngine(
             AutomationActionType.LOG -> {
                 log(tr("Otomasyon '{0}': {1}", rule.name, fill(a.body)))
                 tr("loga yazıldı")
+            }
+            AutomationActionType.MQTT -> {
+                val send = outputs.mqtt ?: error(tr("MQTT kapalı"))
+                val topic = fill(a.topic).trim()
+                if (topic.isEmpty() || '+' in topic || '#' in topic) error(tr("MQTT konusu geçersiz: '{0}'", topic))
+                val n = send(topic, fill(a.body), a.retain)
+                tr("MQTT: {0} ({1} cihaz)", topic, n)
             }
             AutomationActionType.UPDATE -> error("UPDATE")
         }
