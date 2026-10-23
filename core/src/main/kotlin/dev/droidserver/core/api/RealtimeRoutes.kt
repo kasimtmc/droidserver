@@ -106,7 +106,7 @@ private suspend fun ByteWriteChannel.send(hub: RealtimeHub, e: RecordEvent, visi
  * Olayın kaydı bu istemciye nasıl görünür: koleksiyonun görüntüleme kuralı, sahiplik ve kural koşulu uygulanır, gizli
  * alanlar çıkarılır. null: görmez.
  */
-private fun visible(e: RecordEvent, collections: Map<String, CollectionConfig>, caller: Caller): JsonObject? {
+internal fun visible(e: RecordEvent, collections: Map<String, CollectionConfig>, caller: Caller): JsonObject? {
     val collection = collections[e.collection] ?: return null
     val scope = runCatching { Access.scope(collection, Rules.Op.VIEW, caller) }.getOrNull() ?: return null
     if (!RuleConditions.visible(collection, e.record, scope)) return null

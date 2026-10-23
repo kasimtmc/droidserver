@@ -120,7 +120,6 @@ class GqlParser private constructor(private val src: String) {
                 }
                 peekName() in setOf("query", "mutation", "subscription") -> {
                     val type = name()
-                    if (type == "subscription") fail(tr("abonelikler desteklenmiyor; canlı abonelik için /realtime kullanın"))
                     val n = if (peek() != '(' && peek() != '{' && peek() != '@') name() else null
                     val vars = if (eat('(')) buildList {
                         while (!eat(')')) {
