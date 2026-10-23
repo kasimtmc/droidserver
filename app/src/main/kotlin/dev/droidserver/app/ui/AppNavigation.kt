@@ -41,6 +41,7 @@ import dev.droidserver.app.ui.config.MapScreen
 import dev.droidserver.app.ui.config.PagesScreen
 import dev.droidserver.app.ui.config.DashboardsScreen
 import dev.droidserver.app.ui.config.PackagesScreen
+import dev.droidserver.app.ui.config.PaymentsScreen
 import dev.droidserver.app.ui.config.LocalModelsScreen
 import dev.droidserver.app.ui.config.TransferScreen
 import dev.droidserver.app.ui.config.WebhooksScreen
@@ -93,6 +94,7 @@ object Routes {
     const val DASHBOARDS = "dashboards"
     const val PACKAGES = "packages"
     const val LOCAL_MODELS = "local-models"
+    const val PAYMENTS = "payments"
     const val SCRIPTS = "scripts"
     const val BACKUPS = "backups"
     const val WEBHOOKS = "webhooks"
@@ -250,6 +252,7 @@ fun AppNavigation(g: AppGraph) {
             composable(Routes.PAGES) { PagesScreen(g, wizard, onBack = back) }
             composable(Routes.DASHBOARDS) { DashboardsScreen(g, wizard, onBack = back) }
             composable(Routes.PACKAGES) { PackagesScreen(g, wizard, onBack = back) }
+            composable(Routes.PAYMENTS) { PaymentsScreen(g, wizard, onBack = back) { wizard.goTo(WizardStep.ACCESS); nav.navigate(Routes.WIZARD) } }
             composable(Routes.APPS) { AppsScreen(g, wizard, onBack = back, onLogs = toLogs, onComponents = { nav.navigateTopLevel(Routes.COMPONENTS) }) }
             composable(Routes.CONNECT) { ConnectScreen(g, onBack = back) }
             composable(Routes.TROUBLESHOOT) {

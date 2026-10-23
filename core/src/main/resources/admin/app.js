@@ -1679,6 +1679,7 @@ async function showConfig() {
   const keys = await panelPasskeys().catch((e) => errorBox(e));
   if (keys) main.append(keys);
   main.append(packagesCard());
+  main.append(paymentsCard());
   const r = await api("/_admin/api/config");
   const text = el("textarea", { spellcheck: "false" }, r.text);
   const out = el("div");
@@ -1706,6 +1707,43 @@ async function showConfig() {
         } catch (e) { out.append(errorBox(e)); }
       } }, T("Kaydet ve deploy et"))),
     out));
+}
+
+// ---- ödemeler: son ödemeler ve ödeme bağlantısı (sağlayıcılar ve anahtarlar telefondaki Ödemeler ekranında)
+
+function paymentsCard() {
+  const card = el("div", { class: "card" }), list = el("div"), out = el("div");
+  const label = { pending: T("Bekliyor"), paid: T("Ödendi"), failed: T("Başarısız"), canceled: T("İptal edildi"), refunded: T("İade edildi") };
+  const load = async () => {
+    let r;
+    try { r = await api(gp("payments.list", null, "/_payments") + "?perPage=20"); } catch (e) { card.remove(); return; } // ödemeler kapalı
+    clear(list);
+    if (!r.items.length) { list.append(el("p", { class: "muted" }, T("Henüz ödeme yok."))); return; }
+    list.append(el("div", { class: "table-wrap" }, el("table", {},
+      el("thead", {}, el("tr", {}, [T("Tarih"), T("Açıklama"), T("Tutar"), T("Sağlayıcı"), T("Durum"), ""].map((h) => el("th", {}, h)))),
+      el("tbody", {}, r.items.map((p) => el("tr", {},
+        el("td", {}, new Date(p.created_at).toLocaleString()), el("td", {}, p.description || ""), el("td", {}, p.amount + " " + p.currency),
+        el("td", {}, p.provider), el("td", {}, label[p.status] || p.status),
+        el("td", {}, el("a", { href: p.page, target: "_blank", rel: "noopener" }, T("Sayfa")))))))));
+  };
+  const amount = el("input", { size: "8", placeholder: "149.90" });
+  const currency = el("input", { size: "4", value: "TRY" });
+  const desc = el("input", { size: "28", placeholder: T("açıklama") });
+  const email = el("input", { size: "20", type: "email", placeholder: T("e-posta (isteğe bağlı)") });
+  card.append(el("h3", {}, T("Ödemeler")),
+    el("p", { class: "muted" }, T("Sağlayıcılar, anahtarlar ve abonelik planları telefondaki Sunucu → Ödemeler ekranında. Buradan ödeme bağlantısı oluşturup alıcıya gönderebilirsiniz; durum sağlayıcının bildirimiyle güncellenir.")),
+    list,
+    el("div", { class: "row" }, amount, currency, desc, email, el("button", { class: "btn", onclick: () => guard(out, async () => {
+      clear(out);
+      const body = { amount: amount.value.trim(), currency: currency.value.trim().toUpperCase() || "TRY", description: desc.value.trim() };
+      if (email.value.trim()) body.email = email.value.trim();
+      const p = await api(gp("payments.create", null, "/_payments"), { method: "POST", body });
+      out.append(el("p", { class: "ok" }, T("Ödeme sayfası: "), el("a", { href: p.url, target: "_blank", rel: "noopener" }, p.url)));
+      load();
+    }) }, T("Bağlantı oluştur"))),
+    out);
+  load();
+  return card;
 }
 
 // ---- paketler: dosya, adres veya Git deposundan; önce plan (ne değişecek), sonra kurulum (uygulama kaydeder ve deploy eder)
@@ -1834,7 +1872,8 @@ function when(iso) { return iso ? new Date(iso).toLocaleString() : "—"; }
 
 const EVENTS = [["create", T("eklenince")], ["update", T("değişince")], ["delete", T("silinince")]];
 const ACTION_TYPES = [["log", T("Loga yaz")], ["email", T("E-posta gönder")], ["push", T("Bildirim gönder")], ["webhook", T("Webhook'a gönder")],
-  ["update", T("Kaydı güncelle")], ["create", T("Kayıt oluştur")], ["mqtt", T("MQTT mesajı gönder")], ["ai", T("YZ ile alan doldur")]];
+  ["update", T("Kaydı güncelle")], ["create", T("Kayıt oluştur")], ["mqtt", T("MQTT mesajı gönder")], ["ai", T("YZ ile alan doldur")],
+  ["payment", T("Ödeme bağlantısı oluştur")]];
 
 async function showAutomation() {
   const cfg = await loadConfig();
@@ -2091,6 +2130,10 @@ function actionRow(cfg, a, x, j, rerender) {
     create: [pick(collectionNames(cfg), x.collection, (v) => setProp(x, "collection", v), T("(koleksiyon)")), values()],
     mqtt: [textIn(x, "topic", { placeholder: "ev/salon/lamba" }), textIn(x, "body", { placeholder: T("içerik") }), checkIn(x, "retain", T("tutulsun"))],
     ai: [textIn(x, "body", { placeholder: T("istem, örn. Özetle: {body}"), size: "36" }), pick(fieldNames(cfg, a.trigger.collection), x.field, (v) => setProp(x, "field", v), T("(yazılacak alan)"))],
+    payment: [textIn(x, "amount", { placeholder: T("tutar, örn. {total}"), size: "16" }), textIn(x, "currency", { placeholder: "TRY", size: "4" }),
+      textIn(x, "subject", { placeholder: T("açıklama, örn. Sipariş #{id}") }), textIn(x, "to", { placeholder: T("e-posta (isteğe bağlı)") }),
+      pick(((cfg.payments || {}).providers || []).map((p) => p.provider), x.provider, (v) => setProp(x, "provider", v), T("(ilk sağlayıcı)")),
+      pick(fieldNames(cfg, a.trigger.collection), x.field, (v) => setProp(x, "field", v), T("(adresin yazılacağı alan)"))],
   }[x.type] || [];
   return el("div", { class: "row" },
     el("select", { onchange: (e) => { a.actions[j] = { type: e.target.value }; rerender(); } }, options(ACTION_TYPES, x.type)),

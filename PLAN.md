@@ -1253,15 +1253,24 @@ başlar (panel eşitleme ve güvenli bağlantılar bunların temelidir). Dört g
 ### Grup 4 — Ödemeler
 
 **18.9 Ödemeler**
-- [ ] Sağlayıcılar: Stripe, iyzico ve Paddle (sağlayıcı kullanıcı seçer; birden çok açılabilir). Anahtarlar şifreli depoda.
-- [ ] Ödeme bağlantısı / ödeme sayfası oluşturma (tutar, para birimi, açıklama, kayda bağlama); script ve otomasyonlardan.
-- [ ] Sağlayıcı webhook'ları imza doğrulamalı; ödeme durumu (bekliyor, ödendi, iade, iptal) kayda yazılır, otomasyon
+- [x] Sağlayıcılar: Stripe, iyzico ve Paddle (sağlayıcı kullanıcı seçer; birden çok açılabilir). Anahtarlar şifreli depoda.
+- [x] Ödeme bağlantısı / ödeme sayfası oluşturma (tutar, para birimi, açıklama, kayda bağlama); script ve otomasyonlardan.
+- [x] Sağlayıcı webhook'ları imza doğrulamalı; ödeme durumu (bekliyor, ödendi, iade, iptal) kayda yazılır, otomasyon
   tetiklenir; tekrarlanan olay bir kez işlenir.
-- [ ] Abonelikler (Stripe ve Paddle'ın abonelik ürünleri): kullanıcıya rol/kota bağlama (ödeyen kullanıcı rolü).
-- [ ] Sipariş ve rezervasyon şablonları; fatura/makbuz PDF'i (sağlayıcının faturası varsa o, yoksa basit makbuz).
+- [x] Abonelikler (Stripe ve Paddle'ın abonelik ürünleri): kullanıcıya rol/kota bağlama (ödeyen kullanıcı rolü).
+- [x] Sipariş ve rezervasyon şablonları; fatura/makbuz PDF'i (sağlayıcının faturası varsa o, yoksa basit makbuz).
 - Not: kart verisi hiçbir zaman sunucudan geçmez (sağlayıcının barındırılan sayfası). Paddle "satıcı kaydı" (merchant of
   record) olduğu için vergi/fatura onda; iyzico Türkiye için, Stripe uluslararası.
 - Karar: webhook'lar telefona internetten ulaşmalı — doğrudan erişim veya tünel şart; sihirbaz bunu denetlemeli.
+- Durum: `payments` (konfigürasyon v21); `_payments`, `_subscriptions`, `_payment_events` tabloları. Bağlantı
+  `POST /api/_payments`, `ctx.payments.create` ve otomasyonda `payment` eylemi (`{ilişki.alan}` ve hesaplı tutar);
+  bildirimler `/payments/hook/<sağlayıcı>` (Stripe ve Paddle HMAC imzası ve 5 dk zaman sınırı; iyzico'da sonuç her
+  zaman API'den sorulur, V3 imzası varsa doğrulanır). Durum sayfası `/payments/<token>` (bildirim gecikirse sorar),
+  makbuz sağlayıcıdan ya da yerleşik PDF'ten (Türkçe harfler, gömülü yazı tipi yok). Paddle'ın ödeme sayfası
+  sunucuda Paddle.js ile (`/payments/paddle`). Abonelikte rol ve plan kotası; Mağaza ve Randevu şablonları ödemeli
+  (siparişte bağlantı onaydan sonra, tutar istemciden geldiği için). Konfigürasyon denetimi yerel erişimi ve hızlı
+  tüneli reddeder; ekranda adres denetimi. Sağlayıcıların gerçek ortamında (sandbox) deneme cihaz testi adımlarında;
+  iyzico iadeleri kendiliğinden gelmez.
 
 ### Kabul (her grup)
 - `:core:test`, `:app:testDebugUnitTest`, `:app:lintDebug` temiz; yeni uçlar OpenAPI ve SDK'da (golden güncel); yeni

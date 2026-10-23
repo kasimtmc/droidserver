@@ -95,7 +95,8 @@ async function orders() {
   out.replaceChildren(h("h2", {}, "Siparişlerim"), r.items.length ? h("table", {},
     h("tr", {}, ["Tarih", "Ürünler", "Tutar", "Durum"].map((t) => h("th", {}, t))),
     r.items.map((o) => h("tr", {}, h("td", {}, new Date(o.created_at).toLocaleString("tr-TR")),
-      h("td", {}, (o.items || []).map((i) => i.qty + "× " + i.name).join(", ")), h("td", {}, money(o.total)), h("td", {}, o.status))))
+      h("td", {}, (o.items || []).map((i) => i.qty + "× " + i.name).join(", ")), h("td", {}, money(o.total)),
+      h("td", {}, o.status, o.payment_url && ["pending", "failed"].includes(o.payment_status) ? [" · ", h("a", { href: o.payment_url }, "Öde")] : null))))
     : h("p", { class: "muted" }, "Henüz sipariş yok."));
 }
 function login(next) {

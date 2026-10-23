@@ -792,6 +792,7 @@ object ConfigValidator {
         forms(config, ::error)
         pages(config, ::error)
         dashboards(config, ::error)
+        payments(config, ::error)
         ai(config, ::error)
         webdav(config, ::error)
         mqtt(config, ::error)
@@ -1016,6 +1017,56 @@ object ConfigValidator {
         }
     }
 
+    private fun payments(config: ServerConfig, error: (String, String) -> Unit) {
+        val p = config.payments
+        if (p.providers.isEmpty()) {
+            if (p.plans.isNotEmpty()) error("payments.plans", tr("Abonelik planı için önce bir ödeme sağlayıcısı ekleyin"))
+            return
+        }
+        val base = config.server.basePath.trimEnd('/')
+        if (base == PaymentsConfig.PATH || base.startsWith(PaymentsConfig.PATH + "/")) {
+            error("server.basePath", tr("API yolu {0} olamaz (ödeme sayfaları orada)", PaymentsConfig.PATH))
+        }
+        if (p.enabled) {
+            // Sağlayıcı bildirimleri telefona internetten, değişmeyen bir HTTPS adresinden ulaşmalı.
+            val access = config.access
+            when {
+                !access.mode.public -> error("payments", tr("Ödeme bildirimleri telefona internetten ulaşmalı: Erişim'de doğrudan erişim veya Cloudflare Tunnel seçin"))
+                access.mode == AccessMode.CLOUDFLARE && access.cloudflare.tunnel == CloudflareTunnel.QUICK ->
+                    error("payments", tr("Hızlı tünelin adresi her başlatmada değişir, ödeme bildirimleri kaybolur: kendi alan adınızla tünel kurun"))
+            }
+            if (!Regex("^https://[^\\s/?#]+(/[^\\s?#]*)?$").matches(p.publicUrl.trim())) {
+                error("payments.publicUrl", tr("Sunucunun internetten erişilen HTTPS adresi gerekli, örn. https://ornek.duckdns.org"))
+            }
+        }
+        val types = mutableSetOf<PaymentProvider>()
+        p.providers.forEachIndexed { i, c ->
+            val at = "payments.providers[$i]"
+            if (!types.add(c.provider)) error("$at.provider", tr("{0} iki kez eklenmiş", c.provider.title))
+            if (c.secretKey.isBlank()) error("$at.secretKey", tr("{0}: gizli anahtar gerekli", c.provider.title))
+            if (c.provider == PaymentProvider.IYZICO && c.apiKey.isBlank()) error("$at.apiKey", tr("iyzico: API anahtarı gerekli"))
+            if (c.provider == PaymentProvider.PADDLE && c.clientToken.isBlank()) error("$at.clientToken", tr("Paddle: istemci token'ı gerekli (Paddle → Developer tools → Authentication)"))
+            if (c.provider != PaymentProvider.IYZICO && c.webhookSecret.isBlank()) {
+                error("$at.webhookSecret", tr("{0}: bildirim (webhook) imza sırrı gerekli; sağlayıcının panelinde bildirim adresini ekleyince verilir", c.provider.title))
+            }
+        }
+        val users = config.auth.users
+        if (!IDENT.matches(p.statusField)) error("payments.statusField", tr("Alan adı geçersiz: '{0}'", p.statusField))
+        if (p.plans.isNotEmpty() && !users.enabled) error("payments.plans", tr("Abonelikler kullanıcı hesaplarıyla çalışır; önce hesapları açın"))
+        val plans = mutableSetOf<String>()
+        p.plans.forEachIndexed { i, plan ->
+            val at = "payments.plans[$i]"
+            if (!PaymentsConfig.PLAN_NAME.matches(plan.name)) error("$at.name", tr("Plan adı küçük harf, rakam, - ve _ olmalı (en çok 40): '{0}'", plan.name))
+            else if (!plans.add(plan.name)) error("$at.name", tr("'{0}' adı iki kez kullanılmış", plan.name))
+            if (plan.title.isBlank()) error("$at.title", tr("{0}: plan başlığı boş", plan.name))
+            if (!plan.provider.subscriptions) error("$at.provider", tr("{0}: {1} ile abonelik yok (Stripe veya Paddle)", plan.name, plan.provider.title))
+            else if (plan.provider !in types) error("$at.provider", tr("{0}: {1} sağlayıcısı eklenmemiş", plan.name, plan.provider.title))
+            val prefix = if (plan.provider == PaymentProvider.PADDLE) "pri_" else "price_"
+            if (!plan.price.startsWith(prefix) || plan.price.length > 100) error("$at.price", tr("{0}: sağlayıcıdaki fiyat kimliği ({1}…)", plan.name, prefix))
+            if (users.roles.none { it.name == plan.role }) error("$at.role", tr("'{0}' rolü tanımlı değil (Kullanıcılar adımında ekleyin)", plan.role))
+        }
+    }
+
     private fun dashboards(config: ServerConfig, error: (String, String) -> Unit) {
         if (config.dashboards.size > 20) error("dashboards", tr("En çok 20 pano olabilir"))
         val names = mutableSetOf<String>()
@@ -1150,6 +1201,22 @@ object ConfigValidator {
                                 error("$ap.field", tr("{0}: YZ yanıtının yazılacağı metin, seçim veya sayı alanını seçin", a.name))
                         }
                     }
+                    AutomationActionType.PAYMENT -> {
+                        if (!config.payments.enabled) error(ap, tr("{0}: ödeme eylemi için Ödemeler'de bir sağlayıcı açın", a.name))
+                        else act.provider?.let { if (config.payments.provider(it) == null) error("$ap.provider", tr("{0}: {1} sağlayıcısı eklenmemiş", a.name, it.title)) }
+                        if (act.amount.isNullOrBlank()) error("$ap.amount", tr("{0}: tutar boş (sayı ya da {alan})", a.name))
+                        act.currency?.let { if (!PaymentsConfig.CURRENCY.matches(it)) error("$ap.currency", tr("{0}: üç harfli para birimi kodu, örn. TRY", a.name)) }
+                        // Güncellemede her yazma yeni bağlantı üretmesin: koşul, adresin yazılacağı alanın boş olmasını istemeli.
+                        val guarded = act.field != null && a.condition.orEmpty().split('&').any { it.trim() == "${act.field}[null]=true" }
+                        when {
+                            t.scheduled || t.onMqtt || collection == null || "delete" in t.events -> error(ap, tr("{0}: ödeme bağlantısı yalnızca kayıt oluşturulunca veya güncellenince üretilir", a.name))
+                            "update" in t.events && !guarded -> error(ap, tr("{0}: güncellemede bağlantı bir kez üretilsin diye koşula {1}[null]=true ekleyin ve adresi o alana yazın", a.name, act.field ?: "payment_url"))
+                        }
+                        act.field?.let { name ->
+                            val f = collection?.fields?.firstOrNull { it.name == name }
+                            if (f == null || f.type != FieldType.TEXT || f.computed != null) error("$ap.field", tr("{0}: ödeme adresinin yazılacağı metin alanını seçin", a.name))
+                        }
+                    }
                 }
             }
         }
@@ -1182,6 +1249,7 @@ object ConfigValidator {
             if (config.forms.isNotEmpty()) add(FormConfig.PATH to tr("formlar"))
             if (config.pages.isNotEmpty()) add(PageConfig.PATH to tr("sayfalar"))
             if (config.dashboards.any { it.shareToken != null }) add(DashboardConfig.PATH to tr("panolar"))
+            if (config.payments.providers.isNotEmpty()) add(PaymentsConfig.PATH to tr("ödeme sayfaları"))
         }
         config.apps.forEachIndexed { i, app ->
             val at = "apps[$i]"

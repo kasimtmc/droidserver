@@ -208,6 +208,58 @@ object SystemCollections {
         ),
     )
 
+    const val PAYMENTS = "_payments"
+    const val SUBSCRIPTIONS = "_subscriptions"
+    const val PAYMENT_EVENTS = "_payment_events"
+
+    /**
+     * Ödemeler: herkese açık sayfalarda kullanılan rastgele [token], sağlayıcı ve onun kimliği (`external`: Stripe
+     * Checkout oturumu, iyzico ödeme formu token'ı, Paddle işlemi), tutar (kuruş/sent), durum (`pending`, `paid`,
+     * `failed`, `canceled`, `refunded`), bağlı kayıt (`collection` + `record`), ödeme sayfası ve makbuz adresi.
+     */
+    val payments = CollectionConfig(
+        name = PAYMENTS,
+        fields = listOf(
+            FieldConfig("token", FieldType.TEXT, required = true, unique = true),
+            FieldConfig("provider", FieldType.TEXT, required = true),
+            FieldConfig("external", FieldType.TEXT, index = true),
+            FieldConfig("amount", FieldType.INTEGER, required = true),
+            FieldConfig("currency", FieldType.TEXT, required = true),
+            FieldConfig("description", FieldType.TEXT),
+            FieldConfig("status", FieldType.TEXT, required = true, index = true),
+            FieldConfig("collection", FieldType.TEXT),
+            FieldConfig("record", FieldType.INTEGER),
+            FieldConfig("user", FieldType.INTEGER, index = true),
+            FieldConfig("email", FieldType.TEXT),
+            FieldConfig("url", FieldType.TEXT),
+            FieldConfig("receipt", FieldType.TEXT),
+            FieldConfig("reference", FieldType.TEXT),
+            FieldConfig("data", FieldType.JSON),
+            FieldConfig("paid_at", FieldType.DATETIME),
+        ),
+    )
+
+    /** Abonelikler: kullanıcı, plan, sağlayıcıdaki kimlik, durum ve abonelikten önceki rol (bitince geri verilir). */
+    val subscriptions = CollectionConfig(
+        name = SUBSCRIPTIONS,
+        fields = listOf(
+            FieldConfig("user", FieldType.INTEGER, required = true, index = true),
+            FieldConfig("plan", FieldType.TEXT, required = true),
+            FieldConfig("provider", FieldType.TEXT, required = true),
+            FieldConfig("external", FieldType.TEXT, required = true, unique = true),
+            FieldConfig("status", FieldType.TEXT, required = true),
+            FieldConfig("period_end", FieldType.DATETIME),
+            FieldConfig("previous_role", FieldType.TEXT),
+            FieldConfig("manage_url", FieldType.TEXT),
+        ),
+    )
+
+    /** İşlenmiş sağlayıcı olayları (`<sağlayıcı>:<olay kimliği>`): aynı bildirim ikinci kez gelirse yok sayılır. */
+    val paymentEvents = CollectionConfig(
+        name = PAYMENT_EVENTS,
+        fields = listOf(FieldConfig("key", FieldType.TEXT, required = true, unique = true)),
+    )
+
     fun of(config: UsersConfig, push: Boolean = false): List<CollectionConfig> = when {
         !config.enabled -> emptyList()
         else -> listOfNotNull(

@@ -349,6 +349,31 @@ class ScreenshotTest {
     }
 
     @Test
+    fun odemeler() {
+        running { c ->
+            c.copy(
+                auth = c.auth.copy(users = c.auth.users.copy(enabled = true, roles = listOf(dev.droidserver.core.config.RoleConfig("pro")))),
+                access = c.access.copy(
+                    mode = dev.droidserver.core.config.AccessMode.CLOUDFLARE,
+                    cloudflare = c.access.cloudflare.copy(tunnel = dev.droidserver.core.config.CloudflareTunnel.NAMED, hostname = "magaza.example.com"),
+                ),
+                payments = dev.droidserver.core.config.PaymentsConfig(
+                    providers = listOf(
+                        dev.droidserver.core.config.PaymentProviderConfig(dev.droidserver.core.config.PaymentProvider.STRIPE, "sk_test_abc", webhookSecret = "whsec_abc"),
+                        dev.droidserver.core.config.PaymentProviderConfig(dev.droidserver.core.config.PaymentProvider.IYZICO, "sandbox-gizli", apiKey = "sandbox-api", sandbox = true),
+                    ),
+                    publicUrl = "https://magaza.example.com",
+                    plans = listOf(dev.droidserver.core.config.PaymentPlan("pro", "Pro (aylık)", dev.droidserver.core.config.PaymentProvider.STRIPE, "price_123", "pro")),
+                ),
+            )
+        }
+        render()
+        click("Sunucu")
+        click("Ödemeler")
+        shot("36-odemeler")
+    }
+
+    @Test
     fun yerelModeller() {
         compose.setContent { DroidServerTheme { dev.droidserver.app.ui.config.LocalModelsScreen(app.graph, onBack = {}) } }
         shot("35-yerel-modeller")

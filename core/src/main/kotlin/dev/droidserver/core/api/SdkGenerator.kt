@@ -127,6 +127,9 @@ object SdkGenerator {
                     appendLine("    addMember: ${p(Endpoint.TEAM_ADD_MEMBER)}, updateMember: ${p(Endpoint.TEAM_UPDATE_MEMBER)}, removeMember: ${p(Endpoint.TEAM_REMOVE_MEMBER)},")
                     appendLine("  });")
                 }
+                if (config.payments.enabled && config.payments.plans.isNotEmpty()) {
+                    appendLine("  readonly payments = new Payments(this, { plans: ${p(Endpoint.PAYMENT_PLANS)}, subscribe: ${p(Endpoint.PAYMENT_SUBSCRIBE)}, subscriptions: ${p(Endpoint.PAYMENT_SUBSCRIPTIONS)} });")
+                }
             }
             appendLine("  protected readonly realtimePath: string | null = ${p(Endpoint.REALTIME)};")
             appendLine("  protected readonly refreshPath: string | null = ${if (users.enabled) p(Endpoint.AUTH_REFRESH) else "null"};")
@@ -511,6 +514,26 @@ object SdkGenerator {
         |  removeMember(id: number, user: number): Promise<void> { return this.ds.request("DELETE", this.at("removeMember", id, user)); }
         |}
         |
+        |export interface PaymentPlan { name: string; title: string; provider: string; role: string }
+        |export interface Subscription { id: number; plan: string; provider: string; status: "active" | "past_due" | "canceled"; period_end: string | null; manage_url?: string | null }
+        |type PaymentPaths = Record<"plans" | "subscribe" | "subscriptions", string | null>;
+        |
+        |/** Abonelikler: planlar, ödeme sayfası (rol ödeme bildirimi gelince verilir) ve kullanıcının abonelikleri. */
+        |export class Payments {
+        |  private readonly ds: DroidServerBase;
+        |  private readonly paths: PaymentPaths;
+        |  constructor(ds: DroidServerBase, paths: PaymentPaths) { this.ds = ds; this.paths = paths; }
+        |  private at(k: keyof PaymentPaths): string {
+        |    const p = this.paths[k];
+        |    if (!p) throw new DroidServerError(404, "Bu ödeme ucu kapalı: " + k);
+        |    return p;
+        |  }
+        |  plans(): Promise<{ items: PaymentPlan[] }> { return this.ds.request("GET", this.at("plans")); }
+        |  /** Ödeme sayfasının adresi; kullanıcıyı oraya yönlendirin. */
+        |  subscribe(plan: string): Promise<{ plan: string; url: string }> { return this.ds.request("POST", this.at("subscribe"), { json: { plan } }); }
+        |  subscriptions(): Promise<{ items: Subscription[] }> { return this.ds.request("GET", this.at("subscriptions")); }
+        |}
+        |
         |export interface ConnectionLink { url: string; name?: string; token?: string; expiresAt?: Date }
         |
         |/** Telefondaki "Bağlan (QR)" ekranının metni: `droidserver://connect?url=…&name=…&token=…&exp=…` veya düz `http(s)://` adresi. */
@@ -610,6 +633,9 @@ object SdkGenerator {
                     appendLine("        this, list = ${p(Endpoint.TEAMS)}, create = ${p(Endpoint.TEAMS_CREATE)}, get = ${p(Endpoint.TEAM)}, update = ${p(Endpoint.TEAM_UPDATE)}, delete = ${p(Endpoint.TEAM_DELETE)},")
                     appendLine("        addMember = ${p(Endpoint.TEAM_ADD_MEMBER)}, updateMember = ${p(Endpoint.TEAM_UPDATE_MEMBER)}, removeMember = ${p(Endpoint.TEAM_REMOVE_MEMBER)},")
                     appendLine("    )")
+                }
+                if (config.payments.enabled && config.payments.plans.isNotEmpty()) {
+                    appendLine("    val payments = Payments(this, plans = ${p(Endpoint.PAYMENT_PLANS)}, subscribe = ${p(Endpoint.PAYMENT_SUBSCRIBE)}, subscriptions = ${p(Endpoint.PAYMENT_SUBSCRIPTIONS)})")
                 }
             }
             appendLine()
@@ -1007,6 +1033,20 @@ object SdkGenerator {
         |    }
         |}
         |
+        |/** Abonelikler: planlar, ödeme sayfası (rol ödeme bildirimi gelince verilir) ve kullanıcının abonelikleri. Yanıtlar JSON. */
+        |class Payments(private val client: DroidServerBase, private val plans: String?, private val subscribe: String?, private val subscriptions: String?) {
+        |    private fun at(p: String?, key: String) = p ?: throw DroidServerException(404, "Bu ödeme ucu kapalı: " + key)
+        |
+        |    /** `{items: [{name, title, provider, role}]}` */
+        |    fun plans(): JsonObject = client.request("GET", at(plans, "plans"))!!.jsonObject
+        |
+        |    /** `{plan, url}`: kullanıcıyı ödeme sayfasına ([url]) yönlendirin. */
+        |    fun subscribe(plan: String): JsonObject = client.request("POST", at(subscribe, "subscribe"), json = buildJsonObject { put("plan", JsonPrimitive(plan)) })!!.jsonObject
+        |
+        |    /** `{items: [{id, plan, provider, status, period_end, manage_url}]}` */
+        |    fun subscriptions(): JsonObject = client.request("GET", at(subscriptions, "subscriptions"))!!.jsonObject
+        |}
+        |
         |class Auth(
         |    private val client: DroidServerBase,
         |    private val signup: String?,
@@ -1305,6 +1345,10 @@ object SdkGenerator {
                     appendLine("      list: ${p(Endpoint.TEAMS)}, create: ${p(Endpoint.TEAMS_CREATE)}, get: ${p(Endpoint.TEAM)}, update: ${p(Endpoint.TEAM_UPDATE)}, delete: ${p(Endpoint.TEAM_DELETE)},")
                     appendLine("      addMember: ${p(Endpoint.TEAM_ADD_MEMBER)}, updateMember: ${p(Endpoint.TEAM_UPDATE_MEMBER)}, removeMember: ${p(Endpoint.TEAM_REMOVE_MEMBER)});")
                 }
+                if (config.payments.enabled && config.payments.plans.isNotEmpty()) {
+                    appendLine()
+                    appendLine("  late final payments = Payments(this, plans: ${p(Endpoint.PAYMENT_PLANS)}, subscribe: ${p(Endpoint.PAYMENT_SUBSCRIBE)}, subscriptions: ${p(Endpoint.PAYMENT_SUBSCRIPTIONS)});")
+                }
             }
             appendLine()
             appendLine("  /// QR / bağlantı metninden (`droidserver://connect?url=…&token=…` veya düz adres): JWT token, değilse API anahtarı olur.")
@@ -1424,6 +1468,12 @@ object SdkGenerator {
                     appendLine("            deletePath: ${p(Endpoint.TEAM_DELETE)}, addMemberPath: ${p(Endpoint.TEAM_ADD_MEMBER)}, updateMemberPath: ${p(Endpoint.TEAM_UPDATE_MEMBER)},")
                     appendLine("            removeMemberPath: ${p(Endpoint.TEAM_REMOVE_MEMBER)},")
                     appendLine("        )")
+                    appendLine("    }")
+                }
+                if (config.payments.enabled && config.payments.plans.isNotEmpty()) {
+                    appendLine()
+                    appendLine("    public var payments: Payments {")
+                    appendLine("        Payments(client: self, plansPath: ${p(Endpoint.PAYMENT_PLANS)}, subscribePath: ${p(Endpoint.PAYMENT_SUBSCRIBE)}, subscriptionsPath: ${p(Endpoint.PAYMENT_SUBSCRIPTIONS)})")
                     appendLine("    }")
                 }
             }
