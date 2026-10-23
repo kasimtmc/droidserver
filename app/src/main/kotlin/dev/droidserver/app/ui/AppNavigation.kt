@@ -37,6 +37,7 @@ import dev.droidserver.app.ui.config.AutomationsScreen
 import dev.droidserver.app.ui.config.BackupsScreen
 import dev.droidserver.app.ui.config.ProfilesScreen
 import dev.droidserver.app.ui.config.SensorsScreen
+import dev.droidserver.app.ui.config.MapScreen
 import dev.droidserver.app.ui.config.TransferScreen
 import dev.droidserver.app.ui.config.WebhooksScreen
 import dev.droidserver.app.ui.config.HistoryScreen
@@ -83,6 +84,7 @@ object Routes {
     const val CLI = "cli"
     const val MQTT = "mqtt"
     const val SENSORS = "sensors"
+    const val MAP = "map"
     const val SCRIPTS = "scripts"
     const val BACKUPS = "backups"
     const val WEBHOOKS = "webhooks"
@@ -235,6 +237,7 @@ fun AppNavigation(g: AppGraph) {
             composable(Routes.DRIVE) { DriveScreen(g, wizard, onBack = back) }
             composable(Routes.MQTT) { MqttScreen(g, wizard, onBack = back) }
             composable(Routes.SENSORS) { SensorsScreen(g, wizard, onBack = back) }
+            composable(Routes.MAP) { MapScreen(g, wizard, onBack = back) }
             composable(Routes.APPS) { AppsScreen(g, wizard, onBack = back, onLogs = toLogs, onComponents = { nav.navigateTopLevel(Routes.COMPONENTS) }) }
             composable(Routes.CONNECT) { ConnectScreen(g, onBack = back) }
             composable(Routes.TROUBLESHOOT) {

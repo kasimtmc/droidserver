@@ -51,7 +51,13 @@ val DavChallenge = AttributeKey<Boolean>("DavChallenge")
  * - Yollar yalnızca paylaşılan kökün içinde çözülür (`..`, sembolik bağlantı ve kök dışına çıkan yol reddedilir).
  * - Kilitler gerçek değildir (istemciler yazmadan önce kilit ister; tek kullanıcılı sürücüde yeterli).
  */
-class WebDav(private val config: WebDavConfig, roots: List<DavRoot>, private val clock: () -> Instant = Instant::now) {
+class WebDav(
+    private val config: WebDavConfig,
+    roots: List<DavRoot>,
+    private val clock: () -> Instant = Instant::now,
+    /** Takvim ve kişiler (aynı kimlikle); yoksa yalnızca klasörler. */
+    private val caldav: CalDav? = null,
+) {
     private val roots = roots.associateBy { it.name }
     private val base = config.path.trimEnd('/')
     private val maxBytes = config.maxFileMb.toLong() * 1024 * 1024
@@ -67,12 +73,13 @@ class WebDav(private val config: WebDavConfig, roots: List<DavRoot>, private val
     private suspend fun serve(call: ApplicationCall, segments: List<String>) {
         if (!authorized(call)) return
         val method = call.request.httpMethod.value.uppercase()
+        if (caldav?.handles(segments) == true) return caldav.serve(call, method, segments)
         val target = resolve(segments) ?: return call.respond(HttpStatusCode.Forbidden)
         // Olmayan paylaşım.
         if (target.root == null && target.segments.isNotEmpty() && method != "OPTIONS") return call.respond(HttpStatusCode.NotFound)
         when (method) {
             "OPTIONS" -> {
-                call.response.header("DAV", "1, 2")
+                call.response.header("DAV", if (caldav?.enabled == true) CalDav.DAV_HEADER else "1, 2")
                 call.response.header("MS-Author-Via", "DAV")
                 call.response.header(HttpHeaders.Allow, ALLOW)
                 call.respond(HttpStatusCode.OK)
@@ -201,7 +208,7 @@ class WebDav(private val config: WebDavConfig, roots: List<DavRoot>, private val
                 append("""<?xml version="1.0" encoding="utf-8"?><D:multistatus xmlns:D="DAV:">""")
                 when {
                     t.isTop && t.segments.isEmpty() -> {
-                        append(entry(href(emptyList(), true), tr("DroidServer"), null, true))
+                        append(entry(href(emptyList(), true), tr("DroidServer"), null, true, extra = caldav?.rootProps().orEmpty()))
                         if (one) roots.values.forEach { r -> r.dir.mkdirs(); append(entry(href(listOf(r.name), true), r.name, r.dir, true)) }
                     }
                     t.file == null || !t.file.exists() -> return@withContext null
@@ -221,8 +228,9 @@ class WebDav(private val config: WebDavConfig, roots: List<DavRoot>, private val
         call.respondText(xml, ContentType.parse("application/xml; charset=utf-8"), HttpStatusCode.MultiStatus)
     }
 
-    private fun entry(href: String, name: String, file: File?, collection: Boolean, quota: Boolean = false): String = buildString {
+    private fun entry(href: String, name: String, file: File?, collection: Boolean, quota: Boolean = false, extra: String = ""): String = buildString {
         append("<D:response><D:href>").append(esc(href)).append("</D:href><D:propstat><D:prop>")
+        append(extra)
         append("<D:displayname>").append(esc(name)).append("</D:displayname>")
         if (collection) append("<D:resourcetype><D:collection/></D:resourcetype>") else append("<D:resourcetype/>")
         if (file != null) {

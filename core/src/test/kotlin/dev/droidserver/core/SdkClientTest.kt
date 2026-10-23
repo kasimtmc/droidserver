@@ -7,6 +7,7 @@ import dev.droidserver.core.db.SqlDriver
 import dev.droidserver.core.files.FileStore
 import dev.droidserver.core.sdkclient.DroidServerClient
 import dev.droidserver.core.sdkclient.DroidServerException
+import dev.droidserver.core.sdkclient.GeoPoint
 import dev.droidserver.core.sdkclient.ListOptions
 import dev.droidserver.core.sdkclient.RealtimeEvent
 import dev.droidserver.core.sdkclient.TodoItemsInput
@@ -78,9 +79,10 @@ class SdkClientTest {
         Thread.sleep(300)
 
         val t = ds.todoItems.create(
-            TodoItemsInput(title = "Süt", qty = 2, price = 1.5, status = "açık", tags = listOf("ev"), meta = buildJsonObject { put("a", JsonPrimitive(1)) }, `in` = "x"),
+            TodoItemsInput(title = "Süt", qty = 2, price = 1.5, status = "açık", tags = listOf("ev"), meta = buildJsonObject { put("a", JsonPrimitive(1)) }, `in` = "x", place = GeoPoint(41.0054, 28.9768)),
         )
         assertEquals(3.0, t.total, "hesaplanan alan")
+        assertEquals(GeoPoint(41.0054, 28.9768), t.place, "konum")
         assertEquals(myId, t.owner, "sahip alanı")
         assertNotNull(t.olusturulma, "uzman modu adı")
         assertTrue(got.await(5, TimeUnit.SECONDS), "canlı olay")
@@ -91,6 +93,7 @@ class SdkClientTest {
         ds.todoItems.create(TodoItemsInput(title = "Ekmek", tags = listOf("iş")))
         val page = ds.todoItems.list(ListOptions(filter = mapOf("tags" to "ev"), sort = "-id"))
         assertEquals(listOf("Süt"), page.items.map { it.title })
+        assertEquals(listOf("Süt"), ds.todoItems.list(ListOptions(filter = mapOf("place[near]" to "41.0,29.0,5"))).items.map { it.title })
         val updated = ds.todoItems.update(t.id, TodoItemsInput(done = true, qty = 4))
         assertEquals(true, updated.done)
         assertEquals(6.0, updated.total)
@@ -342,8 +345,11 @@ class SdkClientTest {
             const stop = ds.subscribe(["todo_items"], (e) => { events.push(e); });
             await new Promise((r) => setTimeout(r, 300));
 
-            const t = await ds.todoItems.create({ title: "Süt", qty: 2, price: 1.5, status: "açık", tags: ["ev"] });
+            const t = await ds.todoItems.create({ title: "Süt", qty: 2, price: 1.5, status: "açık", tags: ["ev"], place: { lat: 41.0054, lng: 28.9768 } });
             if (t.total !== 3) throw new Error("total " + t.total);
+            if (t.place?.lat !== 41.0054) throw new Error("konum " + JSON.stringify(t.place));
+            const near = await ds.todoItems.list({ filter: { place: { near: "41.0,29.0,5" } } });
+            if (near.items.map((x) => x.title).join() !== "Süt") throw new Error("yakın " + JSON.stringify(near));
             await ds.todoItems.create({ title: "Ekmek", tags: ["iş"] });
             const page = await ds.todoItems.list({ filter: { tags: "ev", qty: { gte: 1 } }, sort: "-id" });
             if (page.items.length !== 1 || page.items[0].title !== "Süt") throw new Error("liste " + JSON.stringify(page));

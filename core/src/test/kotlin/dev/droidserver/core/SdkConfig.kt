@@ -36,6 +36,7 @@ object SdkConfig {
                     FieldConfig("meta", FieldType.JSON),
                     FieldConfig("in", FieldType.TEXT),
                     FieldConfig("due", FieldType.DATETIME),
+                    FieldConfig("place", FieldType.GEO),
                     FieldConfig("photo", FieldType.FILE),
                     FieldConfig("total", FieldType.REAL, computed = "price * qty"),
                     FieldConfig("owner", FieldType.RELATION, collection = SystemCollections.USERS, onDelete = OnDelete.SET_NULL),

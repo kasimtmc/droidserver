@@ -11,6 +11,10 @@ import dev.droidserver.core.phone.PhoneHost
 import dev.droidserver.core.phone.PhoneService
 import dev.droidserver.core.security.FieldEncryption
 import kotlinx.serialization.json.JsonPrimitive
+import dev.droidserver.core.config.FieldType
+import dev.droidserver.core.config.GeoPoint
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.Json
 import dev.droidserver.core.api.ClientGuard
@@ -280,7 +284,7 @@ class ServerEngine(
     }
 
     /** Dosya alanlarının deposu. */
-    val fileStore: FileStore? = dataDir?.let { FileStore(File(it, "storage")) }
+    val fileStore: FileStore? = dataDir?.let { FileStore(File(it, "storage"), resizer) }
 
     /** Statik site klasörü (uygulamadan zip ile yüklenir). */
     val siteDir: File? = dataDir?.let { File(it, "www") }
@@ -476,6 +480,26 @@ class ServerEngine(
         return JsonArray(cfg.sensors.mapNotNull { s ->
             cfg.collections.firstOrNull { it.name == s.collection }?.let { c -> Sensors.series(RecordService(db, c, collections = cfg.schemaCollections()), s, since) }
         })
+    }
+
+    /** Haritadaki bir kayıt: kimlik, ilk metin alanı ve konum. */
+    data class MapPoint(val id: Long, val label: String?, val point: GeoPoint)
+
+    /**
+     * Haritada gösterilecek kayıtlar (uygulamadaki "Harita" ekranı): [collection]'ın [field] konum alanı dolu olanlar,
+     * en yeniden en çok [limit]. Sunucu çalışmıyorsa veya alan yoksa null. Bloklayıcıdır.
+     */
+    @Synchronized
+    fun mapPoints(collection: String, field: String, limit: Int = 500): List<MapPoint>? {
+        val cfg = running ?: return null
+        val db = driver ?: return null
+        val c = cfg.collections.firstOrNull { it.name == collection }?.takeIf { col -> col.fields.any { it.name == field && it.type == FieldType.GEO } } ?: return null
+        val label = c.fields.firstOrNull { it.type == FieldType.TEXT && !it.encrypted }?.name
+        val page = RecordService(db, c, collections = cfg.schemaCollections()).list(1, limit, "-id", listOf("$field[null]" to "false"), listOfNotNull("id", field, label))
+        return page.items.mapNotNull { r ->
+            val p = r[field]?.let { runCatching { GeoPoint.of(it) }.getOrNull() } ?: return@mapNotNull null
+            MapPoint(r.getValue("id").jsonPrimitive.content.toLong(), label?.let { (r[it] as? JsonPrimitive)?.contentOrNull }, p)
+        }
     }
 
     /** Kullanıcının kota kullanımı (uygulamadaki kullanıcı kartı); sunucu çalışmıyorsa veya hesaplar kapalıysa null. */

@@ -1143,23 +1143,56 @@ başlar (panel eşitleme ve güvenli bağlantılar bunların temelidir). Dört g
 ### Grup 2 — Konum, takvim ve medya
 
 **18.3 Konum**
-- [ ] `geo` alan tipi (enlem/boylam, isteğe bağlı doğruluk), filtre `near=lat,lng,km` ve sınırlayıcı kutu, mesafeye göre
+- [x] `geo` alan tipi (enlem/boylam, isteğe bağlı doğruluk), filtre `near=lat,lng,km` ve sınırlayıcı kutu, mesafeye göre
   sıralama; SQLite ve PostgreSQL'de aynı sonuç (PostGIS gerekmeden, kutu ön süzgeci + mesafe).
-- [ ] Panelde ve uygulamada harita görünümü (OpenStreetMap karoları; çevrimdışı karo yok), kayıt ekranında konum seçme;
+- [x] Panelde ve uygulamada harita görünümü (OpenStreetMap karoları; çevrimdışı karo yok), kayıt ekranında konum seçme;
   telefonun konumuyla doldurma (mevcut telefon özellikleri).
+  *Durum:* `FieldType.GEO`; API'de `{lat, lng, accuracy?}`, veritabanında `enlem,boylam[,doğruluk]` metni (`GeoPoint`).
+  `alan[near]=enlem,boylam,km` (en çok 1000 km; sıralama yoksa yakından uzağa) ve `alan[box]=g,b,k,d`. SQL'de enlem/boylam
+  metinden çıkarılır (SQLite `CAST`, PostgreSQL `split_part`); eski Android SQLite'ında trigonometri olmadığından uzaklık
+  eşdikdörtgen yaklaşımla, kosinüs Taylor serisiyle; kural koşulları (canlı abonelik) aynı formülle. 180. boylam iki
+  aralığa bölünür. Benzersiz/indeks, sıralama ve `eq` yok. CSV, yedek, kopya, tip dönüştürme (metin ↔ konum), örnek veri,
+  form, otomasyon, OpenAPI, dört SDK'da `GeoPoint`. Panelde kütüphanesiz karo haritası (Kayıtlar → Harita, kayıt
+  düzenlemede haritadan / telefondan / tarayıcıdan konum; CSP'ye tile.openstreetmap.org), uygulamada Sunucu → Harita
+  (Compose, karolar önbellekte, tanıtıcı User-Agent). Uygulamada kayıt düzenleme ekranı olmadığından konum seçme panelde.
+  Testler: `GeoTest` (iki lehçe), `SdkClientTest` (dört dil), ekran görüntüsü 31-harita.
 
 **18.4 Takvim**
-- [ ] Tarih aralığı alanı ve "çakışma olmasın" kuralı (aynı kaynak için üst üste binen rezervasyon reddedilir).
-- [ ] iCal akışı (`.ics`, koleksiyon/görünüm başına, isteğe bağlı gizli adres) ve CalDAV/CardDAV sunucusu (WebDAV
+- [x] Tarih aralığı alanı ve "çakışma olmasın" kuralı (aynı kaynak için üst üste binen rezervasyon reddedilir).
+- [x] iCal akışı (`.ics`, koleksiyon/görünüm başına, isteğe bağlı gizli adres) ve CalDAV/CardDAV sunucusu (WebDAV
   altyapısı üzerinde) ile telefon ve bilgisayar takvimleriyle iki yönlü eşitleme.
+  *Durum:* tarih aralığı ayrı alan tipi yerine koleksiyonun `calendar` eşlemesiyle (başlangıç ve bitiş iki tarih-saat
+  alanı; filtrelenebilir, sıralanabilir kalır). `noOverlap` + `resource`: RecordService yazmayla aynı işlemde denetler
+  (409; PostgreSQL'de koleksiyon kilidi), bitiş < başlangıç 400. `GET /calendar/{c}.ics` (liste kuralı veya
+  `?token=feedToken`; görünüm başına akış yapılmadı). `CalDav`: ağ sürücüsünün adresi ve kimliğiyle `/dav/principal/`,
+  `/dav/calendars/<c>/`, `/dav/contacts/<c>/`; PROPFIND (istenen özellikler, 404 propstat), REPORT (multiget, query;
+  süzgeçsiz), GET, PUT (If-Match / If-None-Match, ETag içerik özeti, PUT yanıtında ETag yok), DELETE, `.well-known`.
+  İstemcinin kaynak adı ve UID'si `_ds_dav` tablosunda. Yazmalar yönetici olarak normal yoldan. `ICal` (katlama, kaçış,
+  TZID, tüm gün, DURATION), `CalendarMapping` (VEVENT, vCard 3.0). Uygulamada ve panelde koleksiyon ayarı.
+  Testler: `CalendarTest` (iki lehçe: çakışma, abonelik, CalDAV/CardDAV oturumu, biçim, doğrulama).
 - Karar: CalDAV yazma desteği ilk sürümde olsun mu (yalnızca okuma çok daha basit).
+  *Karar (kullanıcı, 23 Ekim 2026):* **okuma + yazma.** CalDAV (VEVENT) ve CardDAV (vCard) iki yönlü; temel alanlar
+  (başlık, başlangıç/bitiş, açıklama, yer; ad, e-posta, telefon) koleksiyon alanlarına eşlenir, eşlenmeyen özellikler
+  saklanmaz.
 
 **18.5 Medya**
-- [ ] Video ve ses için `Range` istekleriyle akış (ileri sarma), içerik türü ve önbellek başlıkları.
-- [ ] Görsellerde WebP (ve destekleniyorsa AVIF) dönüşümü, boyut ön ayarları, EXIF konum bilgisini silme seçeneği
+- [x] Video ve ses için `Range` istekleriyle akış (ileri sarma), içerik türü ve önbellek başlıkları.
+- [x] Görsellerde WebP (ve destekleniyorsa AVIF) dönüşümü, boyut ön ayarları, EXIF konum bilgisini silme seçeneği
   (varsayılan açık).
-- [ ] YZ ile otomatik etiket ve görseldeki metni çıkarma (OCR) — buluttaki sağlayıcı veya 18.7'deki yerel model;
+- [x] YZ ile otomatik etiket ve görseldeki metni çıkarma (OCR) — buluttaki sağlayıcı veya 18.7'deki yerel model;
   sonuç seçilen alanlara yazılır ve anlamsal aramaya girer.
+  *Durum:* Ktor `PartialContent` (206, Content-Range); dosya indirmede `Cache-Control: private, max-age=31536000,
+  immutable` (adlar değişmez; RequestGuard'ın `no-store`'u dosya yoluna verilmez). Alan ayarları `convert`
+  (webp/jpeg), `maxDimension`, `keepLocation`, `ai {tags, text}`; konfigürasyon v19. `Media.process` yüklemede:
+  dönüşüm/küçültme telefonda (`ImageResizer.convert`, EXIF yönü uygulanır, meta veri yazılmaz), değilse `ExifGps`
+  dosya boyutunu değiştirmeden GPS IFD'sini ve konumlu XMP'yi siler (JPEG, PNG eXIf/iTXt + CRC, WebP). "Boyut ön ayarı"
+  mevcut küçük resim boyutları + yeni `maxDimension` olarak yorumlandı. OCR/etiket: `AiMessage.images` (OpenAI uyumlu
+  `image_url`, Gemini `inlineData`, Claude base64 görsel bloğu), `ImageInsight` (JSON yanıt, çoklu seçimde yalnız
+  seçenekler), kayıt yazıldıktan sonra arka planda, sonuç yönetici olarak normal güncellemeyle (anlamsal dizin dahil).
+  Testler: `MediaTest` (JPEG/PNG/WebP konum silme, dönüşüm, Range, önbellek, YZ, doğrulama).
+- Karar (kullanıcı, 23 Ekim 2026): etiket ve OCR şimdilik görsel destekleyen bulut/LAN sağlayıcılarıyla (OpenAI,
+  Anthropic, Gemini, Ollama'da görsel model); 18.7'deki yerel model aynı arayüze takılır. F-Droid yüzünden ML Kit yok.
+  Android AVIF kodlayamadığı için dönüşüm yalnızca WebP. Harita kendi küçük karo görüntüleyicimizle (kütüphane yok).
 
 ### Grup 3 — Kodsuz sayfalar ve paketler
 

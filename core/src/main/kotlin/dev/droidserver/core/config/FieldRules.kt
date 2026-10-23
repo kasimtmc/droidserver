@@ -124,6 +124,7 @@ object FieldRules {
             add("min" to tr("sayı aralığı yalnızca sayı alanlarında"))
         }
         if (f.min != null && f.max != null && f.min > f.max) add("max" to tr("en büyük, en küçükten küçük olamaz"))
+        if (f.type == FieldType.GEO && (f.unique || f.index)) add("index" to tr("konum alanı benzersiz veya indeksli olamaz"))
         f.computed?.let { src ->
             if (f.type !in COMPUTABLE) {
                 add("computed" to tr("hesaplanmış alan metin, tam sayı, ondalık veya true/false olmalı"))
@@ -133,7 +134,7 @@ object FieldRules {
             try {
                 val e = Expression.parse(src)
                 // Kimlik ve zaman alanları yeni kayıtta hesaplama anında henüz yok; yalnızca koleksiyon alanları.
-                val known = fields.filter { it.type != FieldType.FILE && it.type != FieldType.JSON }.map { it.name }.toSet()
+                val known = fields.filter { it.type != FieldType.FILE && it.type != FieldType.JSON && it.type != FieldType.GEO }.map { it.name }.toSet()
                 e.references.firstOrNull { it !in known }?.let { add("computed" to tr("bilinmeyen alan: {0}", it)) }
                 if (f.name in e.references) add("computed" to tr("alan kendisine başvuramaz"))
                 fields.firstOrNull { it.encrypted && it.name in e.references }?.let { add("computed" to tr("şifreli alana başvuramaz: {0}", it.name)) }
