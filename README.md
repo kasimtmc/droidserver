@@ -2,7 +2,7 @@
 
 **Türkçe** | [English](README.en.md)
 
-Android cihazı, kullanıcının tercihlerine göre yapılandırılan bir arka uç sunucusuna dönüştüren uygulama.
+Android cihazı, kullanıcının tercihlerine göre yapılandırılan bir arka uç sunucusuna dönüştürür.
 Kotlin + Ktor + SQLite çekirdeği uygulamanın içinde çalışır; PostgreSQL, Redis, cloudflared gibi
 yan servisler isteğe bağlı olarak indirilip yönetilir.
 
