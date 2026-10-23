@@ -24,7 +24,7 @@ yan servisler isteğe bağlı olarak indirilip yönetilir.
 └─────────────────┼───────────────────┼─────────────────────────────────┘
                   ▼                   ▼
 ┌──────────────────────────── core (saf Kotlin/JVM) ────────────────────┐
-│  ServerConfig ◄── ConfigMigrations (v1 → v3), ConfigSecrets           │
+│  ServerConfig ◄── ConfigMigrations (v1 → v22), ConfigSecrets          │
 │       │                                                               │
 │       ▼                                                               │
 │  DeployOrchestrator.deploy()                                          │
@@ -2170,14 +2170,26 @@ yüklenir (`-beta.1` gibi ekli sürümler ön sürüm olur). Sürüm notu `.gith
 (şablon: `TEMPLATE.md`; uygulama içi güncelleme bu metni gösterir), altına commit'lerden üretilen notlar eklenir. Sürüm adı ve kodu etiketten
 gelir (`-PappVersion=1.2.3`; kod `1.2.3 → 1020399`, ön sürümler aynı sürümün kararlısından küçük).
 
-İmza anahtarını bir kez oluşturun ve dört secret ekleyin (Settings → Secrets and variables → Actions):
+İmza anahtarını bir kez oluşturun ve dört secret ekleyin (Settings → Secrets and variables → Actions veya `gh`).
+`keytool` JDK ile gelir (PATH'te yoksa Android Studio'nun `jbr/bin/keytool`'u). Depo PKCS12 biçiminde olduğu için ayrı
+anahtar parolası sorulmaz: `ANDROID_KEY_PASSWORD` depo parolasıyla aynıdır.
 
 ```bash
 keytool -genkeypair -keystore release.jks -alias droidserver -keyalg RSA -keysize 4096 -validity 36500
-base64 -w0 release.jks    # çıktı → ANDROID_KEYSTORE_BASE64
-# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS (droidserver), ANDROID_KEY_PASSWORD
-git tag v0.9.0 && git push origin v0.9.0
+base64 -w0 release.jks | gh secret set ANDROID_KEYSTORE_BASE64
+gh secret set ANDROID_KEY_ALIAS --body droidserver
+gh secret set ANDROID_KEYSTORE_PASSWORD    # parolayı sorar
+gh secret set ANDROID_KEY_PASSWORD         # aynı parola
 ```
+
+Sürümü etiketle (`git tag v0.9.0 && git push origin v0.9.0`) ya da iş akışını elle çalıştırın; etiketi o oluşturur:
+
+```bash
+gh workflow run release.yml -f version=0.9.0
+```
+
+Uygulama içi güncellemeyi gerçek sürümle denemek için aynı commit'ten bir sonraki sürümü çıkarmak yeterlidir
+(`-f version=0.9.1`); 0.9.0 kurulu telefonda Durum → ⚙ Ayarlar → Güncelleme → Şimdi denetle.
 
 `release.jks`'i ve parolalarını güvenli bir yerde saklayın: anahtar kaybolursa kurulu uygulamalar yeni sürümleri
 güncelleme olarak alamaz. Uygulama indirirken kimlik doğrulamadığı için sürümler herkese açık olmalıdır. Bileşen
@@ -2426,6 +2438,7 @@ tools/          package-postgres.sh, package-cloudflared.sh (Termux derlemelerin
 - [x] **Passkey ile giriş:** kullanıcılar ve web paneli için parolasız giriş (WebAuthn, alan adı ve HTTPS gerekir)
 - [x] **Oturum yönetimi:** açık oturumlar (cihaz, adres, son kullanım), tek tek veya hepsini kapatma; kapatılan oturumun token'ı hemen düşer
 - [x] **MQTT güvenliği:** yalnızca yerel ağ, cihaz başına kimlik, tutulan mesajlar
+- [x] **MQTT TLS:** 8883'te şifreli bağlantı; telefonun yerel kök sertifikası, IP değişince kendiliğinden yenilenen sunucu sertifikası
 - [x] **Ev otomasyonu:** otomasyonda MQTT eylemi ve tetikleyicisi, sahneler (widget dahil), sensör panosu ve eşik uyarısı, Home Assistant keşfi
 - [x] **Telegram'dan yönetim:** ayrı yönetici sohbetinden `/durum`, `/yedek`, `/loglar`, `/baslat`, `/durdur` (onaylı)
 - [x] **E-posta şablonları ve toplu bildirim:** hesap e-postaları dil başına şablonla; kullanıcılara süzgeçli, hız sınırlı, iptal edilebilir toplu e-posta / web push, abonelikten çıkma
