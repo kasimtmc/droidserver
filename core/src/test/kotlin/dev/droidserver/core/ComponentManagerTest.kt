@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpServer
 import dev.droidserver.core.components.ComponentManager
 import dev.droidserver.core.components.ComponentManifest
 import dev.droidserver.core.components.ComponentPackage
+import dev.droidserver.core.components.runsProgram
 import dev.droidserver.core.config.ComponentConfig
 import dev.droidserver.core.config.ConfigJson
 import dev.droidserver.core.config.DatabaseConfig
@@ -429,6 +430,17 @@ class ComponentManagerTest {
         } finally {
             srv.stop(0)
         }
+    }
+
+    @Test
+    fun `kilit sahibi program adiyla taninir`() {
+        val n = "\u0000"
+        assertTrue(runsProgram("/data/user/0/dev.droidserver.app/files/packages/pg/16/bin/postgres${n}-D$n/data/pg$n", "postgres"))
+        assertTrue(runsProgram("postgres: checkpointer   $n", "postgres"), "Postgres alt süreci adını değiştirir")
+        assertTrue(runsProgram("/bin/sh$n/tmp/x/packages/db/1/bin/run$n", "run"), "betikte ilk argüman yorumlayıcı")
+        // CI'daki durum: yolda "runner" geçen başka bir süreç (Gradle test işçisi) programın kendisi sanılmamalı.
+        assertFalse(runsProgram("/home/runner/.gradle/jdks/bin/java$n-cp$n/home/runner/work/run$n", "run"))
+        assertFalse(runsProgram("/system/bin/app_process64${n}com.example.postgres_client$n", "postgres"))
     }
 
     @Test
