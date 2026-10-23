@@ -38,6 +38,10 @@ import dev.droidserver.app.ui.config.BackupsScreen
 import dev.droidserver.app.ui.config.ProfilesScreen
 import dev.droidserver.app.ui.config.SensorsScreen
 import dev.droidserver.app.ui.config.MapScreen
+import dev.droidserver.app.ui.config.PagesScreen
+import dev.droidserver.app.ui.config.DashboardsScreen
+import dev.droidserver.app.ui.config.PackagesScreen
+import dev.droidserver.app.ui.config.LocalModelsScreen
 import dev.droidserver.app.ui.config.TransferScreen
 import dev.droidserver.app.ui.config.WebhooksScreen
 import dev.droidserver.app.ui.config.HistoryScreen
@@ -85,6 +89,10 @@ object Routes {
     const val MQTT = "mqtt"
     const val SENSORS = "sensors"
     const val MAP = "map"
+    const val PAGES = "pages"
+    const val DASHBOARDS = "dashboards"
+    const val PACKAGES = "packages"
+    const val LOCAL_MODELS = "local-models"
     const val SCRIPTS = "scripts"
     const val BACKUPS = "backups"
     const val WEBHOOKS = "webhooks"
@@ -233,11 +241,15 @@ fun AppNavigation(g: AppGraph) {
             composable(Routes.ENV) { EnvScreen(g, wizard, onBack = back) }
             composable(Routes.AUTOMATIONS) { AutomationsScreen(g, wizard, onBack = back) }
             composable(Routes.FORMS) { FormsScreen(g, wizard, onBack = back) }
-            composable(Routes.AI) { AiScreen(g, wizard, onBack = back) }
+            composable(Routes.AI) { AiScreen(g, wizard, onBack = back, onModels = { nav.navigate(Routes.LOCAL_MODELS) }) }
+            composable(Routes.LOCAL_MODELS) { LocalModelsScreen(g, onBack = back) }
             composable(Routes.DRIVE) { DriveScreen(g, wizard, onBack = back) }
             composable(Routes.MQTT) { MqttScreen(g, wizard, onBack = back) }
             composable(Routes.SENSORS) { SensorsScreen(g, wizard, onBack = back) }
             composable(Routes.MAP) { MapScreen(g, wizard, onBack = back) }
+            composable(Routes.PAGES) { PagesScreen(g, wizard, onBack = back) }
+            composable(Routes.DASHBOARDS) { DashboardsScreen(g, wizard, onBack = back) }
+            composable(Routes.PACKAGES) { PackagesScreen(g, wizard, onBack = back) }
             composable(Routes.APPS) { AppsScreen(g, wizard, onBack = back, onLogs = toLogs, onComponents = { nav.navigateTopLevel(Routes.COMPONENTS) }) }
             composable(Routes.CONNECT) { ConnectScreen(g, onBack = back) }
             composable(Routes.TROUBLESHOOT) {

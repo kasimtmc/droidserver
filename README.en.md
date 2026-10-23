@@ -53,7 +53,8 @@ The `core` module has no Android dependency; all business logic is tested on a c
 
 ## Building
 
-Requirements: JDK 17+, Android SDK (platform 37). Opening the project in Android Studio is enough.
+Requirements: JDK 17+, Android SDK (platform 37), NDK 29.0.14206865 and CMake 4.1.2 (for local AI; from the Android
+Studio SDK Manager). Clone with the submodule: `git clone --recurse-submodules …` (later: `git submodule update --init`).
 
 ```bash
 ./gradlew :core:test           # core tests (on a computer, real SQLite + PostgreSQL + HTTP)
@@ -151,6 +152,8 @@ with **Advanced (JSON)**; both share the same draft, and the draft is saved to `
 | `apps` | Your own apps: `name`, `runtime`, `command`, `build`, `port`, `path`, `access`, `health`, `env`, `git` … (see Your own apps) |
 | `automations` | No-code automation rules: `name`, `trigger` (`collection` + `events` or `schedule`), `condition`, `actions` (see Automation rules) |
 | `forms` | Public forms: `name` (URL `/forms/<name>`), `collection`, `title`, `fields`, `successMessage`, `redirect` … (see Forms) |
+| `pages` | No-code pages: `name` (`/pages/<name>`), `collection`, `title`, `fields`, `detailFields`, `filter`, `sort`, `perPage`, `layout` (`cards`/`table`), `detail`, `login`, `accent` (see Pages and dashboards) |
+| `dashboards` | Dashboards: `name`, `title`, `widgets: [{type: number\|chart\|table\|map, view, metric, chart, field, limit, width}]`, `shareToken` |
 | `ai` | AI: `enabled`, `provider` (`claude`/`openai`/`gemini`), `url`, `apiKey` (`secret:`), `model`, `effort`, `access`, `dailyLimit`, `embeddings`, `semantic` (see AI) |
 | `webdav` | Network drive: `enabled`, `path`, `username`, `password` (`secret:`), `readOnly`, `site`, `scripts`, `uploads`, `maxFileMb` (see Network drive) |
 | `mqtt` | MQTT (IoT): `enabled`, `port` (1883), `username`, `password` (`secret:`), `routes` (`topic`, `collection`, `valueField`, `topicField`), `events`, `eventPrefix`, `maxClients`, `devices` (per-device credentials), `scenes`, `homeAssistant` (see MQTT) |
@@ -230,6 +233,41 @@ in one tap: collections, relations, rules, optional sample records and a single-
 
 When adding to an existing configuration, a collection is not added if one with the same name exists (install it as a new profile). Sample records are
 added only to empty collections; if the site is selected, `files/www/index.html` is written (with a warning if a site already exists).
+
+### Packages
+
+A package carries a ready-made app or an add-on in one file: collections, rules, views, automations, forms, pages,
+dashboards, scripts and sample data. In the app Server → **Packages**, in the panel Configuration → Packages, on the
+command line `package install`. Source: a file (`.zip`), an address (`https://…/package.zip`) or a GitHub repository
+(`owner/repo`, branch; the archive's top folder is stripped).
+
+```
+shop/
+  package.json        {"name":"shop","version":"1.2.0","title":"Shop","publisher":"Example Ltd"}
+  config.json         {"collections":[…],"views":[…],"automations":[…],"forms":[…],"pages":[…],"dashboards":[…]}
+  scripts/shop.js     (scripts are turned on)
+  sample/products.json  [{"title":"Pen"}, …]   (into empty collections; "@ref:collection:index" for relations)
+  signature.json      (optional signature)
+```
+
+- **Plan before installing**: definitions to add, update and remove; features to turn on (scripts, user accounts);
+  **conflicts** with a same-named definition of another package or one added by hand (not installed); validation
+  errors; warnings for a downgrade or a changed publisher key. Installing saves the configuration and deploys; sample
+  data is added after the deploy.
+- **Update**: a newer version of a same-named package replaces what the previous version brought (views, scripts… not in
+  the new version are removed). **Removing** takes out the package's definitions and scripts; collection tables and data
+  stay in the database (the schema plan says "no longer used"). Installed packages are listed under `packages` in
+  `server.json`.
+- **Signature**: the publisher signs the package's file digests with an ECDSA P-256 key; signed packages show the
+  publisher's name and key fingerprint, and a modified package is not installed. Unsigned packages install with a
+  warning (only from sources you trust).
+
+```bash
+node droidserver.mjs package key -o publisher.key                     # once; keep it secret
+node droidserver.mjs package build shop/ -o shop-1.2.0.zip --key publisher.key
+node droidserver.mjs package plan shop-1.2.0.zip
+node droidserver.mjs package install shop-1.2.0.zip
+```
 
 ## Wizard and management screens
 
@@ -1328,6 +1366,28 @@ rule for the collection under Automations.
   "fields": [{"name": "name", "label": "Your name"}, {"name": "email", "label": "E-mail"}, {"name": "body", "label": "Message", "multiline": true}]}]
 ```
 
+### Pages and dashboards
+
+**Pages** (Server → Pages; in the panel Pages and dashboards; `pages`) publish a collection as a list at
+`/pages/<name>` and a detail page at `/pages/<name>/<id>`. HTML is rendered on the server: no JavaScript, search engines
+can read it, and it looks right on phones and desktops (card or table layout, accent color, light/dark theme).
+
+- Chosen list fields (the first five when empty; the first is the title), a fixed filter (`status=published`, `@me` is
+  the visitor), a default sort; visitors sort by the list fields, search when the collection has search fields (`?q=`)
+  and page through (`?page=`).
+- **Rules apply as is**: the list and view rules and field visibility (hidden fields never show). When a rule needs a
+  login or the page has **Login required** on, visitors sign in with their user account at `/pages/_login` (two-factor
+  included). The session lives in cookies (only under `/pages`, HttpOnly, SameSite=Lax; Secure over HTTPS) and an
+  expired token is refreshed silently; with the `owner` rule everyone sees only their own records.
+- Images are served from the page's own address (`/pages/<name>/<id>/files/…`, same rule), locations link to
+  OpenStreetMap, relations show the target's first text field. Pages load no other resources and cannot be framed.
+
+**Dashboards** (Server → Dashboards; in the panel Pages and dashboards; `dashboards`) are boxes fed by views: **number**
+(a value of a report view, e.g. `sum_amount`), **chart** (bar/line chart of a grouped report), **table** (the view's
+first rows) and **map** (a location field in the view). Boxes are ordered by drag and drop in the panel and with up/down
+in the app; width is 1-3 columns. With a `shareToken`, `/dashboards/<name>?token=…` is shared read-only (no login, anyone
+with the address can view; charts are SVG, the map is tile images, no scripts). Admin data: `GET /api/_dashboards/<name>`.
+
 ### GraphQL
 
 With Wizard → General → **GraphQL** on, `POST /api/graphql` (`{"query", "variables", "operationName"}`) works. The
@@ -1376,6 +1436,7 @@ on the phone and never reaches clients, and usage is billed to your own account 
 | **Claude** (`claude`, default) | Opus 5.5 (default), Sonnet 5.5, Haiku 5.5 | Official Claude Java SDK. On Opus and Sonnet, server-side fallback is on: if a safety check declines a request, it is retried automatically on a model Anthropic recommends |
 | **OpenAI** (`openai`) | GPT-6 Astra, GPT-6.1 Sol (default), GPT-6 Luna | Chat Completions. With `url`, any OpenAI-compatible service: Ollama on the phone or network (`http://127.0.0.1:11434/v1`), LM Studio, OpenRouter; local services need no key |
 | **Google Gemini** (`gemini`) | Gemini 4 Argon, Gemini 3.8 Flash (default), Gemini 3.5 Flash-Lite | `generateContent`; the key goes in the `x-goog-api-key` header |
+| **On the phone** (`local`) | Qwen2.5 0.5B / 1.5B, Gemma 3 1B, Llama 3.2 1B (downloaded) | Runs on the phone with llama.cpp; no key or cost, data stays on the phone (see Local AI on the phone) |
 
 You can also type a model ID that isn't listed. The effort level (low/medium/high) is sent as `effort` to Claude,
 `reasoning_effort` to OpenAI and `thinkingLevel` to Gemini, and left out for models that don't support it. When a
@@ -1409,6 +1470,40 @@ backups or data moves and are rebuilt when needed.
   "semantic": [ { "collection": "notes", "fields": ["title", "body"] } ]
 }
 ```
+
+#### Local AI on the phone
+
+With the provider **On the phone (local model)** the model runs on the phone's CPU with llama.cpp: no key, account or
+cost; for chat, questions over records, the AI step in automations and (with a local embedding model) semantic search
+the data never leaves the phone. Download models from AI → **Local models** (from Hugging Face; size, required memory,
+license and free space are shown; it warns on mobile data and low battery; broken downloads resume; files are verified
+with SHA-256):
+
+| Model | Size | Note |
+|---|---|---|
+| Qwen2.5 0.5B Instruct | 470 MB | smallest; old phones, short summaries and classification |
+| Gemma 3 1B | 770 MB | multilingual, Turkish included |
+| Llama 3.2 1B Instruct | 770 MB | general purpose |
+| Qwen2.5 1.5B Instruct | 1.1 GB | better answers; 4 GB+ memory |
+| EmbeddingGemma 300M (embedding) | 320 MB | multilingual semantic search |
+| BGE-M3 (embedding) | 605 MB | strong multilingual |
+| all-MiniLM-L6-v2 (embedding) | 24 MB | small; English |
+
+The model is loaded into memory on the first request and released after 5 idle minutes. Free memory and the phone's
+temperature are checked before loading: if they are not enough the request returns `503` and a **health alert** is sent
+("Local AI could not run"). Answers are slower and simpler than cloud models and drain the battery while running.
+llama.cpp is built into the app from source (CPU only, arm64-v8a and x86_64; about 6 MB per ABI in the APK); 32-bit phones
+have no local AI. Following F-Droid's rules, closed and prebuilt runtimes such as Gemini Nano (AICore) are not used.
+
+```json
+"ai": { "enabled": true, "provider": "local", "model": "qwen2.5-0.5b-instruct-q4_k_m",
+        "embeddings": { "provider": "local", "model": "embeddinggemma-300m-q8_0" } }
+```
+
+**AI step in automations** (with any provider): Automations → action **Fill a field with AI**: a prompt (`{field}` is
+filled from the record, e.g. `Summarize in one sentence: {body}`) and the triggering record's field to write. For a
+select field the answer must be one of the options (classification: "priority: low / high"), for multiselect the
+matching options; text is clipped to its length limit.
 
 ### Offline sync
 
@@ -2326,5 +2421,8 @@ tools/          package-postgres.sh, package-cloudflared.sh (component packages 
 - [x] **Outreach:** first-launch guide and sample project, offline in-app help, F-Droid metadata, reproducible builds, privacy policy
 - [x] **Offline sync:** per collection; in the SDKs (TS, Kotlin, Dart, Swift) a local copy, a pending-write queue, per-field last writer wins or manual resolution
 - [x] **Scaling with copies:** writes sent to a copy are forwarded to the primary, several copies and a copy table, read addresses and read-your-writes in the SDKs
+- [x] **Local AI on the phone:** llama.cpp from source, downloadable GGUF models (chat and embedding, SHA-256 verified), memory/heat checks and health alert, AI step in automations
+- [x] **Add-on and template packages:** collections, views, automations, forms, pages, dashboards, scripts and sample data in one file; plan before installing, update, removal, ECDSA signature; from a file, an address or GitHub
+- [x] **No-code pages and dashboards:** server-rendered list/detail pages from a collection (rules, login session, search, sorting), dashboards with number/chart/table/map boxes from views, shareable read-only address
 - [x] **Calendar and contacts:** overlap rule (per resource), `.ics` subscription (with a secret address), two-way sync with the phone's calendar and address book via CalDAV and CardDAV
 - [x] **Location:** `geo` field, `near` (nearest first) and `box` filters, OpenStreetMap map in the panel and the app, picking a location on the map or from the phone

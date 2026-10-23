@@ -53,7 +53,8 @@ sorunu dahil) çalışan sunucuya dokunulmaz.
 
 ## Derleme
 
-Gereksinimler: JDK 17+, Android SDK (platform 37). Android Studio ile açmanız yeterli.
+Gereksinimler: JDK 17+, Android SDK (platform 37), NDK 29.0.14206865 ve CMake 4.1.2 (yerel YZ için; Android Studio SDK
+Manager'dan). Depoyu alt modülüyle alın: `git clone --recurse-submodules …` (sonradan: `git submodule update --init`).
 
 ```bash
 ./gradlew :core:test           # çekirdek testleri (bilgisayarda, gerçek SQLite + PostgreSQL + HTTP)
@@ -152,6 +153,8 @@ yer tutucu anahtar yerine yeni üretilmiş bir anahtarla). Sonrasında **Sunucu*
 | `components[].sharedEnv` | true: bileşene ortak ortam değişkenleri de verilir (kendi `env`'i önceliklidir) |
 | `automations` | Kodsuz otomasyon kuralları: `name`, `trigger` (`collection` + `events` veya `schedule`), `condition`, `actions` (bkz. Otomasyon kuralları) |
 | `forms` | Herkese açık formlar: `name` (adres `/forms/<name>`), `collection`, `title`, `fields`, `successMessage`, `redirect` … (bkz. Formlar) |
+| `pages` | Kodsuz sayfalar: `name` (`/pages/<name>`), `collection`, `title`, `fields`, `detailFields`, `filter`, `sort`, `perPage`, `layout` (`cards`/`table`), `detail`, `login`, `accent` (bkz. Sayfalar ve panolar) |
+| `dashboards` | Panolar: `name`, `title`, `widgets: [{type: number\|chart\|table\|map, view, metric, chart, field, limit, width}]`, `shareToken` |
 | `ai` | Yapay zekâ: `enabled`, `provider` (`claude`/`openai`/`gemini`), `url`, `apiKey` (`secret:`), `model`, `effort`, `access`, `dailyLimit`, `embeddings`, `semantic` (bkz. Yapay zekâ) |
 | `webdav` | Ağ sürücüsü: `enabled`, `path`, `username`, `password` (`secret:`), `readOnly`, `site`, `scripts`, `uploads`, `maxFileMb` (bkz. Ağ sürücüsü) |
 | `mqtt` | MQTT (IoT): `enabled`, `port` (1883), `username`, `password` (`secret:`), `routes` (`topic`, `collection`, `valueField`, `topicField`), `events`, `eventPrefix`, `maxClients`, `devices` (cihaz başına kimlik), `scenes`, `homeAssistant` (bkz. MQTT) |
@@ -230,6 +233,39 @@ uygulama kurar: koleksiyonlar, ilişkiler, kurallar, isteğe bağlı örnek kay�
 
 Mevcut konfigürasyona eklerken aynı adda koleksiyon varsa eklenmez (yeni profil olarak kurun). Örnek kayıtlar yalnızca
 boş koleksiyonlara eklenir; site seçilirse `files/www/index.html` yazılır (mevcut site varsa uyarılır).
+
+### Paketler
+
+Paket, hazır bir uygulamayı ya da eklentiyi tek dosyada taşır: koleksiyonlar, kurallar, görünümler, otomasyonlar,
+formlar, sayfalar, panolar, script'ler ve örnek veri. Uygulamada Sunucu → **Paketler**, panelde Konfigürasyon →
+Paketler, komut satırında `package install`. Kaynak: dosya (`.zip`), adres (`https://…/paket.zip`) veya GitHub deposu
+(`sahip/depo`, dal; arşivdeki üst klasör atılır).
+
+```
+magaza/
+  package.json        {"name":"magaza","version":"1.2.0","title":"Mağaza","publisher":"Örnek Ltd"}
+  config.json         {"collections":[…],"views":[…],"automations":[…],"forms":[…],"pages":[…],"dashboards":[…]}
+  scripts/magaza.js   (script'ler açılır)
+  sample/products.json  [{"title":"Kalem"}, …]   (boş koleksiyonlara; "@ref:koleksiyon:sıra" ilişki)
+  signature.json      (isteğe bağlı imza)
+```
+
+- **Kurmadan önce plan**: eklenecek, güncellenecek ve kaldırılacak tanımlar; açılacak özellikler (script'ler,
+  kullanıcı hesapları); başka bir paketin ya da elle eklenmiş aynı adlı tanımla **çakışma** (kurulmaz); doğrulama
+  hataları; eski sürüme dönüş ve yayımcı anahtarı değişikliği uyarısı. Kurulum konfigürasyonu kaydedip deploy eder;
+  örnek veri deploy'dan sonra eklenir.
+- **Güncelleme**: aynı adlı paketin yeni sürümü önceki sürümün getirdiklerinin yerine geçer (yeni sürümde olmayan
+  görünüm, script… kaldırılır). **Kaldırma** paketin tanımlarını ve script'lerini çıkarır; koleksiyonların tabloları ve
+  verileri veritabanında kalır (şema planı "kullanılmıyor" der). Kurulu paketler `server.json`'da `packages` altında.
+- **İmza**: yayımcı ECDSA P-256 anahtarıyla paketin dosya özetlerini imzalar; imzalı pakette yayımcı adı ve anahtar
+  parmak izi gösterilir, değiştirilmiş paket kurulmaz. İmzasız paket uyarıyla kurulur (yalnızca güvendiğiniz kaynaktan).
+
+```bash
+node droidserver.mjs package key -o yayimci.key                       # bir kez; gizli tutun
+node droidserver.mjs package build magaza/ -o magaza-1.2.0.zip --key yayimci.key
+node droidserver.mjs package plan magaza-1.2.0.zip
+node droidserver.mjs package install magaza-1.2.0.zip
+```
 
 ## Sihirbaz ve yönetim ekranları
 
@@ -1314,6 +1350,28 @@ damgası (en az 2 sn doldurma, en çok 2 saat geçerlilik) ve adres başına sı
   "fields": [{"name": "name", "label": "Adınız"}, {"name": "email", "label": "E-posta"}, {"name": "body", "label": "Mesajınız", "multiline": true}]}]
 ```
 
+### Sayfalar ve panolar
+
+**Sayfalar** (Sunucu → Sayfalar; panelde Sayfalar ve panolar; `pages`) bir koleksiyonu `/pages/<ad>` adresinde liste,
+`/pages/<ad>/<id>` adresinde detay olarak yayınlar. HTML sunucuda üretilir: JavaScript yok, arama motorları okur,
+telefonda ve masaüstünde düzgün görünür (kart veya tablo düzeni, tema rengi, açık/koyu tema).
+
+- Listede seçilen alanlar (boşsa ilk beşi; ilki başlık), sabit süzgeç (`status=yayında`, `@me` ziyaretçi), varsayılan
+  sıralama; ziyaretçi listedeki alanlara göre sıralar, koleksiyonda arama alanı varsa arar (`?q=`), sayfalar (`?page=`).
+- **Kurallar aynen uygulanır**: liste ve görüntüleme kuralı, alan gizliliği (gizli alan hiç görünmez). Kural giriş
+  istiyorsa ya da sayfada **Giriş gereksin** açıksa ziyaretçi `/pages/_login`'de kullanıcı hesabıyla girer (iki adımlı
+  doğrulama dahil). Oturum çerezdedir (yalnızca `/pages` altında, HttpOnly, SameSite=Lax; HTTPS'te Secure), süresi
+  dolan token sessizce yenilenir; `owner` kuralında herkes yalnızca kendi kayıtlarını görür.
+- Görseller sayfanın kendi adresinden (`/pages/<ad>/<id>/files/…`, aynı kural), konum OpenStreetMap bağlantısı, ilişki
+  hedefin ilk metin alanıyla gösterilir. Sayfalar başka kaynak yüklemez ve çerçeveye konamaz.
+
+**Panolar** (Sunucu → Panolar; panelde Sayfalar ve panolar; `dashboards`) görünümlerden beslenen kutulardır:
+**sayı** (özetli görünümün değeri, örn. `sum_tutar`), **grafik** (gruplu özetin çubuk/çizgi grafiği), **tablo**
+(görünümün ilk satırları) ve **harita** (görünümdeki konum alanı). Kutular panelde sürükle-bırakla, uygulamada
+yukarı/aşağı ile sıralanır; genişlik 1-3 sütun. `shareToken` verilirse `/dashboards/<ad>?token=…` salt okunur olarak
+paylaşılır (giriş gerekmez, adresi bilen görür; grafikler SVG, harita karo görselleri, betik yok). Yönetici verisi
+`GET /api/_dashboards/<ad>`.
+
 ### GraphQL
 
 Sihirbaz → Genel → **GraphQL** açıkken `POST /api/graphql` (`{"query", "variables", "operationName"}`) çalışır. Şema
@@ -1362,6 +1420,7 @@ anahtarı telefonda şifreli depoda durur, istemcilere hiç gitmez; ücret o sa�
 | **Claude** (`claude`, varsayılan) | Opus 5.5 (varsayılan), Sonnet 5.5, Haiku 5.5 | Resmi Claude Java SDK'sı. Opus ve Sonnet'te sunucu tarafı geri düşüş açık: güvenlik denetimi bir isteği reddederse Anthropic'in önerdiği modelle otomatik yeniden denenir |
 | **OpenAI** (`openai`) | GPT-6 Astra, GPT-6.1 Sol (varsayılan), GPT-6 Luna | Chat Completions. `url` verilirse OpenAI uyumlu servis: telefondaki/ağdaki Ollama (`http://127.0.0.1:11434/v1`), LM Studio, OpenRouter; yerel serviste anahtar gerekmez |
 | **Google Gemini** (`gemini`) | Gemini 4 Argon, Gemini 3.8 Flash (varsayılan), Gemini 3.5 Flash-Lite | `generateContent`; anahtar `x-goog-api-key` başlığında |
+| **Telefonda** (`local`) | Qwen2.5 0.5B / 1.5B, Gemma 3 1B, Llama 3.2 1B (indirilir) | llama.cpp ile telefonda; anahtar ve ücret yok, veri telefondan çıkmaz (bkz. Telefonda yerel YZ) |
 
 Listede olmayan bir model kimliği de yazılabilir. Özen düzeyi (düşük/orta/yüksek) Claude'da `effort`, OpenAI'de
 `reasoning_effort`, Gemini'de `thinkingLevel` olarak gönderilir; desteklemeyen modellerde gönderilmez. Bir istek
@@ -1394,6 +1453,39 @@ tamamlanır (değişmeyen kayıt yeniden gönderilmez). Yedeğe ve veri taşıma
   "semantic": [ { "collection": "notes", "fields": ["title", "body"] } ]
 }
 ```
+
+#### Telefonda yerel YZ
+
+Sağlayıcı **Telefonda (yerel model)** seçilince model llama.cpp ile telefonun işlemcisinde çalışır: anahtar, hesap ve
+ücret yok; sohbet, kayıtlara soru, otomasyonlarda YZ adımı ve (yerel gömme modeliyle) anlamsal arama için veri
+telefondan çıkmaz. Yapay zekâ → **Yerel modeller** ekranından model indirilir (Hugging Face'ten; boyut, gereken bellek,
+lisans ve boş yer gösterilir; mobil veride ve düşük pilde uyarır; yarım kalan indirme sürer; dosya SHA-256 ile
+doğrulanır):
+
+| Model | Boyut | Not |
+|---|---|---|
+| Qwen2.5 0.5B Instruct | 470 MB | en küçük; eski telefonlar, kısa özet ve sınıflandırma |
+| Gemma 3 1B | 770 MB | Türkçe dahil çok dilli |
+| Llama 3.2 1B Instruct | 770 MB | genel amaçlı |
+| Qwen2.5 1.5B Instruct | 1,1 GB | daha iyi yanıt; 4 GB+ bellek |
+| EmbeddingGemma 300M (gömme) | 320 MB | çok dilli anlamsal arama |
+| BGE-M3 (gömme) | 605 MB | güçlü çok dilli |
+| all-MiniLM-L6-v2 (gömme) | 24 MB | küçük; İngilizce |
+
+Model ilk istekte belleğe yüklenir, 5 dakika kullanılmazsa boşaltılır. Yüklemeden önce boş bellek ve telefonun ısısı
+denetlenir: yetmezse istek `503` döner ve **sağlık uyarısı** gelir ("Yerel YZ çalıştırılamadı"). Yanıtlar bulut
+modellerinden yavaş ve daha basittir; çalışırken pil tüketir. llama.cpp uygulamaya kaynaktan derlenir (yalnızca CPU,
+arm64-v8a ve x86_64; APK'ya ABI başına yaklaşık 6 MB); 32 bit telefonlarda yerel YZ yoktur. F-Droid'in kuralı gereği
+Gemini Nano (AICore) gibi kapalı ve hazır ikili çalışma zamanları kullanılmaz.
+
+```json
+"ai": { "enabled": true, "provider": "local", "model": "qwen2.5-0.5b-instruct-q4_k_m",
+        "embeddings": { "provider": "local", "model": "embeddinggemma-300m-q8_0" } }
+```
+
+**Otomasyonlarda YZ adımı** (her sağlayıcıyla): Otomasyonlar → eylem **YZ ile alan doldur**: istem (`{alan}` kayıttan
+dolar, örn. `Bir cümleyle özetle: {body}`) ve tetikleyen kaydın yazılacak alanı. Seçim alanında yanıt seçeneklerden biri
+olmalıdır (sınıflandırma: "öncelik: düşük / yüksek"), çoklu seçimde uyan seçenekler, metinde uzunluk sınırına kırpılır.
 
 ### Çevrimdışı eşitleme
 
@@ -2288,5 +2380,8 @@ tools/          package-postgres.sh, package-cloudflared.sh (Termux derlemelerin
 - [x] **Yaygınlaştırma:** ilk açılış rehberi ve örnek proje, uygulama içi çevrimdışı yardım, F-Droid meta verisi, tekrarlanabilir derleme, gizlilik politikası
 - [x] **Çevrimdışı eşitleme:** koleksiyon başına; SDK'larda (TS, Kotlin, Dart, Swift) yerel kopya, bekleyen yazma kuyruğu, alan bazında son yazan kazanır veya elle çözme
 - [x] **Kopyalarla ölçek:** kopyaya gelen yazma ana sunucuya iletilir, birden çok kopya ve kopya tablosu, SDK'da okuma adresleri ve kendi yazdığını oku
+- [x] **Telefonda yerel YZ:** llama.cpp kaynaktan, indirilebilir GGUF modelleri (sohbet ve gömme, SHA-256 doğrulamalı), bellek/ısı denetimi ve sağlık uyarısı, otomasyonlarda YZ adımı
+- [x] **Eklenti ve şablon paketleri:** koleksiyon, görünüm, otomasyon, form, sayfa, pano, script ve örnek veri tek dosyada; kurmadan önce plan, güncelleme, kaldırma, ECDSA imzası; dosyadan, adresten, GitHub'dan
+- [x] **Kodsuz sayfalar ve panolar:** koleksiyondan sunucuda üretilen liste/detay sayfaları (kurallar, girişli oturum, arama, sıralama), görünümlerden sayı/grafik/tablo/harita panoları, paylaşılabilir salt okunur adres
 - [x] **Takvim ve kişiler:** çakışma kuralı (kaynak başına), `.ics` aboneliği (gizli adresle), CalDAV ve CardDAV ile telefon takvimi ve rehberiyle iki yönlü eşitleme
 - [x] **Konum:** `geo` alanı, `near` (yakından uzağa) ve `box` filtreleri, panelde ve uygulamada OpenStreetMap haritası, haritadan ve telefondan konum seçme

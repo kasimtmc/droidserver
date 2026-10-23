@@ -7,6 +7,14 @@ import dev.droidserver.core.admin.AdminSessions
 import dev.droidserver.core.admin.adminPanel
 import dev.droidserver.core.apps.AppsHost
 import dev.droidserver.core.apps.GitWebhook
+import dev.droidserver.core.apps.AppException
+import dev.droidserver.core.apps.GitFetcher
+import dev.droidserver.core.config.GitProvider
+import dev.droidserver.core.config.GitSource
+import dev.droidserver.core.packages.PackageFile
+import dev.droidserver.core.packages.Packages
+import io.ktor.server.request.receiveChannel
+import io.ktor.utils.io.jvm.javaio.toInputStream
 import io.ktor.client.HttpClient
 import io.ktor.server.application.ApplicationStopped
 import dev.droidserver.core.alerts.AlertKind
@@ -14,6 +22,10 @@ import dev.droidserver.core.alerts.HealthMonitor
 import dev.droidserver.core.audit.AuditLog
 import dev.droidserver.core.ai.AiChat
 import dev.droidserver.core.ai.AiImage
+import dev.droidserver.core.ai.AiMessage
+import dev.droidserver.core.ai.LocalAi
+import dev.droidserver.core.config.AiProvider
+import dev.droidserver.core.config.EmbeddingProvider
 import dev.droidserver.core.ai.ImageInsight
 import dev.droidserver.core.ai.AiHost
 import dev.droidserver.core.ai.Embedder
@@ -183,6 +195,7 @@ import io.ktor.util.AttributeKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -273,6 +286,8 @@ fun Application.droidServerModule(
     aiChat: AiChat? = null,
     /** Gömme servisi; null ise `ai.embeddings` ayarından (testlerde sahte; o zaman dizin eşzamanlı çalışır). */
     embedder: Embedder? = null,
+    /** Telefonda çalışan modeller (uygulama); yoksa yerel sağlayıcı 503 döner. */
+    localAi: LocalAi? = null,
     /** Devralma: sunucu kimliği, kopyaların adresleri ve "devredildin" bildirimi (ServerEngine kurar). */
     failover: FailoverPort? = null,
     /** MQTT durumu (uygulama ekranı; ServerEngine tutar). */
@@ -468,6 +483,8 @@ fun Application.droidServerModule(
         ApiNames.outWithExpand(record, names.getValue(c.name)) { field -> c.fields.firstOrNull { it.name == field }?.collection?.let(::namesOf) }
     val transfer = DataTransfer(db, config, files, writes)
     val views = ViewService(config, services)
+    val dashboards = DashboardService(config, views)
+    val stagedPackages = StagedPackages()
 
     // Bakım, açılışta ve saatte bir: saklama süresi dolan kayıtlar silinir, çöp kutusunda süresi dolanlar kalıcı silinir.
     // Canlı kopyada çalışmaz (yazmalar kapalı; silmeler ana sunucudan gelir).
@@ -516,10 +533,22 @@ fun Application.droidServerModule(
 
     // YZ: seçilen sağlayıcının istemcisi ve (seçildiyse) anlamsal dizin.
     val ai = config.ai.takeIf { it.enabled }
-    val chat: AiChat? = ai?.let { aiChat ?: AiChat.of(it).also { c -> if (c is java.io.Closeable) monitor.subscribe(ApplicationStopping) { c.close() } } }
+    val chat: AiChat? = ai?.let {
+        aiChat ?: if (it.provider == AiProvider.LOCAL) {
+            localAi?.chat(it.effectiveModel, it) ?: AiChat { _, _ -> throw ApiException(503, tr("Yerel YZ bu cihazda yok")) }
+        } else {
+            AiChat.of(it).also { c -> if (c is java.io.Closeable) monitor.subscribe(ApplicationStopping) { c.close() } }
+        }
+    }
     val semantic: SemanticIndex? = ai?.embeddings?.takeIf { ai.semantic.isNotEmpty() }?.let { e ->
         SemanticIndex(
-            db, ai.semantic, services, embedder ?: HttpEmbedder(e, e.apiKey), "${e.provider.name}/${e.effectiveModel}", writes, log,
+            db, ai.semantic, services,
+            embedder ?: if (e.provider == EmbeddingProvider.LOCAL) {
+                localAi?.embedder(e.effectiveModel) ?: Embedder { _, _ -> throw ApiException(503, tr("Yerel YZ bu cihazda yok")) }
+            } else {
+                HttpEmbedder(e, e.apiKey)
+            },
+            "${e.provider.name}/${e.effectiveModel}", writes, log,
             synchronous = embedder != null,
         )
     }
@@ -589,7 +618,34 @@ fun Application.droidServerModule(
 
     scripts?.db = ScriptDbBridge(services, writes, ::changed)
 
-    /** Kayıt ekleme (REST ve GraphQL): kural, script kancaları ve olaylar. Dönen kayıt istekte görülebilecek haliyle. */
+    /** Kaydın dosyası (görüntüleme kuralıyla, [scope]); `?thumb=` küçük resmi. API ve kodsuz sayfalar kullanır. */
+    suspend fun RoutingCall.sendRecordFile(collection: CollectionConfig, id: Long, name: String, scope: Scope) {
+        val record = io { services.getValue(collection.name).get(id, scope = scope) }
+        val field = collection.fields.firstOrNull { f ->
+            f.type == FieldType.FILE && when (val v = record[f.name]) {
+                is JsonArray -> v.any { (it as? JsonPrimitive)?.content == name }
+                is JsonPrimitive -> v.content == name
+                else -> false
+            }
+        } ?: throw ApiException(404, tr("Dosya bulunamadı"))
+        val file = files?.file(collection.name, id, name)?.takeIf { it.isFile } ?: throw ApiException(404, tr("Dosya bulunamadı"))
+        val mime = MimeTypes.forExtension(name.substringAfterLast('.'))
+        val served = request.queryParameters["thumb"]?.let { size ->
+            if (size !in field.thumbSizes) {
+                throw ApiException(400, tr("Bu boyutta küçük resim yok; izinli: {0}", field.thumbSizes.joinToString()))
+            }
+            io { thumbnail(files!!, resizer, collection.name, id, name, mime, size) }
+        } ?: file
+        val servedMime = if (served == file) mime else MimeTypes.forExtension(served.extension)
+        val disposition = if (MimeTypes.isInline(servedMime)) "inline" else "attachment"
+        response.headers.append(HttpHeaders.ContentDisposition, "$disposition; filename=\"$name\"")
+        // Yüklenen içerik bu sunucunun adresinden betik çalıştıramasın.
+        if (servedMime != "application/pdf") response.headers.append("Content-Security-Policy", "default-src 'none'; sandbox")
+        // Dosya adları değişmez (yeni yükleme yeni ad alır): tarayıcı uzun süre önbellekte tutar, ara sunucular tutmaz.
+        response.headers.append(HttpHeaders.CacheControl, "private, max-age=31536000, immutable")
+        respond(LocalFileContent(served, ContentType.parse(servedMime)))
+    }
+
     // Görsel etiketleme ve OCR: yüklenen görsel kayda bağlandıktan sonra arka planda; sonuç kayda yönetici olarak yazılır.
     val insight = chat?.let(::ImageInsight)
     lateinit var writeInsight: (CollectionConfig, Long, JsonObject) -> Unit
@@ -616,6 +672,7 @@ fun Application.droidServerModule(
         }
     }
 
+    /** Kayıt ekleme (REST ve GraphQL): kural, script kancaları ve olaylar. Dönen kayıt istekte görülebilecek haliyle. */
     fun createRecord(c: CollectionConfig, caller: Caller, body: JsonObject, uploads: List<Upload> = emptyList()): JsonObject {
         val svc = services.getValue(c.name)
         val scope = Access.scope(c, Rules.Op.CREATE, caller)
@@ -746,6 +803,14 @@ fun Application.droidServerModule(
                 push = push?.let { p -> { user, title, body, url -> p.sendToUser(user, p.message(title, body, url, null)) } },
                 webhook = webhooks?.let { w -> { name, event, collection, record -> w.send(name, event, collection, collection?.let { names[it]?.out(record) } ?: record) } },
                 mqtt = mqtt?.let { b -> { topic, payload, retain -> b.publish(topic, payload.toByteArray(), retain) } },
+                ai = chat?.let { c ->
+                    { system, prompt ->
+                        val reply = c.complete(listOf(ai?.system.orEmpty(), system).filter { it.isNotBlank() }.joinToString("\n"), listOf(AiMessage("user", prompt)))
+                        aiHost.usage.record(reply.inputTokens, reply.outputTokens)
+                        if (reply.refused) error(tr("YZ isteği reddetti"))
+                        reply.text
+                    }
+                },
             ),
             ::changedAt, log,
         )
@@ -773,6 +838,10 @@ fun Application.droidServerModule(
         }
         if (config.forms.isNotEmpty()) {
             formPages(config.name, config.forms, config.collections.associateBy { it.name }, services, writes, FormGuard(), ::changed)
+        }
+        if (config.dashboards.isNotEmpty()) dashboardPages(config.name, config.dashboards, dashboards)
+        if (config.pages.isNotEmpty()) {
+            pagePages(config.name, config.pages, byName, services, users, PageHost(::resolve, { c, id, name, scope -> sendRecordFile(c, id, name, scope) }) { origin(it.request).key })
         }
         if (config.webdav.enabled) {
             val dav = config.webdav
@@ -1167,6 +1236,74 @@ fun Application.droidServerModule(
                 call.response.headers.append("X-Config-Hash", ChangeLog.hash(config))
                 call.respond(io { ChangeLog.changes(db, config, after, q["limit"]?.toIntOrNull() ?: 500) })
             }
+            // Paketler: plan (zip gövdesi, {url} veya {git}) → kısa ömürlü anahtarla kurulum; kurma ve kaldırma uygulamadan
+            // (AdminHost) konfigürasyon kaydı ve deploy ile.
+            endpoint(paths, Endpoint.PACKAGES) {
+                requireAdmin(call.caller())
+                call.respond(buildJsonObject {
+                    put("items", JsonArray(config.packages.map { Json.encodeToJsonElement(dev.droidserver.core.packages.InstalledPackage.serializer(), it) }))
+                })
+            }
+            endpoint(paths, Endpoint.PACKAGES_PLAN) {
+                requireAdmin(call.caller())
+                val type = call.request.contentType()
+                val pkg = if (type.match(ContentType.Application.Json)) {
+                    val body = call.receive<JsonObject>()
+                    val source = (body["url"] as? JsonPrimitive)?.content?.let { GitSource(GitProvider.URL, it) }
+                        ?: (body["git"] as? JsonObject)?.let { Json.decodeFromJsonElement(GitSource.serializer(), it) }
+                        ?: throw ApiException(400, tr("Paket için zip gövdesi, {\"url\": …} veya {\"git\": {\"repo\": …}} gönderin"))
+                    io {
+                        val tmp = File(System.getProperty("java.io.tmpdir"))
+                        val fetched = try {
+                            GitFetcher(maxBytes = Packages.MAX_BYTES).download(source, tmp)
+                        } catch (e: AppException) {
+                            throw ApiException(502, tr("Paket indirilemedi: {0}", e.message))
+                        }
+                        try {
+                            readPackage(fetched.file.inputStream())
+                        } finally {
+                            fetched.file.delete()
+                        }
+                    }
+                } else {
+                    val channel = call.receiveChannel()
+                    io { readPackage(channel.toInputStream()) }
+                }
+                val existing = davDirs["scripts"]?.list()?.toSet().orEmpty()
+                val plan = Packages.plan(config, pkg, existing)
+                call.respond(JsonObject(plan.toJson() + ("token" to JsonPrimitive(stagedPackages.put(pkg)))))
+            }
+            endpoint(paths, Endpoint.PACKAGES_INSTALL) {
+                requireAdmin(call.caller())
+                val host = adminHost ?: throw ApiException(501, tr("Paket kurulumu bu ortamda yok"))
+                val token = (call.receive<JsonObject>()["token"] as? JsonPrimitive)?.content
+                val pkg = token?.let(stagedPackages::take) ?: throw ApiException(410, tr("Plan süresi doldu; paketi yeniden yükleyin"))
+                val message = try {
+                    io { host.installPackage(pkg) }
+                } catch (e: IllegalArgumentException) {
+                    throw ApiException(409, e.message ?: tr("Paket kurulamadı"))
+                }
+                call.audit("package.install", pkg.manifest.name, pkg.manifest.version)
+                call.respond(buildJsonObject { put("message", JsonPrimitive(message)) })
+            }
+            endpoint(paths, Endpoint.PACKAGES_REMOVE) {
+                requireAdmin(call.caller())
+                val host = adminHost ?: throw ApiException(501, tr("Paket kurulumu bu ortamda yok"))
+                val name = call.parameters["name"].orEmpty()
+                val message = try {
+                    io { host.removePackage(name) }
+                } catch (e: IllegalArgumentException) {
+                    throw ApiException(404, e.message ?: tr("Paket kurulu değil"))
+                }
+                call.audit("package.remove", name)
+                call.respond(buildJsonObject { put("message", JsonPrimitive(message)) })
+            }
+            // Pano verisi (panel); kutular görünümleri yönetici olarak çalıştırır.
+            endpoint(paths, Endpoint.DASHBOARD) {
+                requireAdmin(call.caller())
+                val d = dashboards.find(call.parameters["name"].orEmpty())
+                call.respond(io { dashboards.data(d) })
+            }
             // Ana sunucudaki kopya tablosu: adres, son temas, geride kalan değişiklik, konfigürasyon sürümü.
             endpoint(paths, Endpoint.REPLICATION_REPLICAS) {
                 requireAdmin(call.caller())
@@ -1447,32 +1584,7 @@ fun Application.droidServerModule(
             endpoint(paths, Endpoint.FILES) {
                 val collection = byName[call.parameters["collection"]] ?: throw ApiException(404, tr("Koleksiyon bulunamadı"))
                 val scope = Access.scope(collection, Rules.Op.VIEW, call.caller())
-                val id = call.idParam()
-                val name = call.parameters["name"].orEmpty()
-                val record = io { services.getValue(collection.name).get(id, scope = scope) }
-                val field = collection.fields.firstOrNull { f ->
-                    f.type == FieldType.FILE && when (val v = record[f.name]) {
-                        is JsonArray -> v.any { (it as? JsonPrimitive)?.content == name }
-                        is JsonPrimitive -> v.content == name
-                        else -> false
-                    }
-                } ?: throw ApiException(404, tr("Dosya bulunamadı"))
-                val file = files?.file(collection.name, id, name)?.takeIf { it.isFile } ?: throw ApiException(404, tr("Dosya bulunamadı"))
-                val mime = MimeTypes.forExtension(name.substringAfterLast('.'))
-                val served = call.request.queryParameters["thumb"]?.let { size ->
-                    if (size !in field.thumbSizes) {
-                        throw ApiException(400, tr("Bu boyutta küçük resim yok; izinli: {0}", field.thumbSizes.joinToString()))
-                    }
-                    io { thumbnail(files!!, resizer, collection.name, id, name, mime, size) }
-                } ?: file
-                val servedMime = if (served == file) mime else MimeTypes.forExtension(served.extension)
-                val disposition = if (MimeTypes.isInline(servedMime)) "inline" else "attachment"
-                call.response.headers.append(HttpHeaders.ContentDisposition, "$disposition; filename=\"$name\"")
-                // Yüklenen içerik bu sunucunun adresinden betik çalıştıramasın.
-                if (servedMime != "application/pdf") call.response.headers.append("Content-Security-Policy", "default-src 'none'; sandbox")
-                // Dosya adları değişmez (yeni yükleme yeni ad alır): tarayıcı uzun süre önbellekte tutar, ara sunucular tutmaz.
-                call.response.headers.append(HttpHeaders.CacheControl, "private, max-age=31536000, immutable")
-                call.respond(LocalFileContent(served, ContentType.parse(servedMime)))
+                call.sendRecordFile(collection, call.idParam(), call.parameters["name"].orEmpty(), scope)
             }
 
             if (config.api.graphql) {
@@ -2508,4 +2620,31 @@ private fun cascadeReachesFiles(collection: String, all: Collection<CollectionCo
         }
     }
     return false
+}
+
+/** Paket zip'i; biçim hatası 400. */
+private fun readPackage(input: java.io.InputStream): PackageFile = try {
+    input.use { Packages.read(it) }
+} catch (e: IllegalArgumentException) {
+    throw ApiException(400, e.message ?: tr("Paket okunamadı"))
+}
+
+/** Planı yapılmış paketler, kurulum için 10 dakika (anahtarla). */
+private class StagedPackages {
+    private val items = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, PackageFile>>()
+    private val random = java.security.SecureRandom()
+
+    fun put(pkg: PackageFile): String {
+        val now = System.currentTimeMillis()
+        items.entries.removeIf { now - it.value.first > TTL }
+        val token = ByteArray(16).also(random::nextBytes).joinToString("") { "%02x".format(it) }
+        items[token] = now to pkg
+        return token
+    }
+
+    fun take(token: String): PackageFile? = items.remove(token)?.takeIf { System.currentTimeMillis() - it.first <= TTL }?.second
+
+    companion object {
+        const val TTL = 600_000L
+    }
 }

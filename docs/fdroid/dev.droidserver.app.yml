@@ -21,6 +21,9 @@ Builds:
     versionCode: 90099
     commit: v0.9.0
     subdir: app
+    # Yerel YZ: llama.cpp alt modülü NDK ile kaynaktan derlenir (hazır ikili yok).
+    submodules: true
+    ndk: 29.0.14206865
     gradle:
       - yes
     gradleprops:

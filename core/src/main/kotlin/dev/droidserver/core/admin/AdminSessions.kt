@@ -114,4 +114,10 @@ interface AdminHost {
 
     /** Kopyayı yazılabilir ana sunucu yapar ve deploy'u başlatır (uygulamadaki "Devral" ile aynı yol). */
     fun takeover()
+
+    /** Paketi kurar (dosyaları, konfigürasyon, deploy); plan engelliyse [IllegalArgumentException]. Sonuç iletisi. */
+    fun installPackage(pkg: dev.droidserver.core.packages.PackageFile): String = throw UnsupportedOperationException()
+
+    /** Paketi kaldırır (tanımları ve script'leri; veriler kalır) ve deploy eder. */
+    fun removePackage(name: String): String = throw UnsupportedOperationException()
 }

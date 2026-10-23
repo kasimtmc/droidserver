@@ -89,6 +89,15 @@ data class ServerConfig(
     /** Herkese açık formlar (`/forms/<ad>`); boşken dosyaya yazılmaz. */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val forms: List<FormConfig> = emptyList(),
+    /** Kodsuz liste ve detay sayfaları (`/pages/<ad>`). */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val pages: List<PageConfig> = emptyList(),
+    /** Panolar: görünümlerden beslenen kutular. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val dashboards: List<DashboardConfig> = emptyList(),
+    /** Kurulu paketler ve getirdikleri (bkz. Packages); elle düzenlenmez. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val packages: List<dev.droidserver.core.packages.InstalledPackage> = emptyList(),
     /** Yapay zekâ: Claude vekil ucu, kayıtlar üzerinde soru-cevap ve anlamsal arama; kapalıyken dosyaya yazılmaz. */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val ai: AiConfig = AiConfig(),
