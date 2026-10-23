@@ -3,6 +3,7 @@ package dev.droidserver.core.api
 import dev.droidserver.core.config.CollectionConfig
 import dev.droidserver.core.config.FieldType
 import dev.droidserver.core.config.FieldVisibility
+import dev.droidserver.core.config.GeoPoint
 import dev.droidserver.core.config.SystemCollections
 import dev.droidserver.core.i18n.tr
 import kotlinx.serialization.json.JsonArray
@@ -72,6 +73,14 @@ object RuleConditions {
             FilterParser.Op.LT -> v != null && compare(v, c.values.single()) < 0
             FilterParser.Op.LTE -> v != null && compare(v, c.values.single()) <= 0
             FilterParser.Op.LIKE -> false
+            FilterParser.Op.NEAR -> (v as? GeoPoint)?.let { p ->
+                val (lat0, lng0, km) = c.values.map { it as Double }
+                GeoPoint.approxKm(p.lat, p.lng, lat0, lng0) <= km
+            } == true
+            FilterParser.Op.BOX -> (v as? GeoPoint)?.let { p ->
+                val (s, w, n, e) = c.values.map { it as Double }
+                p.lat in s..n && p.lng in w..e
+            } == true
         }
     }
 
@@ -118,6 +127,7 @@ object RuleConditions {
 
     private fun value(type: FieldType, e: JsonElement?): Any? {
         if (e == null || e is JsonNull) return null
+        if (type == FieldType.GEO) return runCatching { GeoPoint.of(e) }.getOrNull()
         if (e is JsonArray) return e.takeIf { it.isNotEmpty() } // çoklu dosya alanı: yalnızca null işleci
         val p = e as? JsonPrimitive ?: return null
         return when (type) {

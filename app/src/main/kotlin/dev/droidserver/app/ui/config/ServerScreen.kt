@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.ImportExport
 import androidx.compose.material.icons.filled.Javascript
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Policy
@@ -71,6 +72,7 @@ import dev.droidserver.app.ui.common.SectionHeader
 import dev.droidserver.app.ui.common.SoftCard
 import dev.droidserver.app.ui.common.SummaryTable
 import dev.droidserver.app.ui.wizard.WizardViewModel
+import dev.droidserver.core.config.FieldType
 import dev.droidserver.core.config.AccessMode
 import dev.droidserver.core.config.AuthMode
 import dev.droidserver.core.config.ConfigSummary
@@ -126,6 +128,7 @@ fun ServerScreen(
         if (cfg != null) add(Tool(data, Icons.Default.FolderShared, tr("Ağ sürücüsü"), if (cfg.webdav.enabled) tr("Açık · bilgisayarda klasör olarak bağla (WebDAV)") else tr("Telefondaki klasörleri bilgisayarda sürücü gibi aç (WebDAV)"), { onOpen(Routes.DRIVE) }))
         if (cfg != null) add(Tool(data, Icons.Default.Sensors, tr("MQTT (IoT)"), if (cfg.mqtt.enabled) tr("Açık · port {0}", cfg.mqtt.port) else tr("Sensörler ve ESP32: mesajları kayda yaz, komut gönder"), { onOpen(Routes.MQTT) }))
         if (cfg != null) add(Tool(data, Icons.Default.ShowChart, tr("Sensör panosu"), if (cfg.sensors.isEmpty()) tr("Sayısal alanların grafiği, eşik uyarısı, Home Assistant") else tr("{0} sensör", cfg.sensors.size), { onOpen(Routes.SENSORS) }))
+        if (cfg?.collections?.any { c -> c.fields.any { it.type == FieldType.GEO } } == true) add(Tool(data, Icons.Default.Map, tr("Harita"), tr("Konumlu kayıtlar haritada"), { onOpen(Routes.MAP) }))
         if (cfg != null) add(Tool(data, Icons.Default.Api, tr("API gezgini"), tr("Uçları dene, örnek kodlar"), onApi))
         add(Tool(dev, Icons.Default.Terminal, tr("Komut satırı (CLI)"), tr("Bilgisayardan kayıtlar, loglar, deploy, yedek"), { onOpen(Routes.CLI) }))
         add(Tool(dev, Icons.Default.RocketLaunch, tr("Uygulamalar ({0})", cfg?.apps?.size ?: 0), tr("Kendi Node.js, Python, Java sunucunuz"), { onOpen(Routes.APPS) }))

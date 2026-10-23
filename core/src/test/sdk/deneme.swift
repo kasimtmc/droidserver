@@ -63,8 +63,11 @@ struct Deneme {
         }
         try await Task.sleep(nanoseconds: 500_000_000)
 
-        let t = try await ds.todoItems.create(TodoItemsInput(title: "Süt", qty: 2, price: 1.5, status: "açık", tags: ["ev"], meta: .object(["a": .number(1)]), in: "x"))
+        let t = try await ds.todoItems.create(TodoItemsInput(title: "Süt", qty: 2, price: 1.5, status: "açık", tags: ["ev"], meta: .object(["a": .number(1)]), in: "x", place: GeoPoint(lat: 41.0054, lng: 28.9768)))
         try check(t.total == 3.0, "hesaplanan alan")
+        try check(t.place == GeoPoint(lat: 41.0054, lng: 28.9768), "konum")
+        let near = try await ds.todoItems.list(ListOptions(filter: ["place[near]": "41.0,29.0,5"]))
+        try check(near.items.map { $0.title ?? "" } == ["Süt"], "yakın")
         try check(t.owner == myId, "sahip alanı")
         try check(t.olusturulma != nil, "uzman modu adı")
         try check(t.in == "x" && t.tags == ["ev"] && t.meta?["a"]?.number == 1, "alanlar")

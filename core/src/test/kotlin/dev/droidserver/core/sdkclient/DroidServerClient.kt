@@ -1,4 +1,4 @@
-// DroidServer istemcisi: "SDK deneme" sunucusu için üretildi (konfigürasyon v18).
+// DroidServer istemcisi: "SDK deneme" sunucusu için üretildi (konfigürasyon v19).
 // Konfigürasyon değişince yeniden indirin: GET <API>/_sdk/{ts|kotlin|dart|swift} (yönetici) veya uygulama/panel.
 // Gerekenler: kotlinx-serialization-json (ve Kotlin serialization eklentisi). JVM ve Android'de çalışır.
 @file:Suppress("unused", "MemberVisibilityCanBePrivate", "PropertyName")
@@ -46,6 +46,7 @@ data class TodoItems(
     val meta: JsonElement? = null,
     val `in`: String? = null,
     val due: String? = null,
+    val place: GeoPoint? = null,
     val photo: String? = null,
     val total: Double? = null,
     val owner: Long? = null,
@@ -66,6 +67,7 @@ data class TodoItemsInput(
     val meta: JsonElement? = null,
     val `in`: String? = null,
     val due: String? = null,
+    val place: GeoPoint? = null,
     val owner: Long? = null,
 )
 
@@ -109,6 +111,10 @@ class DroidServerClient(
 data class Page<T>(val items: List<T>, val page: Int, val perPage: Int, val totalItems: Long, val totalPages: Long)
 
 class DroidServerException(val status: Int, message: String, val details: Map<String, String> = emptyMap()) : IOException(message)
+
+/** Konum alanı; filtre: `"konum[near]" to "41.01,28.97,5"` (km, yakından uzağa) veya `"konum[box]" to "güney,batı,kuzey,doğu"`. */
+@Serializable
+data class GeoPoint(val lat: Double, val lng: Double, val accuracy: Double? = null)
 
 /** Giriş sonucu: [tokens] ya da iki adımlı doğrulama açıksa [challenge] (`Auth.verify2fa` ile tamamlayın). */
 data class LoginResult(val tokens: JsonObject?, val challenge: String?)

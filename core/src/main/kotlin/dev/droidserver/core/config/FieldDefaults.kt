@@ -25,6 +25,7 @@ object FieldDefaults {
             FieldType.BOOLEAN -> if (prim != null && !prim.isString && prim.booleanOrNull != null) null else tr("true/false bekleniyor")
             FieldType.DATETIME -> if (prim?.isString == true && parseInstant(prim.content) != null) null else DATETIME_HINT
             FieldType.JSON -> null
+            FieldType.GEO -> runCatching { GeoPoint.of(value) }.exceptionOrNull()?.message
             FieldType.RELATION -> tr("ilişki alanına varsayılan verilemez")
             FieldType.FILE -> tr("dosya alanına varsayılan verilemez")
             FieldType.SELECT -> if (prim?.isString == true) null else tr("seçeneklerden biri (metin) bekleniyor")
@@ -47,6 +48,8 @@ object FieldDefaults {
             FieldType.BOOLEAN -> JsonPrimitive(s.toBooleanStrictOrNull() ?: throw IllegalArgumentException(tr("true/false bekleniyor")))
             FieldType.DATETIME -> JsonPrimitive(parseInstant(s)?.toString() ?: throw IllegalArgumentException(DATETIME_HINT))
             FieldType.JSON -> StrictJson.parse(s) ?: throw IllegalArgumentException(tr("geçerli JSON bekleniyor"))
+            FieldType.GEO -> (StrictJson.parse(s)?.takeIf { it is kotlinx.serialization.json.JsonObject }?.let(GeoPoint::of) ?: GeoPoint.parse(s))?.json()
+                ?: throw IllegalArgumentException(tr("konum bekleniyor: enlem,boylam (örn. 41.01,28.97)"))
             FieldType.RELATION -> throw IllegalArgumentException(tr("ilişki alanına varsayılan verilemez"))
             FieldType.FILE -> throw IllegalArgumentException(tr("dosya alanına varsayılan verilemez"))
             FieldType.SELECT -> JsonPrimitive(s)

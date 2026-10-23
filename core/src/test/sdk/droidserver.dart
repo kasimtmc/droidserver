@@ -1,4 +1,4 @@
-// DroidServer istemcisi: "SDK deneme" sunucusu için üretildi (konfigürasyon v18).
+// DroidServer istemcisi: "SDK deneme" sunucusu için üretildi (konfigürasyon v19).
 // Konfigürasyon değişince yeniden indirin: GET <API>/_sdk/{ts|kotlin|dart|swift} (yönetici) veya uygulama/panel.
 // Gerekenler: yalnızca Dart 3 SDK'sı (`dart:io`). Dart VM ve Flutter Android/iOS/masaüstünde çalışır; Flutter web'de çalışmaz.
 //
@@ -25,6 +25,7 @@ class TodoItems {
   final Object? meta;
   final String? in_;
   final String? due;
+  final GeoPoint? place;
   final String? photo;
   final double? total;
   final int? owner;
@@ -32,7 +33,7 @@ class TodoItems {
   final String? updated_at;
   final Map<String, dynamic>? expand;
 
-  const TodoItems({required this.id, this.title, this.done, this.qty, this.price, this.status, this.tags, this.meta, this.in_, this.due, this.photo, this.total, this.owner, this.olusturulma, this.updated_at, this.expand});
+  const TodoItems({required this.id, this.title, this.done, this.qty, this.price, this.status, this.tags, this.meta, this.in_, this.due, this.place, this.photo, this.total, this.owner, this.olusturulma, this.updated_at, this.expand});
 
   factory TodoItems.fromJson(Map<String, dynamic> j) => TodoItems(
         id: (j['id'] as num).toInt(),
@@ -45,6 +46,7 @@ class TodoItems {
         meta: j['meta'],
         in_: j['in'] as String?,
         due: j['due'] as String?,
+        place: j['place'] == null ? null : GeoPoint.fromJson(j['place'] as Map<String, dynamic>),
         photo: j['photo'] as String?,
         total: (j['total'] as num?)?.toDouble(),
         owner: (j['owner'] as num?)?.toInt(),
@@ -65,9 +67,10 @@ class TodoItemsInput {
   final Object? meta;
   final String? in_;
   final String? due;
+  final GeoPoint? place;
   final int? owner;
 
-  const TodoItemsInput({this.title, this.done, this.qty, this.price, this.status, this.tags, this.meta, this.in_, this.due, this.owner});
+  const TodoItemsInput({this.title, this.done, this.qty, this.price, this.status, this.tags, this.meta, this.in_, this.due, this.place, this.owner});
 
   Map<String, dynamic> toJson() => {
         if (title != null) 'title': title,
@@ -79,6 +82,7 @@ class TodoItemsInput {
         if (meta != null) 'meta': meta,
         if (in_ != null) 'in': in_,
         if (due != null) 'due': due,
+        if (place != null) 'place': place?.toJson(),
         if (owner != null) 'owner': owner,
       };
 }
@@ -121,6 +125,23 @@ class Page<T> {
   final int totalPages;
 
   const Page(this.items, this.page, this.perPage, this.totalItems, this.totalPages);
+}
+
+/// Konum alanı; filtre: `{'konum[near]': '41.01,28.97,5'}` (km, yakından uzağa) veya `{'konum[box]': 'güney,batı,kuzey,doğu'}`.
+class GeoPoint {
+  final double lat;
+  final double lng;
+  final double? accuracy;
+
+  const GeoPoint(this.lat, this.lng, {this.accuracy});
+
+  factory GeoPoint.fromJson(Map<String, dynamic> j) =>
+      GeoPoint((j['lat'] as num).toDouble(), (j['lng'] as num).toDouble(), accuracy: (j['accuracy'] as num?)?.toDouble());
+
+  Map<String, dynamic> toJson() => {'lat': lat, 'lng': lng, if (accuracy != null) 'accuracy': accuracy};
+
+  @override
+  String toString() => '$lat,$lng';
 }
 
 /// Sunucunun hata yanıtı (`status`, `message`, alan başına `details`).

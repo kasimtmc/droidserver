@@ -4,6 +4,8 @@ import com.anthropic.client.AnthropicClient
 import com.anthropic.client.okhttp.AnthropicOkHttpClient
 import com.anthropic.core.JsonValue
 import com.anthropic.errors.AnthropicServiceException
+import com.anthropic.models.beta.messages.BetaBase64ImageSource
+import com.anthropic.models.beta.messages.BetaContentBlockParam
 import com.anthropic.models.beta.messages.BetaOutputConfig
 import com.anthropic.models.beta.messages.MessageCreateParams
 import dev.droidserver.core.api.ApiException
@@ -14,8 +16,13 @@ import dev.droidserver.core.config.AiProvider
 import dev.droidserver.core.i18n.tr
 import java.io.Closeable
 
-/** Sohbetteki bir ileti; [role] `user` veya `assistant`. */
-data class AiMessage(val role: String, val content: String)
+/** Sohbetteki bir ileti; [role] `user` veya `assistant`. [images] yalnızca kullanıcı iletisinde (görsel destekleyen modeller). */
+data class AiMessage(val role: String, val content: String, val images: List<AiImage> = emptyList())
+
+/** İletiye eklenen görsel (JPEG, PNG, WebP veya GIF). */
+class AiImage(val mime: String, val bytes: ByteArray) {
+    val base64: String get() = java.util.Base64.getEncoder().encodeToString(bytes)
+}
 
 data class AiReply(
     val text: String,
@@ -61,7 +68,15 @@ class ClaudeChat(
             .maxTokens(config.maxTokens.toLong())
             .outputConfig(BetaOutputConfig.builder().effort(effort(config.effort)).build())
         if (system.isNotBlank()) params.system(system)
-        for (m in messages) if (m.role == "assistant") params.addAssistantMessage(m.content) else params.addUserMessage(m.content)
+        for (m in messages) when {
+            m.role == "assistant" -> params.addAssistantMessage(m.content)
+            m.images.isEmpty() -> params.addUserMessage(m.content)
+            else -> params.addUserMessageOfBetaContentBlockParams(
+                m.images.map { img ->
+                    BetaContentBlockParam.ofImage(BetaBase64ImageSource.builder().data(img.base64).mediaType(BetaBase64ImageSource.MediaType.of(img.mime)).build())
+                } + BetaContentBlockParam.ofText(m.content),
+            )
+        }
         if (AiModel.of(config.effectiveModel)?.fallbacks == true) {
             params.addBeta(FALLBACK_BETA)
             params.putAdditionalBodyProperty("fallbacks", JsonValue.from("default"))

@@ -105,6 +105,7 @@ internal val FieldType.label: String
         FieldType.FILE -> tr("Dosya (görsel, PDF, ses…)")
         FieldType.SELECT -> tr("Seçim (listeden bir değer)")
         FieldType.MULTISELECT -> tr("Çoklu seçim (etiketler)")
+        FieldType.GEO -> tr("Konum (enlem, boylam)")
     }
 
 @Composable
@@ -234,6 +235,7 @@ internal fun CollectionEditor(vm: WizardViewModel, index: Int, draft: ServerConf
             ErrorText(vm.errorAt("$path.fullText"))
         }
         ArchiveSection(vm, index, c)
+        CalendarSection(vm, index, c)
         val expert by vm.expert.collectAsState()
         if (expert) {
             ExpertHeader(tr("Sistem alanları"), tr("Her kayda otomatik eklenen alanlar. Yeni ad verebilir veya API'den kaldırabilirsiniz."))
@@ -481,14 +483,14 @@ private fun FieldCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = field.required, onCheckedChange = { v -> vm.updateField(ci, fi) { it.copy(required = v) } })
                 Text(tr("Zorunlu"))
-                if (field.type != FieldType.FILE && !field.encrypted) {
+                if (field.type != FieldType.FILE && field.type != FieldType.GEO && !field.encrypted) {
                     Spacer(Modifier.width(12.dp))
                     Checkbox(checked = field.unique, onCheckedChange = { v -> vm.updateField(ci, fi) { it.copy(unique = v) } })
                     Text(tr("Benzersiz"))
                 }
             }
             val c = draft.collections[ci]
-            val indexable = !field.unique && !field.encrypted && field.type !in setOf(FieldType.FILE, FieldType.JSON, FieldType.RELATION)
+            val indexable = !field.unique && !field.encrypted && field.type !in setOf(FieldType.FILE, FieldType.JSON, FieldType.RELATION, FieldType.GEO)
             val searchable = field.type == FieldType.TEXT && !field.encrypted
             if (indexable || searchable) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -686,6 +688,7 @@ private fun FileEditor(vm: WizardViewModel, ci: Int, fi: Int, field: FieldConfig
         supportingText = { Text(tr("Örn. 300x300, 800x0 (0: oranı koru). {0} her zaman var; ?thumb={1}", FileLimits.DEFAULT_THUMB, FileLimits.DEFAULT_THUMB)) },
     )
     field.thumbs?.indices?.forEach { i -> ErrorText(vm.errorAt("$path.thumbs[$i]")) }
+    MediaOptions(vm, ci, fi, field, draft)
     val c = draft.collections.getOrNull(ci)
     Text(
         tr("Yükleme: POST/PATCH multipart/form-data, bu alan adıyla dosya parçası. İndirme: {0}/files/" +

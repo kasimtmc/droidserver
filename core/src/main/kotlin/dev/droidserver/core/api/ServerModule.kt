@@ -13,6 +13,8 @@ import dev.droidserver.core.alerts.AlertKind
 import dev.droidserver.core.alerts.HealthMonitor
 import dev.droidserver.core.audit.AuditLog
 import dev.droidserver.core.ai.AiChat
+import dev.droidserver.core.ai.AiImage
+import dev.droidserver.core.ai.ImageInsight
 import dev.droidserver.core.ai.AiHost
 import dev.droidserver.core.ai.Embedder
 import dev.droidserver.core.ai.HttpEmbedder
@@ -22,6 +24,9 @@ import dev.droidserver.core.auth.TeamService
 import dev.droidserver.core.sync.SyncLog
 import dev.droidserver.core.sync.SyncService
 import dev.droidserver.core.sync.SyncWriter
+import dev.droidserver.core.calendar.CalendarMapping
+import dev.droidserver.core.calendar.CalendarStore
+import dev.droidserver.core.webdav.CalDav
 import dev.droidserver.core.webdav.DavRoot
 import dev.droidserver.core.webdav.WebDav
 import dev.droidserver.core.automation.AutomationEngine
@@ -111,6 +116,7 @@ import io.ktor.http.content.PartData
 import io.ktor.http.content.forEachPart
 import io.ktor.http.defaultForFile
 import io.ktor.server.http.content.LocalFileContent
+import io.ktor.server.plugins.partialcontent.PartialContent
 import io.ktor.server.request.contentType
 import io.ktor.server.request.path
 import io.ktor.server.request.receiveMultipart
@@ -185,6 +191,7 @@ import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.intOrNull
 import java.net.URLEncoder
 import java.security.MessageDigest
+import java.time.ZoneId
 import java.time.Duration
 import java.time.Instant
 import java.util.Base64
@@ -280,6 +287,8 @@ fun Application.droidServerModule(
     install(RequestGuard) {
         limits = config.server.limits
         basePath = config.server.basePath
+        // `/files/{collection}/…` → `/api/files/`: dosya adları değişmediği için önbelleğe alınabilir.
+        filesPrefix = ApiPaths(config).path(Endpoint.FILES)?.substringBefore("{")?.takeIf { it.length > 1 }?.let { ApiPaths(config).full(it) }
         firewall = config.firewall
         guard = clientGuard
         onBan = { ip, minutes -> audit?.record("sistem", "firewall.ban", ip, tr("{0} dk; art arda hatalı kimlik denemesi", minutes)) }
@@ -328,6 +337,8 @@ fun Application.droidServerModule(
             listOf(EntityTagVersion(Base64.getUrlEncoder().withoutPadding().encodeToString(digest).take(27), weak = true))
         }
     }
+    // Dosyalarda Range istekleri (video/ses ileri sarma, yarıda kalan indirmeyi sürdürme): 206 ve Content-Range.
+    install(PartialContent) { maxRangeCount = 10 }
     // Metin yanıtları (JSON, HTML, JS, CSS) 1 KB üstündeyse gzip/deflate; canlı abonelik (SSE) ve ikili dosyalar sıkıştırılmaz.
     install(Compression) {
         gzip {
@@ -579,6 +590,32 @@ fun Application.droidServerModule(
     scripts?.db = ScriptDbBridge(services, writes, ::changed)
 
     /** Kayıt ekleme (REST ve GraphQL): kural, script kancaları ve olaylar. Dönen kayıt istekte görülebilecek haliyle. */
+    // Görsel etiketleme ve OCR: yüklenen görsel kayda bağlandıktan sonra arka planda; sonuç kayda yönetici olarak yazılır.
+    val insight = chat?.let(::ImageInsight)
+    lateinit var writeInsight: (CollectionConfig, Long, JsonObject) -> Unit
+    fun analyzeImages(c: CollectionConfig, id: Long, uploads: List<Upload>) {
+        val jobs = uploads.mapNotNull { u -> c.fields.firstOrNull { it.name == u.field }?.takeIf { it.ai != null && MimeTypes.isResizable(u.kind.mime) }?.let { it to u } }
+        if (insight == null || files == null || jobs.isEmpty()) return
+        launch(Dispatchers.IO) {
+            for ((f, u) in jobs) runCatching {
+                val a = f.ai!!
+                val original = files.file(c.name, id, u.storedName)?.takeIf { it.isFile } ?: return@runCatching
+                // Büyük görsel küçültülerek gönderilir (sağlayıcı sınırı ve ücret).
+                val image = if (original.length() <= MAX_AI_IMAGE) original else thumbnail(files, resizer, c.name, id, u.storedName, u.kind.mime, "1600x0")
+                    ?: throw IllegalStateException(tr("görsel çok büyük ({0} MB)", original.length() / 1_048_576))
+                val mime = if (image == original) u.kind.mime else MimeTypes.forExtension(image.extension)
+                val tagsField = a.tags?.let { t -> c.fields.first { it.name == t } }
+                val textField = a.text?.let { t -> c.fields.first { it.name == t } }
+                val result = insight.analyze(AiImage(mime, image.readBytes()), tagsField?.options?.takeIf { tagsField.type == FieldType.MULTISELECT }, tagsField != null, textField != null)
+                val body = JsonObject(buildMap {
+                    tagsField?.let { put(it.name, ImageInsight.tagsValue(it, result.tags)) }
+                    textField?.let { put(it.name, ImageInsight.textValue(it, result.text)) }
+                })
+                writeInsight(c, id, body)
+            }.onFailure { log("Görsel incelenemedi (${c.name} #$id, ${f.name}): ${it.message}") }
+        }
+    }
+
     fun createRecord(c: CollectionConfig, caller: Caller, body: JsonObject, uploads: List<Upload> = emptyList()): JsonObject {
         val svc = services.getValue(c.name)
         val scope = Access.scope(c, Rules.Op.CREATE, caller)
@@ -586,6 +623,7 @@ fun Application.droidServerModule(
         val created = writes.write { svc.create(data, scope, uploads) }
             .also { changed(c.name, RecordEvent.Action.CREATE, it) }
             .also { scripts?.after(HookEvent.AFTER_CREATE, c.name, it, caller) }
+        analyzeImages(c, (created.getValue("id") as JsonPrimitive).longOrNull ?: 0, uploads)
         return svc.present(created, scope)
     }
 
@@ -611,8 +649,10 @@ fun Application.droidServerModule(
         val updated = writes.write { svc.update(id, data, scope, uploads) }
             .also { changed(c.name, RecordEvent.Action.UPDATE, it) }
             .also { scripts?.after(HookEvent.AFTER_UPDATE, c.name, it, caller) }
+        analyzeImages(c, id, uploads)
         return svc.present(updated, scope)
     }
+    writeInsight = { c, id, body -> updateRecord(c, Caller.Admin, id, body) }
 
     fun deleteRecord(c: CollectionConfig, caller: Caller, id: Long) {
         val svc = services.getValue(c.name)
@@ -625,6 +665,9 @@ fun Application.droidServerModule(
         if (current != null) changed(c.name, RecordEvent.Action.DELETE, current)
         if (hooked != null && current != null) hooked.after(HookEvent.AFTER_DELETE, c.name, current, caller)
     }
+
+    // Takvim ve kişiler: istemcilerin kaynak adları ve UID'leri (CalDAV/CardDAV, .ics).
+    val calendarStore = if (config.collections.any { it.calendar != null || it.contacts != null }) CalendarStore(db).also { it.install() } else null
 
     // Çevrimdışı eşitleme: ana sunucuda tetikleyicilerle iz (kopyada kurulmaz; istemciler ana sunucuyla eşitlenir).
     // Süresi dolan silme izleri saatte bir silinir.
@@ -739,7 +782,18 @@ fun Application.droidServerModule(
                 davDirs["scripts"]?.takeIf { dav.scripts }?.let { DavRoot("scripts", it, readOnly = false) },
                 files?.root?.takeIf { dav.uploads }?.let { DavRoot("uploads", it, readOnly = true, hideDotFiles = true) },
             )
-            WebDav(dav, roots).install(this)
+            val caldav = calendarStore?.let { store ->
+                CalDav(dav.path.trimEnd('/'), config.collections, services, store, object : CalDav.Writer {
+                    override fun create(c: CollectionConfig, body: JsonObject) = createRecord(c, Caller.Admin, body)
+                    override fun update(c: CollectionConfig, id: Long, body: JsonObject) = updateRecord(c, Caller.Admin, id, body)
+                    override fun delete(c: CollectionConfig, id: Long) = deleteRecord(c, Caller.Admin, id)
+                })
+            }?.takeIf { it.enabled }
+            WebDav(dav, roots, caldav = caldav).install(this)
+            // Takvim ve kişi uygulamaları sunucuyu adresinden bulur (RFC 6764).
+            if (caldav != null) listOf("/.well-known/caldav", "/.well-known/carddav").forEach { p ->
+                route(p) { handle { call.respondRedirect(dav.path.trimEnd('/') + "/", permanent = true) } }
+            }
         }
         if (config.static.enabled && www != null) staticSite(config, StaticSite(www))
         if (users != null && mailer != null) authPages(config.name, users, config.auth.users.minPasswordLength, writes, unsubscribe = broadcaster != null)
@@ -1416,6 +1470,8 @@ fun Application.droidServerModule(
                 call.response.headers.append(HttpHeaders.ContentDisposition, "$disposition; filename=\"$name\"")
                 // Yüklenen içerik bu sunucunun adresinden betik çalıştıramasın.
                 if (servedMime != "application/pdf") call.response.headers.append("Content-Security-Policy", "default-src 'none'; sandbox")
+                // Dosya adları değişmez (yeni yükleme yeni ad alır): tarayıcı uzun süre önbellekte tutar, ara sunucular tutmaz.
+                call.response.headers.append(HttpHeaders.CacheControl, "private, max-age=31536000, immutable")
                 call.respond(LocalFileContent(served, ContentType.parse(servedMime)))
             }
 
@@ -1583,6 +1639,27 @@ fun Application.droidServerModule(
                         val caller = call.caller()
                         val body = call.receive<JsonObject>()
                         call.respond(io { syncService.push(collection, caller, body) })
+                    }
+                }
+                collection.calendar?.takeIf { it.feed }?.let { cal ->
+                    // Takvim aboneliği: liste kuralıyla ya da gizli anahtarla (?token=; takvim uygulamaları başlık gönderemez).
+                    endpoint(paths, collection, CollectionEndpoint.CALENDAR) {
+                        val token = call.request.queryParameters["token"]
+                        val scope = when {
+                            token == null -> Access.scope(collection, Rules.Op.LIST, call.caller())
+                            cal.feedToken != null && MessageDigest.isEqual(token.toByteArray(), cal.feedToken.toByteArray()) -> Scope.ADMIN
+                            else -> throw ApiException(403, tr("Takvim aboneliğinin anahtarı geçersiz"))
+                        }
+                        val text = io {
+                            val uids = calendarStore?.entries(collection.name).orEmpty()
+                            val zone = ZoneId.systemDefault()
+                            CalendarMapping.calendar(collection.name, CalendarStore.records(svc, scope).mapNotNull { r ->
+                                val id = CalendarStore.id(r)
+                                CalendarMapping.event(collection, cal, svc.present(r, scope), uids[id]?.uid ?: CalendarStore.uid(collection.name, id), zone)
+                            })
+                        }
+                        call.response.headers.append(HttpHeaders.CacheControl, "no-cache")
+                        call.respondText(text, ContentType.parse("text/calendar; charset=utf-8"))
                     }
                 }
                 endpoint(paths, collection, CollectionEndpoint.AGGREGATE) {
@@ -2150,7 +2227,7 @@ private suspend fun receiveFile(part: PartData.FileItem, f: FieldConfig, store: 
             }
         }
         val original = part.originalFileName.orEmpty().substringAfterLast('/').substringAfterLast('\\')
-        return store.accept(f, temp, size, head.toByteArray(), original)
+        return withContext(Dispatchers.IO) { store.accept(f, temp, size, head.toByteArray(), original) }
     } catch (t: Throwable) {
         temp.delete()
         throw t
@@ -2172,6 +2249,9 @@ private fun formValue(collection: CollectionConfig, name: String, raw: String): 
  * İzinli boyutta küçük resim (önbellekte yoksa üretilir). Görsel değilse, üretici yoksa veya üretilemezse null
  * (özgün dosya döner).
  */
+/** YZ'ye olduğu gibi gönderilen en büyük görsel; büyüğü küçültülür. */
+private const val MAX_AI_IMAGE = 4L * 1024 * 1024
+
 private fun thumbnail(store: FileStore, resizer: ImageResizer?, collection: String, id: Long, name: String, mime: String, size: String): File? {
     if (resizer == null || !MimeTypes.isResizable(mime)) return null
     val target = store.thumb(collection, id, name, size)
