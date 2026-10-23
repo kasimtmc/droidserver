@@ -244,6 +244,7 @@ private fun EmailSection(vm: WizardViewModel, draft: ServerConfig) {
             users.requireVerified,
         ) { vm.setRequireVerified(it) }
         ErrorText(vm.errorAt("auth.users.requireVerified"))
+        EmailTemplatesSection(vm, draft)
     }
 
     // Deneme e-postası taslaktaki ayarlarla, kaydetmeden gönderilir.

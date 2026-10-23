@@ -1044,22 +1044,44 @@ oturtmasın), sonra panelin eksiklerini kapatma, sonra güvenlik, en son yeni ö
 ### Grup 4 — İletişim kanalları ve yaygınlaştırma
 
 **17.12 Telegram ile yönetim**
-- [ ] Mevcut uyarı botuna komutlar: `/durum`, `/yedek`, `/loglar`, `/baslat`, `/durdur`; yalnızca kayıtlı sohbet
+- [x] Mevcut uyarı botuna komutlar: `/durum`, `/yedek`, `/loglar`, `/baslat`, `/durdur`; yalnızca kayıtlı sohbet
   kimliğinden, yıkıcı komutlarda onay.
+  *Durum:* `TelegramBot` (core) uzun yoklamayla; `alerts.telegram.adminChatId` (sayı olmalı; sihirbazda bulma düğmesi).
+  Başka sohbet yanıtsız, 2 dakikadan eski komut yok sayılır; `/durdur` satır içi onay düğmesiyle (belirteçli, 2 dk).
+  `/durdur` sunucuyu durdurur, servis kilitleri bırakıp dinlemeye devam eder; telefondan Durdur her şeyi kapatır.
+  Test: `TelegramBotTest` (sahte Telegram sunucusu).
 - Karar: komutlar için ayrı bir "yönetici sohbeti" mi, yoksa uyarı sohbeti mi.
+  *Karar (kullanıcı, 23 Ekim 2026):* **ayrı yönetici sohbeti** (aynı bot; komutlar yalnızca o sohbetten). `/durdur`'dan
+  sonra servis yalnızca Telegram'ı dinlemek için ön planda kalır, `/baslat` çalışır.
 
 **17.13 E-posta şablonları ve toplu bildirim**
-- [ ] Hesap e-postaları (doğrulama, parola sıfırlama, giriş kodu) için şablon düzenleyici (konu, metin, HTML; önizleme;
+- [x] Hesap e-postaları (doğrulama, parola sıfırlama, giriş kodu) için şablon düzenleyici (konu, metin, HTML; önizleme;
   dil başına).
-- [ ] Kullanıcılara toplu e-posta / web push: alıcı süzgeci (rol, takım, koşul), hız sınırı, iptal edilebilir iş
+- [x] Kullanıcılara toplu e-posta / web push: alıcı süzgeci (rol, takım, koşul), hız sınırı, iptal edilebilir iş
   kuyruğu görevi, abonelikten çıkma bağlantısı.
+  *Durum:* `email.templates` (`verify`/`reset`/`login`, `lang`; dil `Accept-Language`'dan), yer tutucular `{app}`,
+  `{email}`, `{code}`, `{link}`; sihirbazda düzenleyici ve önizleme. `POST /_broadcast` + `Broadcaster`: `_jobs`'ta
+  `_broadcast` işi (kuyruk artık kullanıcılar ve e-posta/push açıkken de var), kendi çalıştırıcısı, ilerleme işin
+  sonucunda (yeniden başlayınca sürer), saniyede bir iptal denetimi, art arda 10 hatada durur. `_unsubscribed` tablosu;
+  `/_auth/unsubscribe` imzalı (HMAC) bağlantı, GET onay sayfası, POST çıkarır. Script iş türü adı artık harf/rakamla
+  başlamalı (`_broadcast` ile çakışmasın). Panelde Kullanıcılar → Toplu bildirim. Testler: `EmailTemplatesTest`,
+  `BroadcastTest`.
 
 **17.14 Yaygınlaştırma**
-- [ ] İlk açılışta kısa rehber (3-4 ekran) ve örnek proje (şablonlardan biriyle hazır kurulum).
-- [ ] Uygulama içi yardım sayfaları (README bölümlerinden üretilen, çevrimdışı).
-- [ ] F-Droid için tekrarlanabilir derleme ve meta veri; Play Store için gizlilik politikası, izin gerekçeleri
+- [x] İlk açılışta kısa rehber (3-4 ekran) ve örnek proje (şablonlardan biriyle hazır kurulum).
+- [x] Uygulama içi yardım sayfaları (README bölümlerinden üretilen, çevrimdışı).
+- [x] F-Droid için tekrarlanabilir derleme ve meta veri; Play Store için gizlilik politikası, izin gerekçeleri
   (SMS ve konum Play politikasına takılabilir — ayrı yapı türü gerekebilir).
+  *Durum:* `OnboardingScreen` (3 sayfa + başlangıç: şablon veya boş sihirbaz; `Settings.onboardingDone`). README'ler
+  derlemede `assets/help/`'e kopyalanır, `HelpDocs` bölümlere ayırır (geliştirici bölümleri hariç), `HelpScreen` arama ve
+  küçük Markdown görüntüleyici. `fastlane/metadata/android/`, `vcsInfo` ve `dependenciesInfo` kapalı (iki temiz derleme
+  aynı SHA-256), `PRIVACY.md`/`PRIVACY.en.md`, `docs/fdroid/`. Lisans GPL-3.0-or-later (`LICENSE`; kullanıcı kararı, 23 Ekim 2026).
+  Açık konular (`docs/fdroid/README.md`): çalışırken indirilen bileşen ikilileri ve uygulama içi güncelleyici F-Droid
+  politikasına takılabilir.
+  Ekran görüntüsü testleri: `27-rehber`, `28-rehber-baslangic`, `29-yardim`, `30-yardim-bolum`.
 - Karar: Play Store'a SMS izni olmayan ayrı bir sürüm mü çıkılacak.
+  *Karar (kullanıcı, 23 Ekim 2026):* **şimdilik yalnız F-Droid.** Play, targetSdk 28 ve paket kurma izni yüzünden şu an
+  kabul etmez; ayrı sürüm targetSdk yükseltilene kadar ertelendi.
 
 ### Kabul (her grup)
 - `:core:test`, `:app:testDebugUnitTest`, `:app:lintDebug` temiz (yalnızca bilinen uyarılar).

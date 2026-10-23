@@ -670,9 +670,60 @@ async function showUsers() {
     if (!path) throw new Error(T("Kullanıcı güncelleme ucu kapalı"));
     await api(path, { method: "PATCH", body }); await load();
   });
-  main.append(el("div", { class: "card" }, el("div", { class: "row" }, search, el("button", { class: "ghost", onclick: load }, T("Ara"))), out));
+  main.append(el("div", { class: "card" }, el("div", { class: "row" }, search, el("button", { class: "ghost", onclick: load }, T("Ara")),
+    state.info.broadcast ? el("button", { class: "ghost", onclick: broadcastDialog }, T("Toplu bildirim…")) : null), out));
   await load();
   if (state.info.teams) await showTeams();
+}
+
+// Toplu e-posta / web push: alıcılar önce sayılır; gönderim kuyrukta sürer, İşler sekmesinden izlenir ve iptal edilir.
+async function broadcastDialog() {
+  const teams = state.info.teams ? (await api(gp("teams.list", null, "/teams")).catch(() => ({ items: [] }))).items : [];
+  const channel = el("select", {}, [["email", T("E-posta")], ["push", T("Web push")]].map(([v, t]) => el("option", { value: v }, t)));
+  const subject = el("input", { size: "40", placeholder: T("Konu / bildirim başlığı") });
+  const text = el("textarea", { class: "short", placeholder: T("Metin") });
+  const html = el("textarea", { class: "short", placeholder: T("HTML (isteğe bağlı)") });
+  const url = el("input", { size: "40", placeholder: T("Bildirime dokununca açılacak adres (isteğe bağlı)") });
+  const role = el("select", {}, el("option", { value: "" }, T("Tüm roller")), roleOptions().map(([n, t]) => el("option", { value: n }, t)));
+  const team = el("select", { hidden: !teams.length }, el("option", { value: "" }, T("Tüm takımlar")), teams.map((t) => el("option", { value: String(t.id) }, t.name)));
+  const verified = el("input", { type: "checkbox", checked: true });
+  const where = el("input", { size: "40", placeholder: T("ek süzgeç, örn. created_at[gt]=2026-01-01") });
+  const perMinute = el("input", { type: "number", min: "1", max: "600", value: "30", size: "5" });
+  const status = el("p", {});
+  const sync = () => { html.hidden = channel.value !== "email"; url.hidden = channel.value !== "push"; };
+  channel.onchange = sync;
+  sync();
+  const body = (dryRun) => {
+    const b = { channel: channel.value, subject: subject.value.trim(), text: text.value, verifiedOnly: verified.checked, perMinute: Number(perMinute.value) || 30, dryRun };
+    if (channel.value === "email" && html.value.trim()) b.html = html.value;
+    if (channel.value === "push" && url.value.trim()) b.url = url.value.trim();
+    if (role.value) b.role = role.value;
+    if (team.value) b.team = Number(team.value);
+    if (where.value.trim()) b.where = where.value.trim();
+    return b;
+  };
+  const path = gp("broadcast", null, "/_broadcast");
+  const dialog = el("dialog", { class: "wide" },
+    el("h3", {}, T("Toplu bildirim")),
+    el("p", { class: "muted" }, T("Kullanıcılara e-posta veya web push. Abonelikten çıkanlara e-posta gitmez; her e-postaya çıkma bağlantısı eklenir. Gönderim dakikadaki sınıra göre arka planda sürer; İşler sekmesinden izlenir ve iptal edilir.")),
+    el("div", { class: "row" }, channel, subject), text, html, url,
+    el("div", { class: "row" }, role, team, el("label", {}, verified, T(" yalnızca doğrulanmış adresler")), where),
+    el("div", { class: "row" }, el("label", {}, T("Dakikada en çok "), perMinute, T(" kişi"))),
+    status,
+    el("div", { class: "row" },
+      el("button", { class: "ghost", onclick: () => guard(status, async () => {
+        const r = await api(path, { method: "POST", body: body(true) });
+        status.textContent = r.recipients + T(" alıcı");
+      }) }, T("Alıcıları say")),
+      el("button", { class: "btn", onclick: () => guard(status, async () => {
+        const n = (await api(path, { method: "POST", body: body(true) })).recipients;
+        if (!confirm(n + T(" alıcıya gönderilsin mi?"))) return;
+        const r = await api(path, { method: "POST", body: body(false) });
+        status.textContent = T("Kuyruğa alındı: iş #") + r.job + " · " + r.recipients + T(" alıcı");
+      }) }, T("Gönder")),
+      el("button", { class: "ghost", onclick: () => { dialog.close(); dialog.remove(); } }, T("Kapat"))));
+  document.body.append(dialog);
+  dialog.showModal();
 }
 
 // Kullanıcının açık oturumları (cihaz, adres, son kullanım); hepsi kapatılabilir.
@@ -996,7 +1047,7 @@ const AUDIT_ACTIONS = {
   "replica.failover": T("Kopya otomatik devraldı (ana sunucuya ulaşılamadı)"), "replica.failback": T("Ana rol geri alındı"),
   "replica.demoted": T("Bu sunucu devredildi, kopyaya döndü"), "replica.fenced": T("Eski ana sunucu kopyaya çevrildi"),
   "phone.sms": T("SMS gönderildi"),
-  "sql.query": T("SQL sorgusu"), "data.sample": T("Örnek veri eklendi"), "user.sessions.close": T("Kullanıcının oturumları kapatıldı"),
+  "sql.query": T("SQL sorgusu"), "broadcast.create": T("Toplu bildirim gönderildi"), "data.sample": T("Örnek veri eklendi"), "user.sessions.close": T("Kullanıcının oturumları kapatıldı"),
   "panel.passkey.add": T("Panel passkey'i eklendi"), "panel.passkey.delete": T("Panel passkey'i silindi"),
   "mqtt.publish": T("MQTT mesajı gönderildi"), "mqtt.scene": T("Sahne çalıştırıldı"),
 };
@@ -1128,7 +1179,7 @@ async function showJobs() {
         el("td", {}, ["failed", "cancelled"].includes(j.status) ? act(j, "jobs.retry", T("Yeniden")) : ["queued", "running"].includes(j.status) ? act(j, "jobs.cancel", T("İptal")) : "")))))));
   });
   main.append(el("div", { class: "card" },
-    el("p", { class: "muted" }, T("Script'lerin jobAdd ile tanımlayıp ctx.jobs.enqueue ile eklediği işler. Başarısız iş beklemeyle yeniden denenir.")),
+    el("p", { class: "muted" }, T("Script'lerin jobAdd ile tanımlayıp ctx.jobs.enqueue ile eklediği işler ve toplu bildirimler (_broadcast). Başarısız iş beklemeyle yeniden denenir.")),
     filters, el("button", { class: "ghost", onclick: load }, T("Yenile")), out));
   await load();
 }
