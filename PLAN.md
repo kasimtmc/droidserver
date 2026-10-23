@@ -1009,8 +1009,14 @@ oturtmasın), sonra panelin eksiklerini kapatma, sonra güvenlik, en son yeni ö
 ### Grup 3 — Geliştirici ve veri araçları
 
 **17.9 SDK'lar ve GraphQL abonelikleri**
-- [ ] Dart/Flutter SDK (tipli, `fallbackUrls`, takımlar, canlı abonelik) ve Swift SDK (async/await); `_sdk/{lang}` ve
+- [x] Dart/Flutter SDK (tipli, `fallbackUrls`, takımlar, canlı abonelik) ve Swift SDK (async/await); `_sdk/{lang}` ve
   golden testleri.
+  *Durum:* `_sdk/dart` (`dart:io`, Dart 3; Flutter web hariç) ve `_sdk/swift` (Swift 5.9+, Apple ve Linux; Swift 6 kipinde
+  uyarısız). Tipli kısım üreticide, her sunucu için aynı çalışma zamanı `resources/sdk/base.{dart,swift}`'te. Linux'ta
+  `URLSession.bytes` olmadığı için Swift'in canlı aboneliği temsilciyle (`URLSessionDataDelegate`). Altın dosyalar
+  `core/src/test/sdk/`; `SdkClientTest` Kotlin senaryosunun aynısını Dart (`dart analyze --fatal-infos` + `dart run`) ve
+  Swift (`swiftc -swift-version 6 -warnings-as-errors`) ile gerçek sunucuya karşı koşar (araç yoksa atlanır). Uygulamada
+  API gezgini ve panelde API sekmesi dört dili de verir.
 - [x] GraphQL abonelikleri (WebSocket üzerinden, `graphql-transport-ws` protokolü), REST'le aynı kurallar.
   *Durum:* `/graphql/ws` (canlı abonelik açıkken); şemada `Subscription { <koleksiyon>(id, events): <Tip>Event! }`;
   kimlik `connection_init` payload'ında (tarayıcı başlık gönderemez); her olayda görüntüleme kuralı (SSE ile aynı), silmede
