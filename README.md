@@ -111,15 +111,18 @@ yer tutucu anahtar yerine yeni üretilmiş bir anahtarla). Sonrasında **Sunucu*
 | `auth.apiKeys`, `auth.jwtSecret` | Düz metin yazılabilir; kaydedilince şifreli depoya taşınır ve yerine `"secret:<ad>"` referansı konur |
 | `database.engine` | `sqlite` (varsayılan, `database.file`) veya `postgres` (`database.url`, `database.user`, `database.password`) |
 | `database.password` | `secret:<ad>` referansı; düz metin yazılırsa kaydedince şifreli depoya taşınır |
-| `fields[].type` | `text`, `integer`, `real`, `boolean`, `datetime` (ISO-8601), `json`, `relation`, `file`, `select` (listeden bir değer), `multiselect` (seçenek listesi, örn. `["a","b"]`) |
+| `fields[].type` | `text`, `integer`, `real`, `boolean`, `datetime` (ISO-8601), `json`, `relation`, `file`, `select` (listeden bir değer), `multiselect` (seçenek listesi, örn. `["a","b"]`), `geo` (konum, `{"lat":41.01,"lng":28.97}`) |
 | `fields[].options` | `select`/`multiselect`: seçenekler (en çok 200; `"` ve `\` içeremez) |
 | `fields[].format`, `minLength`, `maxLength`, `pattern` | `text`: `email` veya `url` biçimi, karakter sayısı sınırı, düzenli ifade (tüm değer eşleşmeli). `multiselect`'te `minLength`/`maxLength` seçim sayısıdır |
 | `history` | `{keep: 50}`: kayıt geçmişi (kayıt başına en çok `keep` sürüm; bkz. Geçmiş ve çöp kutusu) |
 | `trash` | `{days: 30}`: çöp kutusu (silinen kayıt `days` gün saklanır) |
 | `sync` | `{conflict: "lww"\|"manual", keepDays: 30}`: çevrimdışı istemci eşitlemesi (bkz. Çevrimdışı eşitleme) |
+| `calendar` | `{title, start, end?, description?, location?, allDay?, recurrence?, noOverlap, resource?, feed, feedToken?, dav}`: kayıtlar etkinlik (bkz. Takvim ve kişiler) |
+| `contacts` | `{name, email?, phone?, organization?, note?}`: kayıtlar kartvizit (CardDAV) |
 | `fields[].min`, `max` | `integer`/`real`: değer aralığı |
 | `fields[].computed` | `text`/`integer`/`real`/`boolean`: başka alanlardan hesaplanan değer (bkz. Alan kuralları ve hesaplanan alanlar) |
 | `fields[].maxSizeMb`, `mimeTypes`, `multiple`, `thumbs` | `file`: dosya başına sınır (10 MB), kabul edilen tipler (örn. `["image/*", "application/pdf"]`; boşsa hepsi), çoklu dosya (en çok 20), ek küçük resim boyutları (örn. `["400x0"]`; `100x100` her zaman) |
+| `fields[].convert`, `maxDimension`, `keepLocation`, `ai` | `file` (görseller): `webp`/`jpeg` dönüşümü, en büyük kenar (piksel), konum bilgisini koru (varsayılan silinir), YZ ile etiket ve metin `{tags, text}` (hedef alan adları) |
 | `static` | `enabled`, `path` (`/`), `spaFallback` (true): `files/www/` altındaki siteyi yayınlar (bkz. Dosyalar ve statik site) |
 | `backup` | `enabled`, `schedule` (cron, `0 4 * * *`), `keep` (7): zamanlanmış yedek (bkz. Yedekleme) |
 | `adminPanel` | `enabled`, `sessionHours` (12): tarayıcıdan `/_admin` paneli (bkz. Web yönetim paneli) |
@@ -299,10 +302,21 @@ curl -H "$H" $BASE/_schema
 | `like` | içerir, büyük/küçük harf duyarsız (`%` ve `_` harfiyen aranır; SQLite'ta yalnızca ASCII harflerde duyarsız) | text |
 | `in` | virgülle ayrılmış değerlerden biri (en çok 100) | text, integer, real, datetime, `id` |
 | `null` | `true`: boş, `false`: dolu | `id` hariç hepsi |
+| `near` | `enlem,boylam,km`: bu uzaklıktakiler (en çok 1000 km); sıralama verilmezse yakından uzağa | geo |
+| `box` | `güney,batı,kuzey,doğu`: bu kutudakiler | geo |
 
 `select` alanı metin gibi `eq`, `ne`, `in`, `null` kullanır. `multiselect`'te `?tags=indirim` "bu seçeneği içerenler"
 demektir (harf duyarlı); yalnızca `eq` ve `null` (`true`: hiç seçim yok) kullanılır. Özetlerde `groupBy=status` gibi
 `select` alanına göre gruplanabilir.
+
+**Konum alanı (`geo`):** değer `{"lat": 41.0082, "lng": 28.9784, "accuracy": 12}` (doğruluk metre, isteğe bağlı);
+veritabanında `41.0082,28.9784,12` metni olarak durur (CSV'de de bu biçim). `?yer[near]=41.01,28.97,5` 5 km içindekileri
+yakından uzağa, `?yer[box]=40.9,28.8,41.1,29.1` kutudakileri getirir; SQLite ve PostgreSQL aynı sonucu verir (PostGIS
+gerekmez: önce enlem/boylam aralığı, sonra yaklaşık uzaklık; 1000 km'ye kadar hata binde birkaç). 180. boylamın iki
+yanındaki noktalar da bulunur. Konuma göre `sort`, `eq` ve özet yapılmaz; alan benzersiz veya indeksli olamaz. Panelde
+Kayıtlar → **Harita** konumlu kayıtları OpenStreetMap haritasında gösterir; kayıt düzenlerken **haritadan seç**,
+**Telefonun konumu** (telefon özelliklerinde konum açıksa) veya **Bu cihazın konumu** ile doldurulur. Uygulamada Sunucu →
+**Harita**. Formlarda `enlem,boylam` metin kutusu çıkar. SDK'larda `GeoPoint` tipi.
 
 **Alan kuralları ve hesaplanan alanlar:** sihirbazda alanın "Kurallar ve hesaplama" bölümünden metin için biçim
 (e-posta, web adresi), en az/en çok karakter ve düzenli ifade, sayı için en küçük/en büyük, çoklu seçim için en az/en
@@ -830,6 +844,21 @@ curl -H "$H" -X PATCH -H 'Content-Type: application/json' -d '{"image":null}' $B
   çalıştıramaz); görsel, ses, video, PDF ve düz metin tarayıcıda açılır, diğerleri indirilir.
 - **Küçük resim:** `?thumb=GxY` yalnızca izinli boyutlarda (`100x100` ve alanın `thumbs`'ı; `400x0` oranı korur), ilk
   istekte üretilip önbelleğe alınır (telefonda `BitmapFactory`; büyük fotoğraf örneklenerek açılır). Görsel değilse özgün dosya döner.
+- **Video ve ses akışı:** indirmede `Range` istekleri (`206 Partial Content`) desteklenir: oynatıcılar ileri sarar, yarıda
+  kalan indirme sürer. Dosya adları değişmediği için yanıt `Cache-Control: private, max-age=31536000, immutable` taşır
+  (tarayıcı önbelleğe alır, ara sunucular almaz); `Last-Modified` ile koşullu istek `304` döner.
+- **Konum bilgisi:** fotoğraftaki GPS konumu yüklenirken silinir (JPEG, PNG, WebP; EXIF'in GPS bölümü ve konum içeren
+  XMP). Yön, tarih gibi diğer bilgiler kalır, dosya boyutu değişmez. Alanda **Konum bilgisini koru** (`keepLocation`)
+  açılırsa dokunulmaz.
+- **Dönüşüm ve küçültme:** `convert: "webp"` (veya `jpeg`) ve `maxDimension: 2048` ile yüklenen görsel telefonda yeniden
+  kodlanır: uzun kenar sınıra küçültülür, EXIF yönü piksellere uygulanır, meta veri (konum dahil) yazılmaz. Ad ve tip yeni
+  biçimden gelir (`tatil_….webp`). Android AVIF kodlayamadığı için AVIF yok; GIF (hareketli olabilir) dönüştürülmez.
+- **YZ ile etiket ve metin (OCR):** alanda `ai: {"tags": "etiketler", "text": "metin"}` ve Yapay zekâ açıkken görsel kayda
+  bağlandıktan sonra arka planda sağlayıcıya gönderilir (4 MB'tan büyüğü küçültülerek). Etiketler metin alanına virgülle,
+  JSON alanına dizi, çoklu seçim alanına yalnızca seçeneklerden uyanlar olarak; görseldeki yazı metin alanına yazılır.
+  Kayıt güncellemesi normal yoldan geçer: anlamsal arama dizini, canlı abonelik ve otomasyonlar görür. Görsel destekleyen
+  bir model gerekir (Claude, GPT-4o/5, Gemini; Ollama'da llava gibi). Görsel sağlayıcıya gider; telefondan çıkmasın
+  isteniyorsa yerel model (Faz 18.7) beklenmeli.
 - `PATCH` ile JSON'da dosya alanına `null` (dosyaları kaldır) veya mevcut adlardan tutulacaklar yazılır; çoklu alanda yeni
   yüklemeler eklenir. Kaldırılan dosyalar ve kayıt silinince (cascade ile silinenler dahil) klasörü silinir.
 
@@ -1403,6 +1432,28 @@ Dart'ta `ds.notes.offline(FileOfflineStore(dir))`, Swift'te `try ds.notes.offlin
 depo takılabilir. Sınırlar: dosya alanları yalnızca adıyla gelir (dosya indirilmez, çevrimdışıyken yüklenmez); çevrimdışı
 oluşturulan kayda başka koleksiyondan ilişki, kayıt eşitlendikten sonra kurulmalı. Eşitleme ana sunucuyla yapılır (kopyaya
 gelen eşitleme istekleri ana sunucuya iletilir).
+
+### Takvim ve kişiler
+
+Koleksiyonda **Takvim** (Sihirbaz → Koleksiyon → Takvim ve kişiler; `calendar`) açıkken alanlar etkinliğe eşlenir:
+başlık (metin), başlangıç ve bitiş (tarih-saat), isteğe bağlı açıklama, yer (metin ya da konum), tüm gün (evet/hayır) ve
+tekrar (`RRULE` metni, örn. `FREQ=WEEKLY;BYDAY=MO`).
+
+- **Çakışma olmasın** (`noOverlap`): aynı **kaynakta** (`resource`: oda, kişi, araç alanı; boşsa kaynaksız kayıtlar
+  kendi arasında) zamanı üst üste binen kayıt `409` ile reddedilir (`#12 kaydıyla çakışıyor`); uç uca eklenen olur.
+  Bitiş başlangıçtan önce olamaz (`400`). Denetim yazmayla aynı işlemdedir; PostgreSQL'de eşzamanlı iki rezervasyon
+  sıraya girer.
+- **Takvim aboneliği** (`feed`): `GET /api/calendar/{koleksiyon}.ics` iCalendar döner. Yetkiyle (liste kuralı) ya da
+  takvim uygulamaları başlık gönderemediği için gizli anahtarla: `…/bookings.ics?token=<feedToken>` (kurallar aşılır,
+  adresi bilen herkes görür). Google Takvim, Outlook ve iOS "abone ol" ile eklenir; salt okunurdur.
+- **Telefon takvimiyle eşitleme** (`dav`, CalDAV) ve **Kişiler** (`contacts`, CardDAV): ağ sürücüsü (WebDAV) açıkken
+  aynı adres ve kullanıcı adı/parolayla. Android'de DAVx⁵ → "URL ve kullanıcı adıyla giriş" → `http://telefon:8080/dav/`;
+  iOS Ayarlar → Takvim/Kişiler → Hesap ekle → Diğer → CalDAV/CardDAV; Thunderbird ve macOS da aynı adresle. Sunucu
+  `/.well-known/caldav` ve `/.well-known/carddav`'ı bildirir. Telefondan eklenen, değiştirilen ve silinen etkinlik/kişi
+  kayda yazılır (doğrulama, çakışma kuralı, script, otomasyon ve canlı abonelik olayı normal yoldan). Yalnızca eşlenen
+  alanlar saklanır: alarm, katılımcı, fotoğraf gibi özellikler sunucuya gidince düşer. Saat dilimli zamanlar UTC'ye
+  çevrilir; tüm gün etkinlikleri telefonun saat diliminde günün başıdır. Kişilerde ad, e-posta, telefon, kurum ve not.
+  Parola düz HTTP'de Digest ile gider; Basic yalnızca HTTPS'te.
 
 ### Canlı abonelik
 
@@ -2237,3 +2288,5 @@ tools/          package-postgres.sh, package-cloudflared.sh (Termux derlemelerin
 - [x] **Yaygınlaştırma:** ilk açılış rehberi ve örnek proje, uygulama içi çevrimdışı yardım, F-Droid meta verisi, tekrarlanabilir derleme, gizlilik politikası
 - [x] **Çevrimdışı eşitleme:** koleksiyon başına; SDK'larda (TS, Kotlin, Dart, Swift) yerel kopya, bekleyen yazma kuyruğu, alan bazında son yazan kazanır veya elle çözme
 - [x] **Kopyalarla ölçek:** kopyaya gelen yazma ana sunucuya iletilir, birden çok kopya ve kopya tablosu, SDK'da okuma adresleri ve kendi yazdığını oku
+- [x] **Takvim ve kişiler:** çakışma kuralı (kaynak başına), `.ics` aboneliği (gizli adresle), CalDAV ve CardDAV ile telefon takvimi ve rehberiyle iki yönlü eşitleme
+- [x] **Konum:** `geo` alanı, `near` (yakından uzağa) ve `box` filtreleri, panelde ve uygulamada OpenStreetMap haritası, haritadan ve telefondan konum seçme

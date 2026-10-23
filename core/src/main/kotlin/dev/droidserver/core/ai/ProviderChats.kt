@@ -76,7 +76,7 @@ class OpenAiChat(
             put("messages", JsonArray(buildList {
                 // Akıl yürüten modellerde talimat rolü "developer"; uyumlu servisler "system" bekler.
                 if (system.isNotBlank()) add(message(if (official) "developer" else "system", system))
-                messages.forEach { add(message(it.role, it.content)) }
+                messages.forEach { add(message(it.role, it.content, it.images)) }
             }))
             if (official) {
                 put("max_completion_tokens", JsonPrimitive(config.maxTokens))
@@ -106,9 +106,18 @@ class OpenAiChat(
         )
     }
 
-    private fun message(role: String, content: String) = buildJsonObject {
+    private fun message(role: String, content: String, images: List<AiImage> = emptyList()) = buildJsonObject {
         put("role", JsonPrimitive(role))
-        put("content", JsonPrimitive(content))
+        if (images.isEmpty()) {
+            put("content", JsonPrimitive(content))
+        } else {
+            put("content", JsonArray(images.map { img ->
+                buildJsonObject {
+                    put("type", JsonPrimitive("image_url"))
+                    put("image_url", buildJsonObject { put("url", JsonPrimitive("data:${img.mime};base64,${img.base64}")) })
+                }
+            } + buildJsonObject { put("type", JsonPrimitive("text")); put("text", JsonPrimitive(content)) }))
+        }
     }
 
     companion object {
@@ -128,7 +137,9 @@ class GeminiChat(private val config: AiConfig, private val base: String = DEFAUL
             put("contents", JsonArray(messages.map { m ->
                 buildJsonObject {
                     put("role", JsonPrimitive(if (m.role == "assistant") "model" else "user"))
-                    put("parts", JsonArray(listOf(text(m.content))))
+                    put("parts", JsonArray(m.images.map { img ->
+                        buildJsonObject { put("inlineData", buildJsonObject { put("mimeType", JsonPrimitive(img.mime)); put("data", JsonPrimitive(img.base64)) }) }
+                    } + text(m.content)))
                 }
             }))
             put("generationConfig", buildJsonObject {

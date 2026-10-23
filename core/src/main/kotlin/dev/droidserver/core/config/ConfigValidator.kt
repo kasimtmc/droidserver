@@ -59,6 +59,7 @@ object ConfigValidator {
             c.history?.let { if (it.keep !in 1..1000) error("collections[$ci].history.keep", tr("'{0}': kayıt başına 1-1000 sürüm tutulabilir", c.name)) }
             c.trash?.let { if (it.days !in 1..3650) error("collections[$ci].trash.days", tr("'{0}': çöp kutusu süresi 1-3650 gün olmalı", c.name)) }
             c.sync?.let { if (it.keepDays !in 1..365) error("collections[$ci].sync.keepDays", tr("'{0}': silinenlerin izi 1-365 gün tutulmalı", c.name)) }
+            calendarRules(config, c, "collections[$ci]", error)
             c.retention?.let { r ->
                 val rp = "collections[$ci].retention"
                 if (r.days !in 1..3650) error("$rp.days", tr("'{0}': saklama süresi 1-3650 gün olmalı", c.name))
@@ -173,6 +174,46 @@ object ConfigValidator {
         }
     }
 
+    /** Takvim ve kişi eşlemesi: alanlar var ve tipleri uygun; CalDAV/CardDAV için ağ sürücüsü açık. */
+    private fun calendarRules(config: ServerConfig, c: CollectionConfig, at: String, error: (String, String) -> Unit) {
+        val fields = c.fields.associateBy { it.name }
+        fun field(path: String, name: String?, types: Set<FieldType>, what: String) {
+            name ?: return
+            val f = fields[name]
+            when {
+                f == null -> error(path, tr("'{0}': {1} alanı '{2}' yok", c.name, what, name))
+                f.type !in types -> error(path, tr("'{0}': {1} alanı {2} tipinde olmalı ('{3}' {4})", c.name, what, types.joinToString("/") { it.name.lowercase() }, name, f.type.name.lowercase()))
+                f.encrypted -> error(path, tr("'{0}': {1} alanı şifreli olamaz ('{2}')", c.name, what, name))
+            }
+        }
+        val text = setOf(FieldType.TEXT)
+        c.calendar?.let { cal ->
+            val p = "$at.calendar"
+            field("$p.title", cal.title, text, tr("başlık"))
+            field("$p.start", cal.start, setOf(FieldType.DATETIME), tr("başlangıç"))
+            field("$p.end", cal.end, setOf(FieldType.DATETIME), tr("bitiş"))
+            field("$p.description", cal.description, text, tr("açıklama"))
+            field("$p.location", cal.location, setOf(FieldType.TEXT, FieldType.GEO), tr("yer"))
+            field("$p.allDay", cal.allDay, setOf(FieldType.BOOLEAN), tr("tüm gün"))
+            field("$p.recurrence", cal.recurrence, text, tr("tekrar"))
+            field("$p.resource", cal.resource, setOf(FieldType.TEXT, FieldType.SELECT, FieldType.INTEGER, FieldType.RELATION), tr("kaynak"))
+            if (cal.end != null && cal.end == cal.start) error("$p.end", tr("'{0}': bitiş, başlangıçla aynı alan olamaz", c.name))
+            if (cal.noOverlap && cal.end == null) error("$p.noOverlap", tr("'{0}': çakışma kuralı için bitiş alanı gerekli", c.name))
+            if (cal.resource != null && !cal.noOverlap) error("$p.resource", tr("'{0}': kaynak alanı yalnızca çakışma kuralıyla kullanılır", c.name))
+            cal.feedToken?.let { t -> if (!cal.feed || t.length < 16 || !t.all { it.isLetterOrDigit() || it == '-' || it == '_' }) error("$p.feedToken", tr("'{0}': gizli abonelik anahtarı en az 16 harf/rakam olmalı ve abonelik açık olmalı", c.name)) }
+            if (cal.dav && !config.webdav.enabled) error("$p.dav", tr("'{0}': takvim eşitlemesi (CalDAV) için ağ sürücüsünü (WebDAV) açın", c.name))
+        }
+        c.contacts?.let { con ->
+            val p = "$at.contacts"
+            field("$p.name", con.name, text, tr("ad"))
+            field("$p.email", con.email, text, tr("e-posta"))
+            field("$p.phone", con.phone, text, tr("telefon"))
+            field("$p.organization", con.organization, text, tr("kurum"))
+            field("$p.note", con.note, text, tr("not"))
+            if (!config.webdav.enabled) error(p, tr("'{0}': kişi eşitlemesi (CardDAV) için ağ sürücüsünü (WebDAV) açın", c.name))
+        }
+    }
+
     private fun systemFieldRules(
         map: Map<String, SystemFieldConfig>,
         allowed: List<String>,
@@ -279,7 +320,9 @@ object ConfigValidator {
         /** Dosya alanı ayarları; başka tipte bu ayarlar kullanılamaz. */
         fun fileRules(path: String, label: String, f: FieldConfig) {
             if (f.type != FieldType.FILE) {
-                if (f.maxSizeMb != null || f.mimeTypes != null || f.multiple != null || f.thumbs != null) {
+                if (f.maxSizeMb != null || f.mimeTypes != null || f.multiple != null || f.thumbs != null ||
+                    f.convert != null || f.maxDimension != null || f.keepLocation || f.ai != null
+                ) {
                     error("$path.type", tr("{0} dosya alanı değil; boyut, tip, çoklu ve küçük resim ayarları yalnızca file tipinde kullanılır", label))
                 }
                 return
@@ -298,6 +341,7 @@ object ConfigValidator {
                 }
             }
             if (f.unique) error("$path.unique", tr("{0}: dosya alanı benzersiz olamaz (adlar zaten rastgele)", label))
+            f.maxDimension?.let { if (it !in 64..8192) error("$path.maxDimension", tr("{0}: en büyük kenar 64-8192 piksel olmalı", label)) }
         }
 
         if (config.name.isBlank()) error("name", tr("Sunucu adı boş olamaz"))
@@ -633,6 +677,22 @@ object ConfigValidator {
                     error("$fieldPath.collection", tr("{0} ilişki alanı değil; hedef koleksiyon ve silme davranışı yalnızca relation tipinde kullanılır", label))
                 }
                 fileRules(fieldPath, label, f)
+                f.ai?.takeIf { f.type == FieldType.FILE }?.let { a ->
+                    if (!config.ai.enabled) error("$fieldPath.ai", tr("{0}: görsel etiketleme ve OCR için Yapay zekâ'yı açın", label))
+                    if (a.tags == null && a.text == null) error("$fieldPath.ai", tr("{0}: etiket veya metin alanından birini seçin", label))
+                    a.tags?.let { t ->
+                        val target = c.fields.firstOrNull { it.name == t }
+                        if (target == null || target.type !in setOf(FieldType.TEXT, FieldType.MULTISELECT, FieldType.JSON) || target.encrypted || target.computed != null) {
+                            error("$fieldPath.ai.tags", tr("{0}: etiketler metin, çoklu seçim veya JSON alanına yazılır ('{1}')", label, t))
+                        }
+                    }
+                    a.text?.let { t ->
+                        val target = c.fields.firstOrNull { it.name == t }
+                        if (target == null || target.type != FieldType.TEXT || target.encrypted || target.computed != null) {
+                            error("$fieldPath.ai.text", tr("{0}: görseldeki metin bir metin alanına yazılır ('{1}')", label, t))
+                        }
+                    }
+                }
                 if (f.index && (f.type == FieldType.FILE || f.type == FieldType.JSON)) {
                     error("$fieldPath.index", tr("{0}: dosya ve JSON alanları indekslenemez", label))
                 }

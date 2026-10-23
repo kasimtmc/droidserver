@@ -111,15 +111,18 @@ with **Advanced (JSON)**; both share the same draft, and the draft is saved to `
 | `auth.apiKeys`, `auth.jwtSecret` | May be written as plain text; on save they are moved to the encrypted store and replaced with a `"secret:<name>"` reference |
 | `database.engine` | `sqlite` (default, `database.file`) or `postgres` (`database.url`, `database.user`, `database.password`) |
 | `database.password` | A `secret:<name>` reference; if written as plain text, it is moved to the encrypted store on save |
-| `fields[].type` | `text`, `integer`, `real`, `boolean`, `datetime` (ISO-8601), `json`, `relation`, `file`, `select` (one value from a list), `multiselect` (list of options, e.g. `["a","b"]`) |
+| `fields[].type` | `text`, `integer`, `real`, `boolean`, `datetime` (ISO-8601), `json`, `relation`, `file`, `select` (one value from a list), `multiselect` (list of options, e.g. `["a","b"]`), `geo` (location, `{"lat":41.01,"lng":28.97}`) |
 | `fields[].options` | `select`/`multiselect`: options (at most 200; may not contain `"` or `\`) |
 | `fields[].format`, `minLength`, `maxLength`, `pattern` | `text`: `email` or `url` format, character count limits, regular expression (must match the whole value). For `multiselect`, `minLength`/`maxLength` is the number of selections |
 | `history` | `{keep: 50}`: record history (at most `keep` versions per record; see History and trash) |
 | `trash` | `{days: 30}`: trash (a deleted record is kept for `days` days) |
 | `sync` | `{conflict: "lww"\|"manual", keepDays: 30}`: offline client sync (see Offline sync) |
+| `calendar` | `{title, start, end?, description?, location?, allDay?, recurrence?, noOverlap, resource?, feed, feedToken?, dav}`: records as events (see Calendar and contacts) |
+| `contacts` | `{name, email?, phone?, organization?, note?}`: records as contact cards (CardDAV) |
 | `fields[].min`, `max` | `integer`/`real`: value range |
 | `fields[].computed` | `text`/`integer`/`real`/`boolean`: value computed from other fields (see Field rules and computed fields) |
 | `fields[].maxSizeMb`, `mimeTypes`, `multiple`, `thumbs` | `file`: per-file limit (10 MB), accepted types (e.g. `["image/*", "application/pdf"]`; all if empty), multiple files (at most 20), extra thumbnail sizes (e.g. `["400x0"]`; `100x100` always) |
+| `fields[].convert`, `maxDimension`, `keepLocation`, `ai` | `file` (images): `webp`/`jpeg` conversion, longest side (pixels), keep location data (removed by default), AI tags and text `{tags, text}` (target field names) |
 | `static` | `enabled`, `path` (`/`), `spaFallback` (true): serves the site under `files/www/` (see Files and static site) |
 | `backup` | `enabled`, `schedule` (cron, `0 4 * * *`), `keep` (7): scheduled backup (see Backup) |
 | `adminPanel` | `enabled`, `sessionHours` (12): the `/_admin` panel in the browser (see Web admin panel) |
@@ -299,10 +302,22 @@ curl -H "$H" $BASE/_schema
 | `like` | contains, case-insensitive (`%` and `_` are matched literally; on SQLite case-insensitive only for ASCII letters) | text |
 | `in` | one of the comma-separated values (at most 100) | text, integer, real, datetime, `id` |
 | `null` | `true`: empty, `false`: not empty | all except `id` |
+| `near` | `lat,lng,km`: within this distance (at most 1000 km); nearest first when no sort is given | geo |
+| `box` | `south,west,north,east`: inside this box | geo |
 
 A `select` field uses `eq`, `ne`, `in`, `null` like text. On `multiselect`, `?tags=indirim` means "those that include this
 option" (case-sensitive); only `eq` and `null` (`true`: nothing selected) are supported. Aggregates can be grouped by a
 `select` field, e.g. `groupBy=status`.
+
+**Location field (`geo`):** the value is `{"lat": 41.0082, "lng": 28.9784, "accuracy": 12}` (accuracy in metres,
+optional); it is stored as the text `41.0082,28.9784,12` (the same format in CSV). `?place[near]=41.01,28.97,5` returns
+records within 5 km, nearest first; `?place[box]=40.9,28.8,41.1,29.1` returns those inside the box. SQLite and PostgreSQL
+give the same result (no PostGIS: a latitude/longitude range first, then an approximate distance; error of a few per
+mille up to 1000 km). Points on both sides of the 180th meridian are found. Location fields cannot be used in `sort`,
+`eq` or aggregates, and cannot be unique or indexed. In the panel, Records → **Map** shows located records on an
+OpenStreetMap map; when editing a record, fill it with **pick on map**, **Phone location** (when location is on in the
+phone features) or **This device's location**. In the app: Server → **Map**. Forms show a `lat,lng` text box. The SDKs
+have a `GeoPoint` type.
 
 **Field rules and computed fields:** in the wizard, a field's "Rules and calculation" section takes a format for text
 (e-mail, URL), min/max length and a regular expression; min/max for numbers; and min/max selections for multi-select.
@@ -833,6 +848,22 @@ curl -H "$H" -X PATCH -H 'Content-Type: application/json' -d '{"image":null}' $B
   from the server's origin); images, audio, video, PDF and plain text open in the browser, everything else is downloaded.
 - **Thumbnails:** `?thumb=WxH` only in allowed sizes (`100x100` and the field's `thumbs`; `400x0` keeps the aspect ratio), generated
   on first request and cached (`BitmapFactory` on the phone; large photos are decoded with subsampling). For non-images the original file is returned.
+- **Video and audio streaming:** downloads support `Range` requests (`206 Partial Content`): players can seek and broken
+  downloads resume. File names never change, so responses carry `Cache-Control: private, max-age=31536000, immutable`
+  (browsers cache, shared proxies don't); conditional requests with `Last-Modified` return `304`.
+- **Location data:** a photo's GPS location is removed on upload (JPEG, PNG, WebP; the EXIF GPS section and XMP that
+  contains a location). Orientation, date and other data stay; the file size does not change. Turn on **Keep location
+  data** (`keepLocation`) on the field to leave it alone.
+- **Conversion and downscaling:** with `convert: "webp"` (or `jpeg`) and `maxDimension: 2048` the uploaded image is
+  re-encoded on the phone: the longest side is reduced to the limit, the EXIF orientation is applied to the pixels and no
+  metadata (location included) is written. The name and type follow the new format (`holiday_….webp`). Android cannot
+  encode AVIF, so there is no AVIF; GIF (possibly animated) is not converted.
+- **AI tags and text (OCR):** with `ai: {"tags": "tags", "text": "text"}` on the field and AI on, the image is sent to the
+  provider in the background after it is attached to the record (images over 4 MB are downscaled first). Tags go to a text
+  field comma-separated, to a JSON field as an array, or to a multiselect field restricted to its options; the text in the
+  image goes to a text field. The record update goes through the normal path: the semantic search index, realtime
+  subscriptions and automations see it. A model with image support is needed (Claude, GPT-4o/5, Gemini; llava on
+  Ollama). The image goes to the provider; if it must not leave the phone, wait for the local model (Phase 18.7).
 - With `PATCH` in JSON, set a file field to `null` (remove the files) or to the existing names to keep; on a multiple field, new
   uploads are appended. Removed files are deleted, and when a record is deleted (including by cascade) its folder is deleted.
 
@@ -1416,6 +1447,29 @@ In Dart `ds.notes.offline(FileOfflineStore(dir))`, in Swift `try ds.notes.offlin
 such as SQLite can be plugged in. Limits: file fields arrive by name only (files are not downloaded, nor uploaded while
 offline); a relation from another collection to a record created offline should be set after that record has synced.
 Sync happens with the primary (sync requests sent to a copy are forwarded to the primary).
+
+### Calendar and contacts
+
+With **Calendar** on for a collection (Wizard → Collection → Calendar and contacts; `calendar`) fields map to an event:
+title (text), start and end (date-time), optional description, location (text or location), all day (yes/no) and
+recurrence (`RRULE` text, e.g. `FREQ=WEEKLY;BYDAY=MO`).
+
+- **No overlaps** (`noOverlap`): a record whose time overlaps another on the same **resource** (`resource`: a room,
+  person or vehicle field; when empty, records without a resource among themselves) is rejected with `409` (`overlaps
+  record #12`); back-to-back is fine. The end cannot be before the start (`400`). The check runs in the same
+  transaction as the write; on PostgreSQL two concurrent bookings are serialized.
+- **Calendar subscription** (`feed`): `GET /api/calendar/{collection}.ics` returns iCalendar. With authorization (list
+  rule) or, because calendar apps cannot send headers, with a secret key: `…/bookings.ics?token=<feedToken>` (rules are
+  bypassed; anyone with the address can read). Add it in Google Calendar, Outlook or iOS with "subscribe"; read-only.
+- **Phone calendar sync** (`dav`, CalDAV) and **Contacts** (`contacts`, CardDAV): with the network drive (WebDAV) on,
+  using the same address and username/password. On Android DAVx⁵ → "Login with URL and user name" →
+  `http://phone:8080/dav/`; iOS Settings → Calendar/Contacts → Add Account → Other → CalDAV/CardDAV; Thunderbird and
+  macOS with the same address. The server announces `/.well-known/caldav` and `/.well-known/carddav`. Events/contacts
+  added, changed and deleted on the phone are written to records (validation, overlap rule, scripts, automations and
+  realtime events as usual). Only mapped fields are stored: alarms, attendees, photos and the like are dropped on the
+  server. Times with a time zone are converted to UTC; all-day events start at the beginning of the day in the phone's
+  time zone. Contacts carry name, email, phone, organization and note. Over plain HTTP the password travels with
+  Digest; Basic only over HTTPS.
 
 ### Realtime subscription
 
@@ -2272,3 +2326,5 @@ tools/          package-postgres.sh, package-cloudflared.sh (component packages 
 - [x] **Outreach:** first-launch guide and sample project, offline in-app help, F-Droid metadata, reproducible builds, privacy policy
 - [x] **Offline sync:** per collection; in the SDKs (TS, Kotlin, Dart, Swift) a local copy, a pending-write queue, per-field last writer wins or manual resolution
 - [x] **Scaling with copies:** writes sent to a copy are forwarded to the primary, several copies and a copy table, read addresses and read-your-writes in the SDKs
+- [x] **Calendar and contacts:** overlap rule (per resource), `.ics` subscription (with a secret address), two-way sync with the phone's calendar and address book via CalDAV and CardDAV
+- [x] **Location:** `geo` field, `near` (nearest first) and `box` filters, OpenStreetMap map in the panel and the app, picking a location on the map or from the phone

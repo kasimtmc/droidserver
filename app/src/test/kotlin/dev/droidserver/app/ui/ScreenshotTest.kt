@@ -274,6 +274,27 @@ class ScreenshotTest {
     }
 
     @Test
+    fun harita() {
+        val cfg = running { c ->
+            c.copy(collections = c.collections + CollectionConfig("places", listOf(FieldConfig("name", FieldType.TEXT), FieldConfig("loc", FieldType.GEO))))
+        }
+        for ((name, lat, lng) in listOf(Triple("Sultanahmet", 41.0054, 28.9768), Triple("Kadıköy", 40.99, 29.028), Triple("Beşiktaş", 41.0422, 29.0067))) {
+            val c = java.net.URI("http://127.0.0.1:18080/api/collections/places/records").toURL().openConnection() as java.net.HttpURLConnection
+            c.requestMethod = "POST"
+            c.doOutput = true
+            c.setRequestProperty("Authorization", "Bearer " + cfg.auth.apiKeys.first())
+            c.setRequestProperty("Content-Type", "application/json")
+            c.outputStream.use { it.write("""{"name":"$name","loc":{"lat":$lat,"lng":$lng}}""".toByteArray()) }
+            check(c.responseCode == 201) { c.responseCode }
+        }
+        render()
+        click("Sunucu")
+        click("Harita")
+        compose.waitUntil(10_000) { compose.onAllNodes(hasText("3 konumlu kayıt", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        shot("31-harita")
+    }
+
+    @Test
     fun sahneWidgeti() {
         running { c ->
             c.copy(mqtt = MqttConfig(enabled = true, password = "cihaz-parolasi", scenes = listOf(

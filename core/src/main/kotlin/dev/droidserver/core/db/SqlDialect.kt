@@ -74,6 +74,11 @@ interface SqlDialect {
     /** Büyük/küçük harf duyarlı "metin içerir" koşulu; değer olduğu gibi bağlanır (çoklu seçim filtresi). */
     fun containsSql(column: String): String
 
+    /** Konum metninden (`enlem,boylam[,doğruluk]`) enlem ve boylamı sayı olarak çıkaran ifadeler. */
+    fun geoLat(column: String): String
+
+    fun geoLng(column: String): String
+
     /** Zaman damgasını UTC'de gün (`YYYY-MM-DD`), ay (`YYYY-MM`) veya yıl metnine çevirir (özetlerde gruplama). */
     fun dateBucket(expr: String, unit: String): String
 
@@ -107,6 +112,11 @@ object SqliteDialect : SqlDialect {
 
     override fun containsSql(column: String): String = "instr($column, ?) > 0"
 
+    // CAST metnin baştaki sayısını alır ("41.0,29.0" → 41.0).
+    override fun geoLat(column: String): String = "CAST($column AS REAL)"
+
+    override fun geoLng(column: String): String = "CAST(substr($column, instr($column, ',') + 1) AS REAL)"
+
     override fun dateBucket(expr: String, unit: String): String =
         "strftime('${mapOf("day" to "%Y-%m-%d", "month" to "%Y-%m", "year" to "%Y").getValue(unit)}', $expr)"
 
@@ -132,7 +142,7 @@ object SqliteDialect : SqlDialect {
     )""".trimIndent()
 
     override fun columnType(t: FieldType) = when (t) {
-        FieldType.TEXT, FieldType.DATETIME, FieldType.JSON, FieldType.FILE, FieldType.SELECT, FieldType.MULTISELECT -> "TEXT"
+        FieldType.TEXT, FieldType.DATETIME, FieldType.JSON, FieldType.FILE, FieldType.SELECT, FieldType.MULTISELECT, FieldType.GEO -> "TEXT"
         FieldType.INTEGER, FieldType.BOOLEAN, FieldType.RELATION -> "INTEGER"
         FieldType.REAL -> "REAL"
     }
@@ -229,6 +239,10 @@ object PostgresDialect : SqlDialect {
 
     override fun containsSql(column: String): String = "strpos($column, ?) > 0"
 
+    override fun geoLat(column: String): String = "split_part($column, ',', 1)::double precision"
+
+    override fun geoLng(column: String): String = "split_part($column, ',', 2)::double precision"
+
     override fun dateBucket(expr: String, unit: String): String =
         "to_char($expr AT TIME ZONE 'UTC', '${mapOf("day" to "YYYY-MM-DD", "month" to "YYYY-MM", "year" to "YYYY").getValue(unit)}')"
 
@@ -259,7 +273,7 @@ object PostgresDialect : SqlDialect {
     )""".trimIndent()
 
     override fun columnType(t: FieldType) = when (t) {
-        FieldType.TEXT, FieldType.FILE, FieldType.SELECT, FieldType.MULTISELECT -> "TEXT"
+        FieldType.TEXT, FieldType.FILE, FieldType.SELECT, FieldType.MULTISELECT, FieldType.GEO -> "TEXT"
         FieldType.INTEGER, FieldType.RELATION -> "BIGINT"
         FieldType.REAL -> "DOUBLE PRECISION"
         FieldType.BOOLEAN -> "BOOLEAN"
@@ -270,7 +284,7 @@ object PostgresDialect : SqlDialect {
     /** information_schema uzun adlar döndürür (`timestamp with time zone`). */
     override fun matchesType(dbType: String, t: FieldType): Boolean = dbType.trim().equals(
         when (t) {
-            FieldType.TEXT, FieldType.FILE, FieldType.SELECT, FieldType.MULTISELECT -> "text"
+            FieldType.TEXT, FieldType.FILE, FieldType.SELECT, FieldType.MULTISELECT, FieldType.GEO -> "text"
             FieldType.INTEGER, FieldType.RELATION -> "bigint"
             FieldType.REAL -> "double precision"
             FieldType.BOOLEAN -> "boolean"

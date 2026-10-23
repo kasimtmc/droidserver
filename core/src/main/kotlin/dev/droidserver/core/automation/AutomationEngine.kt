@@ -4,6 +4,7 @@ import dev.droidserver.core.api.RecordService
 import dev.droidserver.core.api.RuleConditions
 import dev.droidserver.core.api.WriteGate
 import dev.droidserver.core.config.AutomationAction
+import dev.droidserver.core.config.GeoPoint
 import dev.droidserver.core.config.AutomationActionType
 import dev.droidserver.core.config.AutomationConfig
 import dev.droidserver.core.config.CollectionConfig
@@ -347,6 +348,8 @@ class AutomationEngine(
                     else -> JsonPrimitive(text)
                 }
                 FieldType.JSON, FieldType.MULTISELECT -> runCatching { Json.parseToJsonElement(text) }.getOrElse { JsonPrimitive(text) }
+                // "41.01,28.97" veya JSON nesne; uymazsa metin kalır (kayıt servisi reddeder).
+                FieldType.GEO -> GeoPoint.parse(text)?.json() ?: runCatching { Json.parseToJsonElement(text) }.getOrElse { JsonPrimitive(text) }
                 else -> JsonPrimitive(text)
             }
         }

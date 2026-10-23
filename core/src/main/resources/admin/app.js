@@ -302,7 +302,11 @@ async function showRecords() {
     });
   };
   const trashButton = el("button", { class: "ghost", onclick: () => showTrash(schema.find((x) => x.name === select.value), load) }, T("Çöp kutusu"));
-  const syncTrash = () => { trashButton.hidden = !cp(select.value, "trash"); };
+  const mapButton = el("button", { class: "ghost", onclick: () => showMap(schema.find((x) => x.name === select.value), filter.value.trim(), load) }, T("Harita"));
+  const syncTrash = () => {
+    trashButton.hidden = !cp(select.value, "trash");
+    mapButton.hidden = !schema.find((x) => x.name === select.value).fields.some((f) => f.type === "geo");
+  };
   syncTrash();
   select.onchange = () => { page = 1; clear(importBox); syncTrash(); load(); };
   const live = el("span", { class: "muted" });
@@ -340,7 +344,7 @@ async function showRecords() {
       el("button", { class: "ghost", onclick: doExport }, T("Dışa aktar")),
       el("button", { class: "ghost", onclick: () => fileInput.click() }, T("İçe aktar…")), fileInput,
       el("button", { class: "ghost", title: T("Başlıklar, seçenekler ve örnek satırla CSV"), onclick: doTemplate }, T("Şablon")),
-      trashButton,
+      trashButton, mapButton,
       el("button", { class: "ghost", onclick: () => guard(out, async () => {
         const n = Number(prompt(T("Kaç örnek kayıt eklensin? (1-500; alan kurallarına uyar, otomasyon ve webhook tetiklenmez)"), "20"));
         if (!n) return;
@@ -584,6 +588,166 @@ function cell(v) {
   return typeof v === "object" ? JSON.stringify(v) : String(v);
 }
 
+// ---- harita: OpenStreetMap karoları, kütüphanesiz (sürükle, tekerlek / + − ile yakınlaş)
+
+const TILE = 256;
+const mapX = (lng, z) => (lng + 180) / 360 * TILE * 2 ** z;
+const mapY = (lat, z) => { const r = lat * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * TILE * 2 ** z; };
+const mapLng = (x, z) => x / (TILE * 2 ** z) * 360 - 180;
+const mapLat = (y, z) => 180 / Math.PI * Math.atan(Math.sinh(Math.PI - 2 * Math.PI * y / (TILE * 2 ** z)));
+
+// points: [{lat, lng, label, onclick}]; onPick(lat, lng) verilirse haritaya tıklamak nokta seçer.
+function geoMap(points, onPick) {
+  const layer = el("div", { class: "map-layer" });
+  const box = el("div", { class: "map" }, layer,
+    el("div", { class: "map-zoom" },
+      el("button", { class: "ghost", title: T("Yakınlaş"), onclick: () => zoomAt(1) }, "+"),
+      el("button", { class: "ghost", title: T("Uzaklaş"), onclick: () => zoomAt(-1) }, "−")),
+    el("a", { class: "map-attr", href: "https://www.openstreetmap.org/copyright", target: "_blank", rel: "noopener" }, T("© OpenStreetMap katkıcıları")));
+  let z = 2, cx = 0, cy = 0, fitted = false, frame = 0;
+  const fit = (w, h) => {
+    fitted = true;
+    if (!points.length) { z = 2; cx = mapX(30, z); cy = mapY(35, z); return; }
+    z = 17;
+    while (z > 1) {
+      const xs = points.map((p) => mapX(p.lng, z)), ys = points.map((p) => mapY(p.lat, z));
+      if (Math.max(...xs) - Math.min(...xs) < w - 60 && Math.max(...ys) - Math.min(...ys) < h - 60) {
+        cx = (Math.max(...xs) + Math.min(...xs)) / 2; cy = (Math.max(...ys) + Math.min(...ys)) / 2;
+        return;
+      }
+      z--;
+    }
+    cx = mapX(points[0].lng, z); cy = mapY(points[0].lat, z);
+  };
+  const render = () => {
+    frame = 0;
+    const w = box.clientWidth, h = box.clientHeight;
+    if (!w || !h) return;
+    if (!fitted) fit(w, h);
+    clear(layer);
+    const n = 2 ** z, left = cx - w / 2, top = cy - h / 2;
+    for (let ty = Math.floor(top / TILE); ty * TILE < top + h; ty++) {
+      if (ty < 0 || ty >= n) continue;
+      for (let tx = Math.floor(left / TILE); tx * TILE < left + w; tx++) {
+        const img = el("img", { class: "map-tile", alt: "", draggable: "false", src: "https://tile.openstreetmap.org/" + z + "/" + (((tx % n) + n) % n) + "/" + ty + ".png" });
+        img.style.left = (tx * TILE - left) + "px";
+        img.style.top = (ty * TILE - top) + "px";
+        layer.append(img);
+      }
+    }
+    for (const p of points) {
+      // Dünya yatayda tekrarlar; işaret merkeze en yakın kopyada.
+      const world = TILE * n;
+      let x = mapX(p.lng, z) - left;
+      x -= Math.round((x - w / 2) / world) * world;
+      const m = el("button", { class: "map-pin", title: p.label || "", onclick: p.onclick || null });
+      m.style.left = x + "px";
+      m.style.top = (mapY(p.lat, z) - top) + "px";
+      layer.append(m);
+    }
+  };
+  const later = () => { if (!frame) frame = requestAnimationFrame(render); };
+  const zoomAt = (d, ox, oy) => {
+    const nz = Math.min(19, Math.max(1, z + d));
+    if (nz === z) return;
+    const w = box.clientWidth, h = box.clientHeight;
+    const px = ox === undefined ? w / 2 : ox, py = oy === undefined ? h / 2 : oy;
+    const k = 2 ** (nz - z);
+    cx = (cx - w / 2 + px) * k - px + w / 2;
+    cy = (cy - h / 2 + py) * k - py + h / 2;
+    z = nz;
+    later();
+  };
+  let drag = null;
+  box.addEventListener("pointerdown", (e) => {
+    if (e.target.closest("button, a")) return;
+    drag = { x: e.clientX, y: e.clientY, moved: false };
+    box.setPointerCapture(e.pointerId);
+  });
+  box.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+    cx -= dx; cy -= dy; drag.x = e.clientX; drag.y = e.clientY;
+    later();
+  });
+  box.addEventListener("pointerup", (e) => {
+    const d = drag;
+    drag = null;
+    if (!d || d.moved || !onPick) return;
+    const r = box.getBoundingClientRect();
+    const x = cx - box.clientWidth / 2 + (e.clientX - r.left), y = cy - box.clientHeight / 2 + (e.clientY - r.top);
+    const lng = ((mapLng(x, z) + 540) % 360) - 180;
+    onPick(Math.round(mapLat(y, z) * 1e6) / 1e6, Math.round(lng * 1e6) / 1e6);
+  });
+  box.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const r = box.getBoundingClientRect();
+    zoomAt(e.deltaY < 0 ? 1 : -1, e.clientX - r.left, e.clientY - r.top);
+  }, { passive: false });
+  new ResizeObserver(later).observe(box);
+  return {
+    el: box,
+    setPoints(next, refit) { points = next; if (refit) fitted = false; later(); },
+  };
+}
+
+function mapDialog(title, map, extra) {
+  const dialog = el("dialog", { class: "wide" }, el("h3", {}, title), extra || null, map.el,
+    el("div", { class: "row" }, el("button", { class: "ghost", onclick: () => { dialog.close(); dialog.remove(); } }, T("Kapat"))));
+  document.body.append(dialog);
+  dialog.showModal();
+  return dialog;
+}
+
+// Koleksiyonun konumlu kayıtları (filtreyle, en çok 500).
+function showMap(c, filter, reload) {
+  const geo = c.fields.filter((f) => f.type === "geo");
+  const pick = el("select", { hidden: geo.length < 2 }, geo.map((f) => el("option", { value: f.name }, f.name)));
+  const label = c.fields.find((f) => f.type === "text");
+  const idKey = nm(c.name, "id");
+  const info = el("p", { class: "muted" });
+  const map = geoMap([]);
+  const load = (refit) => guard(info, async () => {
+    const f = pick.value;
+    const q = "perPage=500&" + encodeURIComponent(f) + "[null]=false" + (filter ? "&" + filter : "");
+    const r = await api(cp(c.name, "list") + "?" + q);
+    const items = r.items.filter((x) => x[f]);
+    info.textContent = items.length + T(" konumlu kayıt") + (r.totalItems > items.length ? " · " + T("ilk 500 gösteriliyor") : "");
+    map.setPoints(items.map((x) => ({
+      lat: x[f].lat, lng: x[f].lng,
+      label: "#" + (idKey ? x[idKey] : "") + (label && x[label.name] ? " · " + x[label.name] : ""),
+      onclick: idKey && cp(c.name, "update", { id: x[idKey] }) ? () => editRecord(c, x, () => { reload(); load(false); }) : null,
+    })), refit);
+  });
+  pick.onchange = () => load(true);
+  mapDialog(c.name + T(" · harita"), map, el("div", { class: "row" }, pick, info));
+  load(true);
+}
+
+// Konum alanı için nokta seçme: haritaya tıklayın; telefonun ya da bu cihazın konumu da kullanılabilir.
+function pickLocation(current, done) {
+  let chosen = current && typeof current.lat === "number" ? current : null;
+  const status = el("p", { class: "muted" }, chosen ? chosen.lat + ", " + chosen.lng : T("Haritaya dokunarak bir nokta seçin."));
+  const show = () => { map.setPoints(chosen ? [{ lat: chosen.lat, lng: chosen.lng }] : []); status.textContent = chosen ? chosen.lat + ", " + chosen.lng : ""; };
+  const map = geoMap(chosen ? [{ lat: chosen.lat, lng: chosen.lng }] : [], (lat, lng) => { chosen = { lat, lng }; show(); });
+  const set = (p, refit) => { chosen = p; map.setPoints([{ lat: p.lat, lng: p.lng }], refit); status.textContent = p.lat + ", " + p.lng + (p.accuracy ? " (±" + Math.round(p.accuracy) + " m)" : ""); };
+  const phone = gp("phone.location", null, null);
+  const dialog = mapDialog(T("Konum seç"), map, el("div", {},
+    status,
+    el("div", { class: "row" },
+      phone ? el("button", { class: "ghost", onclick: () => guard(status, async () => {
+        const r = await api(phone);
+        if (!r.available) throw new Error(T("Telefonun konumu henüz yok"));
+        set({ lat: r.latitude, lng: r.longitude, accuracy: r.accuracyM || undefined }, true);
+      }) }, T("Telefonun konumu")) : null,
+      navigator.geolocation ? el("button", { class: "ghost", onclick: () => navigator.geolocation.getCurrentPosition(
+        (p) => set({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy }, true),
+        (e) => { status.textContent = T("Bu cihazın konumu alınamadı: ") + e.message; }) }, T("Bu cihazın konumu")) : null,
+      el("button", { class: "btn", onclick: () => { dialog.close(); dialog.remove(); done(chosen); } }, T("Seç")),
+      el("button", { class: "ghost", onclick: () => { dialog.close(); dialog.remove(); done(null); } }, T("Konumu temizle")))));
+}
+
 function editRecord(c, item, done) {
   const body = {};
   for (const f of c.fields) if (f.type !== "file" && !f.computed) body[f.name] = item ? item[f.name] : (f.default !== undefined ? f.default : null);
@@ -594,7 +758,13 @@ function editRecord(c, item, done) {
   const dialog = el("dialog", {},
     el("h3", {}, item ? c.name + " #" + item[nm(c.name, "id")] : T("Yeni ") + c.name),
     el("p", { class: "muted" }, T("Alanlar JSON olarak; dosya ve hesaplanan alanlar burada düzenlenemez.") + (hints ? T(" Seçenekler — ") + hints : "")),
-    text, status,
+    text,
+    el("div", { class: "row" }, c.fields.filter((f) => f.type === "geo" && !f.computed).map((f) => el("button", { class: "ghost", onclick: () => {
+      let data;
+      try { data = JSON.parse(text.value); } catch (e) { status.textContent = e.message; return; }
+      pickLocation(data[f.name], (p) => { data[f.name] = p; text.value = JSON.stringify(data, null, 2); });
+    } }, f.name + T(": haritadan seç")))),
+    status,
     el("div", { class: "row" },
       el("button", { class: "btn", onclick: async () => {
         status.textContent = "";
@@ -1188,12 +1358,53 @@ async function showJobs() {
 // ---- şema: koleksiyon, alan ve kural düzenleyici (konfigürasyonun yalnızca collections kısmını değiştirir)
 
 const FIELD_TYPES = [["text", T("Metin")], ["integer", T("Tam sayı")], ["real", T("Ondalıklı")], ["boolean", T("Evet/Hayır")], ["datetime", T("Tarih-saat")],
-  ["json", "JSON"], ["relation", T("İlişki")], ["file", T("Dosya")], ["select", T("Seçim")], ["multiselect", T("Çoklu seçim")]];
+  ["json", "JSON"], ["relation", T("İlişki")], ["file", T("Dosya")], ["select", T("Seçim")], ["multiselect", T("Çoklu seçim")], ["geo", T("Konum")]];
 const RULES = [["public", T("Herkes")], ["auth", T("Giriş yapmış")], ["owner", T("Kaydın sahibi")], ["team", T("Takım üyeleri")], ["admin", T("Yönetici")], ["nobody", T("Kapalı")]];
 const RULE_OPS = [["list", T("Listele")], ["view", T("Görüntüle")], ["create", T("Ekle")], ["update", T("Güncelle")], ["delete", T("Sil")]];
 const NAME_RE = /^[a-z][a-z0-9_]*$/;
 
 function options(list, value) { return list.map(([v, t]) => el("option", { value: v, selected: v === value }, t)); }
+
+// Takvim (çakışma kuralı, .ics aboneliği, CalDAV) ve kişiler (CardDAV): alan eşlemeleri.
+function calendarEditor(c) {
+  const box = el("div");
+  const names = (...types) => c.fields.filter((f) => types.includes(f.type) && !f.encrypted).map((f) => [f.name, f.name]);
+  const pick = (obj, key, label, choices, optional = true) => el("label", {}, label + ": ",
+    el("select", { onchange: (ev) => setProp(obj, key, ev.target.value) }, options([...(optional ? [["", T("(yok)")]] : []), ...choices], obj[key] || "")));
+  const check = (obj, key, label, after) => el("label", {}, el("input", { type: "checkbox", checked: !!obj[key], onchange: (ev) => { setProp(obj, key, ev.target.checked); if (after) after(); } }), " " + label);
+  const render = () => {
+    clear(box);
+    const calOn = el("input", { type: "checkbox", checked: !!c.calendar, onchange: () => {
+      const times = names("datetime");
+      setProp(c, "calendar", calOn.checked ? { title: (names("text")[0] || [""])[0], start: (times[0] || [""])[0], ...(times[1] ? { end: times[1][0] } : {}) } : null);
+      render();
+    } });
+    box.append(el("div", { class: "row" }, el("label", {}, calOn, T(" Takvim")), el("span", { class: "muted" }, T("Kayıtlar etkinlik olur: çakışma kuralı, .ics aboneliği, telefon takvimiyle eşitleme."))));
+    const cal = c.calendar;
+    if (cal) {
+      box.append(el("div", { class: "row" },
+        pick(cal, "title", T("başlık"), names("text"), false), pick(cal, "start", T("başlangıç"), names("datetime"), false), pick(cal, "end", T("bitiş"), names("datetime")),
+        pick(cal, "description", T("açıklama"), names("text")), pick(cal, "location", T("yer"), names("text", "geo")),
+        pick(cal, "allDay", T("tüm gün"), names("boolean")), pick(cal, "recurrence", T("tekrar"), names("text"))));
+      const token = el("input", { size: "26", value: cal.feedToken || "", placeholder: T("gizli anahtar (isteğe bağlı)"), onchange: () => setProp(cal, "feedToken", token.value.trim()) });
+      box.append(el("div", { class: "row" },
+        check(cal, "noOverlap", T("çakışma olmasın"), render), cal.noOverlap ? pick(cal, "resource", T("kaynak"), names("text", "select", "integer", "relation")) : null,
+        check(cal, "feed", T("abonelik (.ics)"), render), cal.feed ? token : null,
+        cal.feed ? el("button", { class: "ghost", onclick: () => { const b = new Uint8Array(12); crypto.getRandomValues(b); token.value = [...b].map((x) => x.toString(16).padStart(2, "0")).join(""); setProp(cal, "feedToken", token.value); } }, T("Oluştur")) : null,
+        check(cal, "dav", T("CalDAV (ağ sürücüsü kimliğiyle)"))));
+    }
+    const conOn = el("input", { type: "checkbox", checked: !!c.contacts, onchange: () => { setProp(c, "contacts", conOn.checked ? { name: (names("text")[0] || [""])[0] } : null); render(); } });
+    box.append(el("div", { class: "row" }, el("label", {}, conOn, T(" Kişiler (CardDAV)")), el("span", { class: "muted" }, T("Kayıtlar telefonun rehberinde kişi olur (ağ sürücüsü kimliğiyle)."))));
+    const con = c.contacts;
+    if (con) {
+      const t = names("text");
+      box.append(el("div", { class: "row" }, pick(con, "name", T("ad"), t, false), pick(con, "email", T("e-posta"), t), pick(con, "phone", T("telefon"), t),
+        pick(con, "organization", T("kurum"), t), pick(con, "note", T("not"), t)));
+    }
+  };
+  render();
+  return box;
+}
 
 // Boş/varsayılan değerler dosyaya yazılmaz (sihirbazın ürettiği konfigürasyonla aynı görünüm).
 function setProp(obj, key, value) {
@@ -1210,7 +1421,7 @@ function fitField(f, type) {
   if (!number) { delete f.min; delete f.max; }
   if (!["text", "integer", "real", "boolean"].includes(type)) delete f.computed;
   if (type !== "relation") { delete f.collection; delete f.onDelete; }
-  if (type !== "file") { delete f.multiple; delete f.maxSizeMb; delete f.mimeTypes; delete f.thumbs; }
+  if (type !== "file") { delete f.multiple; delete f.maxSizeMb; delete f.mimeTypes; delete f.thumbs; delete f.convert; delete f.maxDimension; delete f.keepLocation; delete f.ai; }
   if (type === "file") { delete f.unique; delete f.index; }
   if (type !== "text" && type !== "json") delete f.encrypted;
   delete f.default;
@@ -1321,6 +1532,7 @@ async function showSchema() {
       [["lww", T("son yazan kazanır")], ["manual", T("elle çöz")]].map(([v, t]) => el("option", { value: v, selected: (c.sync && c.sync.conflict) === v }, t)));
     const syncDays = el("input", { type: "number", min: "1", max: "365", value: (c.sync && c.sync.keepDays) || 30, size: "4", onchange: () => { if (c.sync) c.sync.keepDays = Number(syncDays.value); } });
     editor.append(el("div", { class: "row" }, el("label", {}, syncOn, T(" Çevrimdışı eşitleme")), conflict, el("label", {}, T("silme izi (gün): "), syncDays)));
+    editor.append(calendarEditor(c));
 
     // Alanlar
     const rows = c.fields.map((f, i) => fieldRow(c, f, i));
@@ -1377,6 +1589,18 @@ async function showSchema() {
       const multi = el("input", { type: "checkbox", checked: !!f.multiple, onchange: () => setProp(f, "multiple", multi.checked) });
       extra.append(el("label", {}, multi, T(" çoklu")));
       input("maxSizeMb", T("en çok MB"), "4", num);
+      // Görseller: dönüşüm ve küçültme telefonda; konum (GPS) varsayılan silinir; YZ ile etiket ve metin.
+      const conv = el("select", { onchange: () => setProp(f, "convert", conv.value) }, options([["", T("dönüştürme yok")], ["webp", "WebP"], ["jpeg", "JPEG"]], f.convert || ""));
+      extra.append(conv);
+      input("maxDimension", T("en büyük kenar px"), "5", num);
+      const gps = el("input", { type: "checkbox", checked: !!f.keepLocation, onchange: () => setProp(f, "keepLocation", gps.checked) });
+      extra.append(el("label", { title: T("Kapalıyken fotoğraftaki konum yüklenirken silinir") }, gps, T(" konumu koru")));
+      const aiPick = (key, label, types) => el("select", { title: label, onchange: (ev) => {
+        const ai = Object.assign({}, f.ai || {});
+        setProp(ai, key, ev.target.value);
+        setProp(f, "ai", Object.keys(ai).length ? ai : null);
+      } }, options([["", label + ": " + T("yok")], ...c.fields.filter((o) => o !== f && types.includes(o.type)).map((o) => [o.name, label + ": " + o.name])], (f.ai || {})[key] || ""));
+      extra.append(aiPick("tags", T("YZ etiketleri"), ["text", "multiselect", "json"]), aiPick("text", T("YZ metni (OCR)"), ["text"]));
     }
     // Kayıtlı tipten farklıysa kayıtlı değerler: dönüştür veya boşalt.
     const saved = savedTypes[key];

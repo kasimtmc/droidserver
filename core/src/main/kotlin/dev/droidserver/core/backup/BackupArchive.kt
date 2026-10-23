@@ -1,5 +1,6 @@
 package dev.droidserver.core.backup
 
+import dev.droidserver.core.config.GeoPoint
 import dev.droidserver.core.config.CollectionConfig
 import dev.droidserver.core.config.FieldType
 import dev.droidserver.core.config.ServerConfig
@@ -212,7 +213,7 @@ object BackupArchive {
             FieldType.REAL -> p?.doubleOrNull
             FieldType.BOOLEAN -> p?.booleanOrNull
             FieldType.DATETIME -> p?.content?.let { runCatching { Instant.parse(it) }.getOrNull() }
-            FieldType.TEXT, FieldType.FILE, FieldType.SELECT, FieldType.MULTISELECT -> p?.content
+            FieldType.TEXT, FieldType.FILE, FieldType.SELECT, FieldType.MULTISELECT, FieldType.GEO -> p?.content
         }
     }
 

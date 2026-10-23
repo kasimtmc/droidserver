@@ -18,7 +18,7 @@ import java.time.ZoneOffset
  */
 object TypeConversions {
     private val TARGETS: Map<FieldType, Set<FieldType>> = mapOf(
-        FieldType.TEXT to setOf(FieldType.INTEGER, FieldType.REAL, FieldType.BOOLEAN, FieldType.DATETIME, FieldType.JSON, FieldType.RELATION, FieldType.SELECT, FieldType.MULTISELECT),
+        FieldType.TEXT to setOf(FieldType.INTEGER, FieldType.REAL, FieldType.BOOLEAN, FieldType.DATETIME, FieldType.JSON, FieldType.RELATION, FieldType.SELECT, FieldType.MULTISELECT, FieldType.GEO),
         FieldType.INTEGER to setOf(FieldType.TEXT, FieldType.REAL, FieldType.BOOLEAN, FieldType.JSON, FieldType.RELATION),
         FieldType.REAL to setOf(FieldType.TEXT, FieldType.INTEGER, FieldType.BOOLEAN, FieldType.JSON),
         FieldType.BOOLEAN to setOf(FieldType.TEXT, FieldType.INTEGER, FieldType.REAL, FieldType.JSON),
@@ -28,6 +28,7 @@ object TypeConversions {
         FieldType.RELATION to setOf(FieldType.TEXT, FieldType.INTEGER, FieldType.REAL, FieldType.JSON),
         // Dosya adları başka bir tipte anlamsız; dosya alanına da başka tipten dönüştürülmez (yalnızca boşaltma).
         FieldType.FILE to emptySet(),
+        FieldType.GEO to setOf(FieldType.TEXT),
         // Seçimler metindir: metne, birbirine ve JSON'a çevrilir (seçenek dışında kalan değer yazılırken reddedilir).
         FieldType.SELECT to setOf(FieldType.TEXT, FieldType.MULTISELECT, FieldType.JSON),
         FieldType.MULTISELECT to setOf(FieldType.TEXT, FieldType.SELECT, FieldType.JSON),
@@ -42,6 +43,7 @@ object TypeConversions {
     fun describe(from: FieldType, to: FieldType): String = when {
         !canConvert(from, to) -> tr("Bu tipler arasında dönüştürme yok; değerler ancak boşaltılabilir.")
         from == FieldType.JSON && to != FieldType.TEXT -> tr("Yalnızca tek değerler (sayı, metin, true/false) çevrilir; nesne ve diziler boşalır.")
+        to == FieldType.GEO -> tr("Yalnızca enlem,boylam biçimindeki metinler (41.01,28.97) çevrilir; diğerleri boşalır.")
         to == FieldType.RELATION -> tr("Tam sayılar kayıt kimliği sayılır (hedef koleksiyonda olmayan kimlikler expand'de boş görünür); diğerleri boşalır.")
         from == FieldType.RELATION -> tr("Kayıt kimlikleri çevrilir.")
         to == FieldType.INTEGER && from != FieldType.BOOLEAN -> tr("Yalnızca tam sayılar (42, 2.0) çevrilir; diğerleri boşalır.")
@@ -112,6 +114,7 @@ object TypeConversions {
             else -> textOf(from, value)?.let(::parseLong)
         }?.takeIf { it > 0 }
         FieldType.FILE -> null
+        FieldType.GEO -> GeoPoint.parse(value.toString())?.text()
         FieldType.JSON -> when (value) {
             is Boolean -> JsonPrimitive(value).toString()
             is Number -> JsonPrimitive(value).toString()

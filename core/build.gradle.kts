@@ -24,6 +24,7 @@ dependencies {
     implementation(libs.ktor.server.method.override)
     implementation(libs.ktor.client.cio)
     implementation(libs.ktor.server.conditional.headers)
+    implementation(libs.ktor.server.partial.content)
     implementation(libs.ktor.server.auth)
     implementation(libs.ktor.server.websockets)
     implementation(libs.ktor.server.auth.jwt)

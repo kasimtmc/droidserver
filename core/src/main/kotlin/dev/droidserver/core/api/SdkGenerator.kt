@@ -68,6 +68,7 @@ object SdkGenerator {
         FieldType.INTEGER, FieldType.REAL, FieldType.RELATION -> "number"
         FieldType.BOOLEAN -> "boolean"
         FieldType.JSON -> "unknown"
+        FieldType.GEO -> "GeoPoint"
         FieldType.FILE -> if (f?.isMultiple == true) "string[]" else "string"
         FieldType.SELECT -> f?.options?.takeIf { it.isNotEmpty() }?.joinToString(" | ") { tsStr(it) } ?: "string"
         FieldType.MULTISELECT -> "Array<" + (f?.options?.takeIf { it.isNotEmpty() }?.joinToString(" | ") { tsStr(it) } ?: "string") + ">"
@@ -155,6 +156,9 @@ object SdkGenerator {
         |
         |export interface Page<T> { items: T[]; page: number; perPage: number; totalItems: number; totalPages: number }
         |
+        |/** Konum alanı; filtre: `{ konum: { near: "41.01,28.97,5" } }` (km, yakından uzağa) veya `{ box: "güney,batı,kuzey,doğu" }`. */
+        |export interface GeoPoint { lat: number; lng: number; accuracy?: number }
+        |
         |export class DroidServerError extends Error {
         |  readonly status: number;
         |  readonly details: Record<string, string>;
@@ -168,7 +172,7 @@ object SdkGenerator {
         |type Scalar = string | number | boolean;
         |/** Alan = değer (eşittir) veya işleçler: { gt: 1 }, { in: ["a", "b"] }, { null: true }, { like: "süt" }. */
         |type Elem<V> = V extends Array<infer E> ? E : V;
-        |export type Filter<T> = { [K in keyof T]?: Elem<NonNullable<T[K]>> | Partial<Record<"eq" | "ne" | "gt" | "gte" | "lt" | "lte" | "like", Scalar>> | { in: Scalar[] } | { null: boolean } };
+        |export type Filter<T> = { [K in keyof T]?: Elem<NonNullable<T[K]>> | Partial<Record<"eq" | "ne" | "gt" | "gte" | "lt" | "lte" | "like", Scalar>> | { in: Scalar[] } | { null: boolean } | { near: string } | { box: string } };
         |
         |export interface ListOptions<T> {
         |  page?: number; perPage?: number; sort?: string; q?: string;
@@ -538,6 +542,7 @@ object SdkGenerator {
         FieldType.REAL -> "Double"
         FieldType.BOOLEAN -> "Boolean"
         FieldType.JSON -> "JsonElement"
+        FieldType.GEO -> "GeoPoint"
         FieldType.FILE -> if (f?.isMultiple == true) "List<String>" else "String"
         FieldType.MULTISELECT -> "List<String>"
     }
@@ -662,6 +667,10 @@ object SdkGenerator {
         |data class Page<T>(val items: List<T>, val page: Int, val perPage: Int, val totalItems: Long, val totalPages: Long)
         |
         |class DroidServerException(val status: Int, message: String, val details: Map<String, String> = emptyMap()) : IOException(message)
+        |
+        |/** Konum alanı; filtre: `"konum[near]" to "41.01,28.97,5"` (km, yakından uzağa) veya `"konum[box]" to "güney,batı,kuzey,doğu"`. */
+        |@Serializable
+        |data class GeoPoint(val lat: Double, val lng: Double, val accuracy: Double? = null)
         |
         |/** Giriş sonucu: [tokens] ya da iki adımlı doğrulama açıksa [challenge] (`Auth.verify2fa` ile tamamlayın). */
         |data class LoginResult(val tokens: JsonObject?, val challenge: String?)
@@ -1198,6 +1207,7 @@ object SdkGenerator {
         FieldType.REAL -> "double"
         FieldType.BOOLEAN -> "bool"
         FieldType.JSON -> "Object"
+        FieldType.GEO -> "GeoPoint"
         FieldType.FILE -> if (f?.isMultiple == true) "List<String>" else "String"
         FieldType.MULTISELECT -> "List<String>"
     }
@@ -1211,6 +1221,7 @@ object SdkGenerator {
             "double" -> "($v as num$q)$q.toDouble()"
             "List<String>" -> "($v as List$q)$q.cast<String>()"
             "Object" -> v
+            "GeoPoint" -> "$v == null ? null : GeoPoint.fromJson($v as Map<String, dynamic>)"
             else -> "$v as ${dartType(f, type)}$q"
         }
     }
@@ -1263,7 +1274,7 @@ object SdkGenerator {
                 appendLine("  const ${t}Input(${if (inputs.isEmpty()) "" else "{" + inputs.joinToString(", ") { "this.${dartName(it.name)}" } + "}"});")
                 appendLine()
                 appendLine("  Map<String, dynamic> toJson() => {")
-                for (f in inputs) appendLine("        if (${dartName(f.name)} != null) ${dartStr(f.name)}: ${dartName(f.name)},")
+                for (f in inputs) appendLine("        if (${dartName(f.name)} != null) ${dartStr(f.name)}: ${dartName(f.name)}${if (f.type == FieldType.GEO) "?.toJson()" else ""},")
                 appendLine("      };")
                 appendLine("}")
             }
@@ -1328,6 +1339,7 @@ object SdkGenerator {
         FieldType.REAL -> "Double"
         FieldType.BOOLEAN -> "Bool"
         FieldType.JSON -> "JSONValue"
+        FieldType.GEO -> "GeoPoint"
         FieldType.FILE -> if (f?.isMultiple == true) "[String]" else "String"
         FieldType.MULTISELECT -> "[String]"
     }
