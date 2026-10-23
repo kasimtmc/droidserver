@@ -57,6 +57,7 @@ import dev.droidserver.app.ui.wizard.WizardViewModel
 import dev.droidserver.core.automation.AutomationRun
 import dev.droidserver.core.config.AutomationAction
 import dev.droidserver.core.config.AutomationActionType
+import dev.droidserver.core.config.FieldType
 import dev.droidserver.core.config.AutomationConfig
 import dev.droidserver.core.config.AutomationTrigger
 import dev.droidserver.core.config.ServerConfig
@@ -304,6 +305,7 @@ private fun ActionCard(cfg: ServerConfig, collection: String?, scheduled: Boolea
             AutomationActionType.WEBHOOK -> cfg.webhooks.isNotEmpty() || a.type == t
             AutomationActionType.UPDATE -> collection != null || a.type == t
             AutomationActionType.MQTT -> cfg.mqtt.enabled || a.type == t
+            AutomationActionType.AI -> (cfg.ai.enabled && collection != null && !scheduled) || a.type == t
             else -> true
         }
     }
@@ -353,6 +355,16 @@ private fun ActionCard(cfg: ServerConfig, collection: String?, scheduled: Boolea
                     if (a.collection != null) ValuesEditor(cfg, a.collection, a.values) { onChange(a.copy(values = it)) }
                 }
                 AutomationActionType.LOG -> field(tr("Log metni"), a.body) { a.copy(body = it) }()
+                AutomationActionType.AI -> {
+                    field(tr("İstem"), a.body, tr("Örn. Şu metni bir cümleyle özetle: {body}"), single = false) { a.copy(body = it) }()
+                    Text(tr("Yanıtın yazılacağı alan (tetikleyen kayıtta):"), style = MaterialTheme.typography.bodySmall)
+                    val targets = cfg.collections.firstOrNull { it.name == collection }?.fields.orEmpty()
+                        .filter { it.computed == null && it.type in setOf(FieldType.TEXT, FieldType.SELECT, FieldType.MULTISELECT, FieldType.INTEGER, FieldType.REAL, FieldType.BOOLEAN) }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        targets.forEach { f -> FilterChip(a.field == f.name, { onChange(a.copy(field = f.name)) }, label = { Text(f.name) }) }
+                    }
+                    Text(tr("Seçim alanında yanıt seçeneklerden biri olmalı (sınıflandırma). Yerel modelde yavaş olabilir; olay sırayla işlenir."), style = MaterialTheme.typography.bodySmall)
+                }
                 AutomationActionType.MQTT -> {
                     field(tr("Konu"), a.topic, tr("Joker olmadan, örn. ev/salon/lamba veya ev/{oda}/lamba")) { a.copy(topic = it) }()
                     field(tr("İçerik"), a.body, tr("Düz metin veya JSON; {alan} kayıttan dolar")) { a.copy(body = it) }()

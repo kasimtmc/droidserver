@@ -197,6 +197,7 @@ const TABS = [
   ["audit", T("Denetim"), showAudit],
   ["jobs", T("İşler"), showJobs],
   ["views", T("Görünümler"), showViews],
+  ["pages", T("Sayfalar ve panolar"), showPages],
   ["automation", T("Otomasyon"), showAutomation],
   ["services", T("Servisler"), showServices],
   ["api", "API", showApi],
@@ -1677,6 +1678,7 @@ async function showSchema() {
 async function showConfig() {
   const keys = await panelPasskeys().catch((e) => errorBox(e));
   if (keys) main.append(keys);
+  main.append(packagesCard());
   const r = await api("/_admin/api/config");
   const text = el("textarea", { spellcheck: "false" }, r.text);
   const out = el("div");
@@ -1704,6 +1706,58 @@ async function showConfig() {
         } catch (e) { out.append(errorBox(e)); }
       } }, T("Kaydet ve deploy et"))),
     out));
+}
+
+// ---- paketler: dosya, adres veya Git deposundan; önce plan (ne değişecek), sonra kurulum (uygulama kaydeder ve deploy eder)
+
+function packagesCard() {
+  const list = el("div"), planBox = el("div"), out = el("div");
+  const load = () => guard(list, async () => {
+    clear(list);
+    const r = await api(gp("packages", null, "/_packages"));
+    if (!r.items.length) { list.append(el("p", { class: "muted" }, T("Kurulu paket yok."))); return; }
+    list.append(el("div", { class: "table-wrap" }, el("table", {},
+      el("thead", {}, el("tr", {}, [T("Paket"), T("Sürüm"), T("Yayımcı"), T("İmza"), ""].map((h) => el("th", {}, h)))),
+      el("tbody", {}, r.items.map((p) => el("tr", {},
+        el("td", {}, p.title + " (" + p.name + ")"), el("td", {}, p.version), el("td", {}, p.publisher || ""),
+        el("td", { title: p.key || "" }, p.key ? T("imzalı") : T("imzasız")),
+        el("td", {}, el("button", { class: "ghost danger", onclick: async () => {
+          if (!confirm(p.title + T(" kaldırılsın mı? Tanımlar ve script'ler kaldırılır; koleksiyonların verileri kalır."))) return;
+          await guard(out, async () => { const d = await api(gp("packages.remove", { name: p.name }, "/_packages/{name}"), { method: "DELETE" }); out.append(el("p", { class: "ok" }, d.message)); });
+        } }, T("Kaldır")))))))));
+  });
+  const showPlan = (p) => {
+    clear(planBox);
+    const sig = p.signature.status === "signed" ? T("İmzalı: ") + (p.publisher || T("yayımcı belirtilmemiş")) + " (" + p.signature.fingerprint + ")"
+      : p.signature.status === "invalid" ? T("İmza geçersiz: ") + p.signature.reason : T("İmzasız");
+    const group = (title, items, cls) => items.length ? [el("b", {}, title), el("ul", { class: cls || "" }, items.map((x) => el("li", {}, x)))] : [];
+    planBox.append(el("div", { class: "card" },
+      el("h3", {}, p.title + " " + p.version + (p.previous ? " (" + T("kurulu: ") + p.previous + ")" : "")),
+      p.description ? el("p", {}, p.description) : null,
+      el("p", { class: p.signature.status === "signed" ? "ok" : "error" }, sig),
+      group(T("Eklenecek"), p.adds), group(T("Güncellenecek"), p.updates), group(T("Kaldırılacak"), p.removes),
+      group(T("Değişiklikler"), p.changes), group(T("Çakışmalar"), p.conflicts, "error"), group(T("Hatalar"), p.errors, "error"),
+      el("div", { class: "row" }, el("button", { class: "btn", disabled: p.blocked, onclick: () => guard(out, async () => {
+        if (!confirm(T("Paket kurulsun ve deploy edilsin mi? Sunucu kısa süre yeniden başlar."))) return;
+        const d = await api(gp("packages.install", null, "/_packages/install"), { method: "POST", body: { token: p.token } });
+        clear(planBox);
+        out.append(el("p", { class: "ok" }, d.message));
+      }) }, p.previous ? T("Güncelle") : T("Kur")))));
+  };
+  const plan = (body) => guard(out, async () => { clear(out); showPlan(await api(gp("packages.plan", null, "/_packages/plan"), { method: "POST", body })); });
+  const file = el("input", { type: "file", accept: ".zip,application/zip", class: "hidden" });
+  file.onchange = () => { const f = file.files[0]; file.value = ""; if (f) plan(f); };
+  const url = el("input", { size: "36", placeholder: "https://example.com/paket.zip" });
+  const repo = el("input", { size: "20", placeholder: T("sahip/depo") });
+  const branch = el("input", { size: "8", value: "main" });
+  load();
+  return el("div", { class: "card" }, el("h3", {}, T("Paketler")),
+    el("p", { class: "muted" }, T("Hazır uygulama ve eklenti paketleri: koleksiyonlar, görünümler, otomasyonlar, formlar, sayfalar, panolar, script'ler ve örnek veri. Kurmadan önce ne değişeceği gösterilir; imzasız paketleri yalnızca güvendiğiniz kaynaktan kurun.")),
+    list,
+    el("div", { class: "row" }, el("button", { class: "ghost", onclick: () => file.click() }, T("Dosyadan…")), file,
+      url, el("button", { class: "ghost", onclick: () => { if (url.value.trim()) plan({ url: url.value.trim() }); } }, T("Adresten")),
+      repo, branch, el("button", { class: "ghost", onclick: () => { if (repo.value.includes("/")) plan({ git: { provider: "github", repo: repo.value.trim(), branch: branch.value.trim() || "main" } }); } }, T("GitHub'dan"))),
+    planBox, out);
 }
 
 // ---- konfigürasyon bölümleri (Otomasyon, Servisler): server.json'un bir kısmını düzenler. Kaydetme Şema ve
@@ -1780,7 +1834,7 @@ function when(iso) { return iso ? new Date(iso).toLocaleString() : "—"; }
 
 const EVENTS = [["create", T("eklenince")], ["update", T("değişince")], ["delete", T("silinince")]];
 const ACTION_TYPES = [["log", T("Loga yaz")], ["email", T("E-posta gönder")], ["push", T("Bildirim gönder")], ["webhook", T("Webhook'a gönder")],
-  ["update", T("Kaydı güncelle")], ["create", T("Kayıt oluştur")], ["mqtt", T("MQTT mesajı gönder")]];
+  ["update", T("Kaydı güncelle")], ["create", T("Kayıt oluştur")], ["mqtt", T("MQTT mesajı gönder")], ["ai", T("YZ ile alan doldur")]];
 
 async function showAutomation() {
   const cfg = await loadConfig();
@@ -1812,6 +1866,171 @@ async function showAutomation() {
     saveRow(cfg)));
   renderRules();
   renderForms();
+}
+
+// ---- kodsuz sayfalar ve panolar
+
+async function showPages() {
+  const cfg = await loadConfig();
+  cfg.pages = cfg.pages || [];
+  cfg.dashboards = cfg.dashboards || [];
+  const pages = el("div"), boards = el("div");
+  const renderPages = () => { clear(pages); cfg.pages.forEach((p, i) => pages.append(pageCard(cfg, p, i, renderPages))); };
+  const renderBoards = () => { clear(boards); cfg.dashboards.forEach((d, i) => boards.append(dashboardCard(cfg, d, i, renderBoards))); };
+  main.append(el("div", { class: "card" }, el("h3", {}, T("Sayfalar")),
+    el("p", { class: "muted" }, T("Koleksiyonu liste ve detay sayfası olarak yayınlar (/pages/<ad>); sunucuda üretilir, JavaScript yok. Koleksiyonun kuralları uygulanır.")),
+    pages,
+    el("div", { class: "row" }, el("button", { class: "ghost", onclick: () => {
+      const c = collectionNames(cfg)[0];
+      if (!c) { alert(T("Önce bir koleksiyon oluşturun.")); return; }
+      cfg.pages.push({ name: "sayfa-" + (cfg.pages.length + 1), collection: c, title: c });
+      renderPages();
+    } }, T("+ Sayfa"))),
+    saveRow(cfg)));
+  main.append(el("div", { class: "card" }, el("h3", {}, T("Panolar")),
+    el("p", { class: "muted" }, T("Görünümlerden beslenen kutular. Kutuları sürükleyerek sıralayın; sayı ve grafik özetli (rapor) görünüm ister.")),
+    boards,
+    el("div", { class: "row" }, el("button", { class: "ghost", onclick: () => {
+      cfg.dashboards.push({ name: "pano-" + (cfg.dashboards.length + 1), title: T("Pano"), widgets: [] });
+      renderBoards();
+    } }, T("+ Pano"))),
+    saveRow(cfg)));
+  renderPages();
+  renderBoards();
+}
+
+function pageCard(cfg, p, i, rerender) {
+  const fields = el("input", { value: (p.fields || []).join(", "), placeholder: T("boşsa ilk beş alan"),
+    onchange: (e) => setProp(p, "fields", e.target.value.split(",").map((x) => x.trim()).filter((x) => x)) });
+  const layout = el("select", { onchange: () => setProp(p, "layout", layout.value === "cards" ? null : layout.value) },
+    options([["cards", T("kartlar")], ["table", T("tablo")]], p.layout || "cards"));
+  const detail = el("label", {}, el("input", { type: "checkbox", checked: p.detail !== false, onchange: (e) => { if (e.target.checked) delete p.detail; else p.detail = false; } }), " " + T("detay sayfası"));
+  return el("div", { class: "card" },
+    grid(
+      line(T("Başlık"), textIn(p, "title")),
+      line(T("Adres"), el("span", {}, "/pages/", textIn(p, "name"))),
+      line(T("Koleksiyon"), pick(collectionNames(cfg), p.collection, (v) => { p.collection = v; })),
+      line(T("Açıklama"), textIn(p, "description")),
+      line(T("Listedeki alanlar"), fields),
+      line(T("Süzgeç"), textIn(p, "filter", { placeholder: "status=published" })),
+      line(T("Sıralama"), textIn(p, "sort", { placeholder: "-created_at" })),
+      line(T("Sayfa başına"), numIn(p, "perPage", 20)),
+      line(T("Düzen"), layout),
+      line(T("Tema rengi"), textIn(p, "accent", { placeholder: "#006a65" })),
+      line("", el("span", { class: "row" }, detail, checkIn(p, "login", T("giriş gereksin")), enabledIn(p, T("etkin"))))),
+    el("div", { class: "row" },
+      el("a", { href: "/pages/" + encodeURIComponent(p.name), target: "_blank", rel: "noopener" }, T("Aç")),
+      el("button", { class: "ghost danger", onclick: () => { if (confirm("'" + p.name + T("' sayfası silinsin mi?"))) { cfg.pages.splice(i, 1); rerender(); } } }, T("Sayfayı sil"))));
+}
+
+function dashboardCard(cfg, d, i, rerender) {
+  d.widgets = d.widgets || [];
+  const list = el("div", { class: "widgets" });
+  const view = el("div");
+  let dragged = null;
+  const renderWidgets = () => {
+    clear(list);
+    d.widgets.forEach((w, wi) => {
+      const card = el("div", { class: "card widget-edit", draggable: "true" }, el("span", { class: "muted", title: T("Sürükleyip bırakın") }, "⋮⋮ " + (wi + 1)), widgetFields(cfg, w),
+        el("button", { class: "ghost danger", onclick: () => { d.widgets.splice(wi, 1); renderWidgets(); } }, T("Kutuyu sil")));
+      card.addEventListener("dragstart", (e) => { dragged = wi; e.dataTransfer.effectAllowed = "move"; card.classList.add("dragging"); });
+      card.addEventListener("dragend", () => card.classList.remove("dragging"));
+      card.addEventListener("dragover", (e) => { e.preventDefault(); card.classList.add("drop"); });
+      card.addEventListener("dragleave", () => card.classList.remove("drop"));
+      card.addEventListener("drop", (e) => {
+        e.preventDefault();
+        if (dragged === null || dragged === wi) return;
+        const [moved] = d.widgets.splice(dragged, 1);
+        d.widgets.splice(wi, 0, moved);
+        dragged = null;
+        renderWidgets();
+      });
+      list.append(card);
+    });
+  };
+  renderWidgets();
+  const token = el("input", { size: "28", value: d.shareToken || "", placeholder: T("paylaşım kapalı"), onchange: () => setProp(d, "shareToken", token.value.trim()) });
+  const share = () => d.shareToken ? location.origin + "/dashboards/" + d.name + "?token=" + d.shareToken : "";
+  return el("div", { class: "card" },
+    grid(
+      line(T("Başlık"), textIn(d, "title")),
+      line(T("Ad"), textIn(d, "name")),
+      line(T("Paylaşım anahtarı"), el("span", { class: "row" }, token, el("button", { class: "ghost", onclick: () => {
+        const b = new Uint8Array(12); crypto.getRandomValues(b); token.value = [...b].map((x) => x.toString(16).padStart(2, "0")).join(""); setProp(d, "shareToken", token.value);
+      } }, T("Oluştur"))))),
+    list,
+    el("div", { class: "row" },
+      el("button", { class: "ghost", onclick: () => {
+        const v = (cfg.views || [])[0];
+        if (!v) { alert(T("Önce bir görünüm ekleyin; kutular görünümlerden beslenir.")); return; }
+        d.widgets.push({ type: "table", view: v.name });
+        renderWidgets();
+      } }, T("+ Kutu")),
+      el("button", { class: "ghost", onclick: () => guard(view, async () => {
+        clear(view);
+        const data = await api(gp("dashboards.data", { name: d.name }, "/_dashboards/{name}"));
+        view.append(renderDashboard(data));
+      }) }, T("Göster (kayıtlı hali)")),
+      el("button", { class: "ghost", onclick: () => { const u = share(); if (u) window.open(u, "_blank", "noopener"); else alert(T("Önce paylaşım anahtarı oluşturup kaydedin.")); } }, T("Paylaşılan adres")),
+      el("button", { class: "ghost danger", onclick: () => { if (confirm("'" + d.name + T("' panosu silinsin mi?"))) { cfg.dashboards.splice(i, 1); rerender(); } } }, T("Panoyu sil"))),
+    view);
+}
+
+function widgetFields(cfg, w) {
+  const box = el("span", { class: "row" });
+  const render = () => {
+    clear(box);
+    const views = cfg.views || [];
+    const v = views.find((x) => x.name === w.view);
+    const type = el("select", { onchange: () => { w.type = type.value; render(); } },
+      options([["number", T("sayı")], ["chart", T("grafik")], ["table", T("tablo")], ["map", T("harita")]], w.type));
+    box.append(type, pick(views.map((x) => x.name), w.view, (val) => { w.view = val; render(); }));
+    if ((w.type === "number" || w.type === "chart") && v && v.report) {
+      const r = v.report;
+      const metrics = ["count", ...(r.sum || []).map((x) => "sum_" + x), ...(r.avg || []).map((x) => "avg_" + x), ...(r.min || []).map((x) => "min_" + x), ...(r.max || []).map((x) => "max_" + x)];
+      box.append(pick(metrics, w.metric || "count", (val) => setProp(w, "metric", val === "count" ? null : val)));
+    }
+    if (w.type === "chart") box.append(el("select", { onchange: (e) => setProp(w, "chart", e.target.value === "bar" ? null : e.target.value) }, options([["bar", T("çubuk")], ["line", T("çizgi")]], w.chart || "bar")));
+    if (w.type === "map") box.append(textIn(w, "field", { placeholder: T("konum alanı"), size: "10" }));
+    if (w.type === "table") box.append(el("label", {}, T("satır "), numIn(w, "limit", 10)));
+    box.append(textIn(w, "title", { placeholder: T("başlık"), size: "14" }),
+      el("select", { title: T("Genişlik"), onchange: (e) => setProp(w, "width", e.target.value === "1" ? null : Number(e.target.value)) }, options([["1", "1"], ["2", "2"], ["3", "3"]], String(w.width || 1))));
+  };
+  render();
+  return box;
+}
+
+const SVG = "http://www.w3.org/2000/svg";
+function svg(tag, attrs) { const e = document.createElementNS(SVG, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e; }
+
+function renderDashboard(data) {
+  const fmt = (n) => (typeof n === "number" ? n.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "—");
+  const box = el("div", { class: "dash" });
+  for (const w of data.widgets) {
+    const cell = el("section", { class: "widget w" + (w.width || 1) }, el("h4", {}, w.title));
+    if (w.error) cell.append(el("p", { class: "error" }, w.error));
+    else if (w.type === "number") cell.append(el("div", { class: "big" }, fmt(w.value)));
+    else if (w.type === "chart") {
+      const pts = w.points || [];
+      const max = Math.max(1e-9, ...pts.map((p) => p.value));
+      const s = svg("svg", { viewBox: "0 0 600 220", class: "chart" });
+      const step = 600 / Math.max(1, pts.length);
+      const y = (v) => 10 + 180 * (1 - v / max);
+      if (w.chart === "line") s.append(svg("polyline", { class: "line", points: pts.map((p, i) => (step * i + step / 2) + "," + y(p.value)).join(" ") }));
+      else pts.forEach((p, i) => { const r = svg("rect", { class: "bar", x: step * i + step * 0.15, y: y(p.value), width: step * 0.7, height: 190 - y(p.value), rx: 3 }); const t = svg("title", {}); t.textContent = p.label + ": " + fmt(p.value); r.append(t); s.append(r); });
+      const every = Math.max(1, Math.ceil(pts.length / 12));
+      pts.forEach((p, i) => { if (i % every) return; const t = svg("text", { x: step * i + step / 2, y: 212, "text-anchor": "middle" }); t.textContent = String(p.label).slice(0, 14); s.append(t); });
+      cell.append(s);
+    } else if (w.type === "table") {
+      cell.append(el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, el("tr", {}, w.columns.map((c) => el("th", {}, c)))),
+        el("tbody", {}, w.rows.map((r) => el("tr", {}, r.map((c) => el("td", {}, c))))))));
+    } else if (w.type === "map") {
+      const m = geoMap(w.points.map((p) => ({ lat: p.lat, lng: p.lng, label: p.label })));
+      cell.append(m.el);
+    }
+    box.append(cell);
+  }
+  return box;
 }
 
 function runLine(r) { return el("li", { class: r.ok ? "" : "error" }, when(r.at) + " · " + r.rule + " · " + r.trigger + " · " + r.message + " (" + r.durationMs + " ms)"); }
@@ -1871,6 +2090,7 @@ function actionRow(cfg, a, x, j, rerender) {
     update: [values()],
     create: [pick(collectionNames(cfg), x.collection, (v) => setProp(x, "collection", v), T("(koleksiyon)")), values()],
     mqtt: [textIn(x, "topic", { placeholder: "ev/salon/lamba" }), textIn(x, "body", { placeholder: T("içerik") }), checkIn(x, "retain", T("tutulsun"))],
+    ai: [textIn(x, "body", { placeholder: T("istem, örn. Özetle: {body}"), size: "36" }), pick(fieldNames(cfg, a.trigger.collection), x.field, (v) => setProp(x, "field", v), T("(yazılacak alan)"))],
   }[x.type] || [];
   return el("div", { class: "row" },
     el("select", { onchange: (e) => { a.actions[j] = { type: e.target.value }; rerender(); } }, options(ACTION_TYPES, x.type)),

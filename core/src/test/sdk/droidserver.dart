@@ -1,4 +1,4 @@
-// DroidServer istemcisi: "SDK deneme" sunucusu için üretildi (konfigürasyon v19).
+// DroidServer istemcisi: "SDK deneme" sunucusu için üretildi (konfigürasyon v20).
 // Konfigürasyon değişince yeniden indirin: GET <API>/_sdk/{ts|kotlin|dart|swift} (yönetici) veya uygulama/panel.
 // Gerekenler: yalnızca Dart 3 SDK'sı (`dart:io`). Dart VM ve Flutter Android/iOS/masaüstünde çalışır; Flutter web'de çalışmaz.
 //

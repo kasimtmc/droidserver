@@ -60,6 +60,9 @@ enum class AiProvider(val title: String, val defaultModel: String, val keyUrl: S
     @SerialName("claude") CLAUDE("Claude (Anthropic)", "claude-opus-5-5", "https://console.anthropic.com/settings/keys"),
     @SerialName("openai") OPENAI("OpenAI", "gpt-6.1-sol", "https://platform.openai.com/api-keys"),
     @SerialName("gemini") GEMINI("Google Gemini", "gemini-3.8-flash", "https://aistudio.google.com/apikey"),
+
+    /** Telefonda çalışan model (llama.cpp); [AiConfig.model] indirilen modelin kimliği. Anahtar yok, veri telefondan çıkmaz. */
+    @SerialName("local") LOCAL(tr("Telefonda (yerel model)"), "", ""),
 }
 
 /** Hazır model seçenekleri; listede olmayan bir model kimliği de yazılabilir. */
@@ -105,6 +108,9 @@ enum class EmbeddingProvider(val title: String, val defaultUrl: String, val defa
 
     /** OpenAI uyumlu `/embeddings` ucu: telefondaki veya ağdaki Ollama, LM Studio, OpenAI. */
     @SerialName("openai") OPENAI(tr("OpenAI uyumlu (Ollama, LM Studio…)"), "http://127.0.0.1:11434/v1", "nomic-embed-text"),
+
+    /** Telefonda çalışan gömme modeli (llama.cpp); [EmbeddingsConfig.model] indirilen modelin kimliği. */
+    @SerialName("local") LOCAL(tr("Telefonda (yerel model)"), "", ""),
 }
 
 @Serializable

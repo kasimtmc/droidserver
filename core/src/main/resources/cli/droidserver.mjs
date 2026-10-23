@@ -4,7 +4,9 @@
 // Ayarlar ~/.droidserver/cli.json'da (yalnızca sizin okuyabileceğiniz izinlerle); DROIDSERVER_URL ve DROIDSERVER_KEY
 // ortam değişkenleri dosyanın yerine geçer (CI için).
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, createWriteStream } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, createWriteStream, readdirSync, statSync } from "node:fs";
+import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign as signData } from "node:crypto";
+import { deflateRawSync } from "node:zlib";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { Readable } from "node:stream";
@@ -42,6 +44,13 @@ Kayıtlar:
   export <koleksiyon> [--format csv|json|zip] [-o dosya]
   import <koleksiyon> <dosya> [--mode upsert|insert] [--dry-run]
 
+Paketler:
+  package key [-o yayimci.key]        Yayımcı anahtarı üret (ECDSA P-256; gizli tutun)
+  package build <klasör> [-o paket.zip] [--key yayimci.key]   Klasörü paketle (anahtar verilirse imzala)
+  package plan <paket.zip>            Kurulursa ne değişir
+  package install <paket.zip> [--yes] Kur (önce planı gösterir)
+  package list | remove <ad>          Kurulu paketler / kaldır
+
 Diğer:
   api <YÖNTEM> <yol> ['<json>']        Herhangi bir uç (örn. api GET /_jobs)
 
@@ -74,6 +83,13 @@ Records:
   delete <collection> <id>
   export <collection> [--format csv|json|zip] [-o file]
   import <collection> <file> [--mode upsert|insert] [--dry-run]
+
+Packages:
+  package key [-o publisher.key]      Generate a publisher key (ECDSA P-256; keep it secret)
+  package build <folder> [-o package.zip] [--key publisher.key]   Package a folder (sign it when a key is given)
+  package plan <package.zip>          What would change if installed
+  package install <package.zip> [--yes]  Install (shows the plan first)
+  package list | remove <name>        Installed packages / remove
 
 Other:
   api <METHOD> <path> ['<json>']       Any endpoint (e.g. api GET /_jobs)
@@ -497,6 +513,44 @@ const commands = {
     await save(res, opt.o);
   },
 
+  async package(pos, opt) {
+    const sub = need(pos[0], "key | build | plan | install | list | remove");
+    if (sub === "key") {
+      const { privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+      const file = opt.o || "yayimci.key";
+      writeFileSync(file, privateKey.export({ type: "pkcs8", format: "pem" }), { mode: 0o600 });
+      process.stdout.write(file + "  " + fingerprint(createPublicKey(privateKey)) + "\n");
+      return;
+    }
+    if (sub === "build") {
+      const dir = need(pos[1], t("klasör", "folder"));
+      const files = collect(dir);
+      if (!files.has("package.json")) throw new CliError(t("Klasörde package.json yok", "No package.json in the folder"));
+      const manifest = JSON.parse(files.get("package.json").toString("utf8"));
+      if (opt.key) {
+        const key = createPrivateKey(readFileSync(opt.key));
+        const pub = createPublicKey(key);
+        const signature = signData("sha256", digestList(files), key).toString("base64");
+        files.set("signature.json", Buffer.from(JSON.stringify({ algorithm: "ECDSA-P256-SHA256", publicKey: pub.export({ type: "spki", format: "der" }).toString("base64"), signature })));
+      }
+      const out = opt.o || `${manifest.name}-${manifest.version}.zip`;
+      writeFileSync(out, zipFiles(files));
+      process.stdout.write(out + (opt.key ? "  " + t("imzalı ", "signed ") + fingerprint(createPublicKey(createPrivateKey(readFileSync(opt.key)))) : "  " + t("imzasız", "unsigned")) + "\n");
+      return;
+    }
+    const s = session(opt);
+    if (sub === "list") return print(await http(s, "GET", "/_packages"), opt);
+    if (sub === "remove") return print(await http(s, "DELETE", `/_packages/${enc(need(pos[1], t("ad", "name")))}`), opt);
+    const file = need(pos[1], t("paket dosyası", "package file"));
+    const plan = await http(s, "POST", "/_packages/plan", { body: readFileSync(file), headers: { "Content-Type": "application/zip" } });
+    if (sub === "plan" || opt.json) { print(plan, opt); if (sub === "plan") return; }
+    else showPlan(plan);
+    if (sub !== "install") throw new CliError(t("Bilinmeyen alt komut: ", "Unknown subcommand: ") + sub);
+    if (plan.blocked) throw new CliError(t("Paket kurulamaz (çakışma veya hata).", "The package cannot be installed (conflict or error)."));
+    if (!opt.yes && !(await confirm(t("Kurulsun ve deploy edilsin mi? (e/h) ", "Install and deploy? (y/n) ")))) return;
+    print(await http(s, "POST", "/_packages/install", { json: { token: plan.token } }), opt);
+  },
+
   async api(pos, opt) {
     const s = session(opt);
     const method = need(pos[0], t("yöntem", "method")).toUpperCase();
@@ -505,6 +559,73 @@ const commands = {
     print(await http(s, method, path.startsWith("/") ? path : "/" + path, { json }), opt);
   },
 };
+
+// ---- paket yardımcıları (sunucudaki Packages ile aynı biçim)
+
+function collect(dir, prefix = "", out = new Map()) {
+  for (const name of readdirSync(dir).sort()) {
+    if (name.startsWith(".") || name === "signature.json") continue;
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) collect(path, prefix + name + "/", out);
+    else out.set(prefix + name, readFileSync(path));
+  }
+  return out;
+}
+
+function digestList(files) {
+  const names = [...files.keys()].filter((n) => n !== "signature.json").sort();
+  return Buffer.from(names.map((n) => n + "\t" + createHash("sha256").update(files.get(n)).digest("hex") + "\n").join(""));
+}
+
+function fingerprint(pub) {
+  return [...createHash("sha256").update(pub.export({ type: "spki", format: "der" })).digest().subarray(0, 16)].map((b) => b.toString(16).padStart(2, "0")).join(":");
+}
+
+const CRC = new Int32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c; });
+function crc32(buf) { let c = -1; for (const b of buf) c = CRC[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ -1) >>> 0; }
+
+/** Deflate'li zip (bağımlılıksız). */
+function zipFiles(files) {
+  const parts = [], central = [];
+  let offset = 0;
+  for (const [name, data] of files) {
+    const n = Buffer.from(name, "utf8");
+    const packed = deflateRawSync(data);
+    const crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt16LE(0x0800, 6); local.writeUInt16LE(8, 8);
+    local.writeUInt32LE(crc, 14); local.writeUInt32LE(packed.length, 18); local.writeUInt32LE(data.length, 22); local.writeUInt16LE(n.length, 26);
+    const dir = Buffer.alloc(46);
+    dir.writeUInt32LE(0x02014b50, 0); dir.writeUInt16LE(20, 4); dir.writeUInt16LE(20, 6); dir.writeUInt16LE(0x0800, 8); dir.writeUInt16LE(8, 10);
+    dir.writeUInt32LE(crc, 16); dir.writeUInt32LE(packed.length, 20); dir.writeUInt32LE(data.length, 24); dir.writeUInt16LE(n.length, 28); dir.writeUInt32LE(offset, 42);
+    parts.push(local, n, packed);
+    central.push(dir, n);
+    offset += 30 + n.length + packed.length;
+  }
+  const size = central.reduce((a, b) => a + b.length, 0);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(files.size, 8); end.writeUInt16LE(files.size, 10); end.writeUInt32LE(size, 12); end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...parts, ...central, end]);
+}
+
+function showPlan(p) {
+  const out = [p.title + " " + p.version + (p.previous ? "  (" + t("kurulu: ", "installed: ") + p.previous + ")" : "")];
+  out.push(p.signature.status === "signed" ? t("İmzalı: ", "Signed: ") + (p.publisher || "?") + " " + p.signature.fingerprint
+    : p.signature.status === "invalid" ? t("İMZA GEÇERSİZ: ", "INVALID SIGNATURE: ") + p.signature.reason : t("İmzasız", "Unsigned"));
+  for (const [k, title] of [["adds", t("Eklenecek", "Add")], ["updates", t("Güncellenecek", "Update")], ["removes", t("Kaldırılacak", "Remove")],
+    ["changes", t("Değişiklikler", "Changes")], ["conflicts", t("Çakışmalar", "Conflicts")], ["errors", t("Hatalar", "Errors")]]) {
+    if (p[k].length) out.push(title + ":", ...p[k].map((x) => "  • " + x));
+  }
+  process.stdout.write(out.join("\n") + "\n");
+}
+
+async function confirm(question) {
+  if (!process.stdin.isTTY) return false;
+  process.stdout.write(question);
+  const answer = await new Promise((ok) => process.stdin.once("data", (d) => ok(String(d).trim().toLowerCase())));
+  process.stdin.pause();
+  return answer === "e" || answer === "y" || answer === "evet" || answer === "yes";
+}
 
 async function main() {
   const [cmd = "help", ...rest] = process.argv.slice(2);

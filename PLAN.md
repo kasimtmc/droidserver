@@ -1197,24 +1197,58 @@ başlar (panel eşitleme ve güvenli bağlantılar bunların temelidir). Dört g
 ### Grup 3 — Kodsuz sayfalar ve paketler
 
 **18.6 Sayfa ve pano yapıcı**
-- [ ] Koleksiyon/görünümden herkese açık veya giriş gerektiren liste ve detay sayfaları (formların okuma tarafı): alan
+- [x] Koleksiyon/görünümden herkese açık veya giriş gerektiren liste ve detay sayfaları (formların okuma tarafı): alan
   seçimi, sıralama, arama, sayfalama, tema; kurallar aynen uygulanır.
-- [ ] Pano: sürükle-bırak kutular (sayı, grafik, tablo, harita), görünümlerden beslenir; uygulamada ve panelde,
+- [x] Pano: sürükle-bırak kutular (sayı, grafik, tablo, harita), görünümlerden beslenir; uygulamada ve panelde,
   isteğe bağlı paylaşılabilir salt okunur adres.
+  *Durum:* `pages` (`PagePages.kt`): koleksiyondan (görünüm yerine sabit süzgeç + sıralama) sunucuda üretilen liste ve
+  detay, kart/tablo düzeni, tema rengi, arama ve listedeki alanlara göre sıralama; liste/görüntüleme kuralı ve alan
+  gizliliği; giriş gerektiğinde `/pages/_login` (2FA dahil) ve çerezli oturum (yalnızca `/pages`, HttpOnly, Lax;
+  token sessizce yenilenir), açık yönlendirme yok; dosyalar sayfa yolundan aynı kuralla (dosya gönderme
+  `sendRecordFile` olarak ortaklaştı). `dashboards` (`DashboardService`): kutular görünümleri yönetici olarak çalıştırır
+  (sayı ve grafik raporlu görünümden), kutu hatası panoyu düşürmez. Panelde Sayfalar ve panolar sekmesi (HTML5
+  sürükle-bırak, SVG grafik, `geoMap`), uygulamada Sunucu → Sayfalar / Panolar (Compose; sıralama yukarı/aşağı).
+  Paylaşım `/dashboards/<ad>?token=` betiksiz (SVG grafik, konumlandırılmış karo görselleri). Testler: `PagesTest`,
+  ekran görüntüsü 32-pano, 33-sayfalar.
 - Karar: sayfalar sunucu tarafında mı üretilsin (SEO, JS'siz) yoksa statik sayfa + API mi (öneri: sunucu tarafı).
+  *Karar (kullanıcı, 23 Ekim 2026):* **sunucu tarafı** (JS'siz liste/detay; pano grafik ve harita için küçük bir betikle).
 
 **18.7 Telefonda yerel YZ**
-- [ ] Sağlayıcı olarak "yerel": telefonun yerleşik modeli (destekleyen cihazlarda) veya indirilen küçük model; özetleme,
+- [x] Sağlayıcı olarak "yerel": telefonun yerleşik modeli (destekleyen cihazlarda) veya indirilen küçük model; özetleme,
   sınıflandırma, otomasyonlarda YZ adımı.
-- [ ] Yerel gömme (embedding) modeliyle anlamsal arama — veri telefondan çıkmaz.
-- [ ] Model indirme ekranı (boyut, depolama, pil uyarısı), sağlık uyarılarına bellek/ısı denetimi.
+- [x] Yerel gömme (embedding) modeliyle anlamsal arama — veri telefondan çıkmaz.
+- [x] Model indirme ekranı (boyut, depolama, pil uyarısı), sağlık uyarılarına bellek/ısı denetimi.
+  *Durum:* llama.cpp alt modülü (`app/src/main/cpp/llama.cpp`, b11843) ve küçük JNI sarmalayıcısı
+  (`droidserver_llama.cpp`: yükleme, sohbet şablonu + ChatML'e geri düşüş, örnekleme, gömme; metinler UTF-8 bayt) CMake
+  ile kaynaktan; yalnızca CPU, OpenMP ve KleidiAI kapalı (derlemede ağdan indirme yok), `GGML_NATIVE` kapalı (her arm64
+  telefonda çalışır), `-ffile-prefix-map` ile tekrarlanabilir. Yalnızca arm64-v8a ve x86_64 derlenir (CMake
+  abiFilters; diğer kitaplıklar tüm ABI'lerde kalır, 32 bit telefona kurulur). Sarmalayıcı masaüstünde de derlenip
+  küçük modellerle denendi (üretim, emoji, gömme benzerliği). Core'da `AiProvider.LOCAL`, `EmbeddingProvider.LOCAL`,
+  `LocalAi` arayüzü (uygulama sağlar, yoksa 503). Uygulamada `LocalModels`: SHA-256'sı sabit model kataloğu, Range ile
+  sürdürülen indirme, yer/bellek/ısı (THERMAL_STATUS_SEVERE) denetimi, reddedilince `AlertKind.LOCAL_AI` sağlık uyarısı,
+  5 dk boşta kalınca belleği boşaltma; Yapay zekâ → Yerel modeller ekranı (mobil veri ve pil uyarısı). Otomasyonlarda
+  `ai` eylemi (her sağlayıcıyla; seçim alanında yalnız seçenekler) uygulamada ve panelde. "Telefonun yerleşik modeli"
+  F-Droid kuralı yüzünden yok. Testler: `LocalAiTest`.
 - Karar: hangi çalışma zamanı (cihazın yerleşik modeli mi, llama.cpp/ONNX ile indirilen model mi); APK boyutuna etkisi.
+  *Karar (kullanıcı, 23 Ekim 2026):* **llama.cpp, kaynaktan** (NDK ile projede derlenir; F-Droid hazır ikili ve Play
+  hizmetlerini kabul etmediği için Gemini Nano/AICore ve ONNX/MediaPipe AAR'ları elendi). Modeller (GGUF) uygulama içinden indirilir.
 
 **18.8 Eklenti ve şablon paketleri**
-- [ ] Paket biçimi: koleksiyonlar, kurallar, görünümler, otomasyonlar, formlar, sayfalar, script'ler, örnek veri;
+- [x] Paket biçimi: koleksiyonlar, kurallar, görünümler, otomasyonlar, formlar, sayfalar, script'ler, örnek veri;
   manifest (ad, sürüm, gereken özellikler) ve imza.
-- [ ] İçe aktarmadan önce özet ve çakışma planı (şema planı gibi), sürüm güncellemesi, kaldırma.
-- [ ] Paket kaynağı: dosya, adres veya Git deposu; imzasız paket uyarısı, imzalı paketlerde yayımcı adı.
+- [x] İçe aktarmadan önce özet ve çakışma planı (şema planı gibi), sürüm güncellemesi, kaldırma.
+- [x] Paket kaynağı: dosya, adres veya Git deposu; imzasız paket uyarısı, imzalı paketlerde yayımcı adı.
+  *Durum:* zip (kökte veya tek üst klasörde): `package.json` (ad, sürüm, başlık, yayımcı, `minConfigVersion`),
+  `config.json` (ServerConfig'in koleksiyon/görünüm/otomasyon/form/sayfa/pano alanları), `scripts/<ad>.js`,
+  `sample/<koleksiyon>.json`, `signature.json`. İmza ECDSA P-256 / SHA-256 (Android 8'de Ed25519 yok) ile ada göre
+  sıralı dosya özet listesi; değiştirilmiş paket kurulmaz. "Gereken özellikler" ayrı alan yerine planda: script
+  getiren paket script'leri, kullanıcıya bağlı koleksiyon hesapları açar. `Packages.plan`: ekle/güncelle/kaldır,
+  başka paketin veya elle eklenmiş tanımla çakışma, doğrulama, eski sürüm ve yayımcı anahtarı uyarısı. Kurulu paket
+  `server.json`'da `packages` (getirdikleriyle). Kurulum `AdminHost.installPackage` (script'ler yazılır, konfigürasyon
+  kaydedilir, deploy; örnek veri `packages/pending/` üzerinden deploy'dan sonra, `SampleSeed` şablonlarla ortak).
+  Uçlar `/_packages` (liste, plan: zip / `{url}` / `{git}` → 10 dk'lık anahtar, kur, kaldır). Uygulamada Sunucu →
+  Paketler, panelde Konfigürasyon → Paketler, CLI'de `package key|build|plan|install|list|remove` (Node'un yerleşik
+  crypto ve zlib'iyle). Kaldırmada koleksiyon tabloları ve veriler kalır. Testler: `PackagesTest` (CLI ile imzalama dahil).
 
 ### Grup 4 — Ödemeler
 

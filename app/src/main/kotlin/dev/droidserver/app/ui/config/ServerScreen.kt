@@ -32,6 +32,9 @@ import androidx.compose.material.icons.filled.ImportExport
 import androidx.compose.material.icons.filled.Javascript
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Web
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Policy
@@ -124,6 +127,9 @@ fun ServerScreen(
         if (cfg?.collections?.isNotEmpty() == true) add(Tool(data, Icons.Default.ImportExport, tr("İçe / dışa aktarma"), tr("CSV (Excel) ve JSON"), onTransfer))
         if (cfg != null) add(Tool(data, Icons.Default.AutoMode, tr("Otomasyonlar ({0})", cfg.automations.size), tr("Kodsuz kurallar: e-posta, bildirim, kayıt güncelleme"), { onOpen(Routes.AUTOMATIONS) }))
         if (cfg != null) add(Tool(data, Icons.Default.DynamicForm, tr("Formlar ({0})", cfg.forms.size), tr("Herkese açık iletişim, başvuru, anket formları"), { onOpen(Routes.FORMS) }))
+        if (cfg?.collections?.isNotEmpty() == true) add(Tool(data, Icons.Default.Web, tr("Sayfalar ({0})", cfg.pages.size), tr("Kodsuz liste ve detay sayfaları"), { onOpen(Routes.PAGES) }))
+        if (cfg != null) add(Tool(data, Icons.Default.Dashboard, tr("Panolar ({0})", cfg.dashboards.size), tr("Görünümlerden sayı, grafik, tablo, harita"), { onOpen(Routes.DASHBOARDS) }))
+        if (cfg != null) add(Tool(data, Icons.Default.Extension, tr("Paketler ({0})", cfg.packages.size), tr("Hazır uygulama ve eklenti paketleri: dosyadan, adresten, Git'ten"), { onOpen(Routes.PACKAGES) }))
         if (cfg != null) add(Tool(data, Icons.Default.AutoAwesome, tr("Yapay zekâ"), if (cfg.ai.enabled) tr("{0} açık · sohbet, kayıtlara soru, anlamsal arama", cfg.ai.provider.title) else tr("Claude, OpenAI veya Gemini: sohbet, kayıtlara soru, anlamsal arama"), { onOpen(Routes.AI) }))
         if (cfg != null) add(Tool(data, Icons.Default.FolderShared, tr("Ağ sürücüsü"), if (cfg.webdav.enabled) tr("Açık · bilgisayarda klasör olarak bağla (WebDAV)") else tr("Telefondaki klasörleri bilgisayarda sürücü gibi aç (WebDAV)"), { onOpen(Routes.DRIVE) }))
         if (cfg != null) add(Tool(data, Icons.Default.Sensors, tr("MQTT (IoT)"), if (cfg.mqtt.enabled) tr("Açık · port {0}", cfg.mqtt.port) else tr("Sensörler ve ESP32: mesajları kayda yaz, komut gönder"), { onOpen(Routes.MQTT) }))

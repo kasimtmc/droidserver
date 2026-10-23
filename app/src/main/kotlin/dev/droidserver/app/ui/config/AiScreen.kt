@@ -61,7 +61,7 @@ import kotlinx.coroutines.launch
  * dizinlenecek alanlar). Sunucu çalışırken bugünkü kullanım ve dizin durumu gösterilir.
  */
 @Composable
-fun AiScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit) {
+fun AiScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit, onModels: () -> Unit = {}) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val active by wizard.active.collectAsState()
@@ -146,7 +146,10 @@ fun AiScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit) {
                     }
                 }
                 val keySaved = initial.apiKey.isNotEmpty() && initial.provider == provider0
-                OutlinedTextField(
+                if (provider0 == AiProvider.LOCAL) {
+                    LocalModelPick(g, embedding = false, model) { model = it }
+                    OutlinedButton(onClick = onModels) { Text(tr("Yerel modeller…")) }
+                } else OutlinedTextField(
                     apiKey, { apiKey = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                     visualTransformation = PasswordVisualTransformation(), label = { Text(tr("{0} API anahtarı", provider0.title)) },
                     supportingText = {
@@ -159,17 +162,19 @@ fun AiScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit) {
                         )
                     },
                 )
-                OutlinedButton(onClick = { runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, provider0.keyUrl.toUri())) } }) {
-                    Text(tr("Anahtar al"))
+                if (provider0 != AiProvider.LOCAL) {
+                    OutlinedButton(onClick = { runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, provider0.keyUrl.toUri())) } }) {
+                        Text(tr("Anahtar al"))
+                    }
+                    Text(tr("Model"), style = MaterialTheme.typography.titleSmall)
+                    AiModel.of(provider0).forEach { m ->
+                        FilterChip(model == m.id, { model = m.id }, label = { Text(m.title) }, modifier = Modifier.fillMaxWidth())
+                    }
+                    OutlinedTextField(
+                        model, { model = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text(tr("Model kimliği")) },
+                        supportingText = { Text(tr("Listede olmayan bir model de yazabilirsiniz.")) },
+                    )
                 }
-                Text(tr("Model"), style = MaterialTheme.typography.titleSmall)
-                AiModel.of(provider0).forEach { m ->
-                    FilterChip(model == m.id, { model = m.id }, label = { Text(m.title) }, modifier = Modifier.fillMaxWidth())
-                }
-                OutlinedTextField(
-                    model, { model = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text(tr("Model kimliği")) },
-                    supportingText = { Text(tr("Listede olmayan bir model de yazabilirsiniz.")) },
-                )
                 if (provider0 == AiProvider.OPENAI) OutlinedTextField(
                     url, { url = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text(tr("Uç adresi (isteğe bağlı)")) },
                     placeholder = { Text("https://api.openai.com/v1") },
@@ -217,7 +222,11 @@ fun AiScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit) {
                     FilterChip(provider == null, { provider = null }, label = { Text(tr("Kapalı")) })
                     EmbeddingProvider.entries.forEach { p -> FilterChip(provider == p, { provider = p }, label = { Text(p.title) }) }
                 }
-                provider?.let { p ->
+                if (provider == EmbeddingProvider.LOCAL) {
+                    LocalModelPick(g, embedding = true, embModel) { embModel = it }
+                    OutlinedButton(onClick = onModels) { Text(tr("Yerel modeller…")) }
+                }
+                provider?.takeIf { it != EmbeddingProvider.LOCAL }?.let { p ->
                     OutlinedTextField(embUrl, { embUrl = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text(tr("Adres")) }, placeholder = { Text(p.defaultUrl) })
                     OutlinedTextField(embModel, { embModel = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text(tr("Model")) }, placeholder = { Text(p.defaultModel) })
                     OutlinedTextField(
@@ -233,6 +242,8 @@ fun AiScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit) {
                             )
                         },
                     )
+                }
+                provider?.let {
                     Text(tr("Dizinlenecek alanlar"), style = MaterialTheme.typography.titleSmall)
                     collections.forEach { c ->
                         val eligible = c.fields.filter { it.type in setOf(FieldType.TEXT, FieldType.SELECT, FieldType.MULTISELECT) && !it.encrypted && it.visibility == null }
@@ -256,4 +267,14 @@ fun AiScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit) {
             Button(onClick = { save() }, modifier = Modifier.fillMaxWidth()) { Text(tr("Kaydet ve deploy et")) }
         }
     }
+}
+
+/** İndirilmiş yerel modellerden seçim (sohbet veya gömme). */
+@Composable
+private fun LocalModelPick(g: AppGraph, embedding: Boolean, value: String, onPick: (String) -> Unit) {
+    val models = dev.droidserver.app.ai.LocalModel.entries.filter { it.embedding == embedding && g.localModels.installed(it) }
+    if (!g.localModels.supported) ErrorText(tr("Bu telefonun işlemcisinde yerel YZ yok (yalnızca 64 bit ARM ve x86_64)"))
+    if (models.isEmpty()) Text(tr("Henüz indirilmiş model yok."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    models.forEach { m -> FilterChip(value == m.id, { onPick(m.id) }, label = { Text(m.title) }, modifier = Modifier.fillMaxWidth()) }
+    Text(tr("Veri telefondan çıkmaz; ücret yok. Yanıtlar bulut modellerinden yavaş ve daha basittir."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }

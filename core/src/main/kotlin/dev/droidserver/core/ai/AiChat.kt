@@ -46,6 +46,7 @@ fun interface AiChat {
             AiProvider.CLAUDE -> ClaudeChat(config.apiKey, config)
             AiProvider.OPENAI -> OpenAiChat(config)
             AiProvider.GEMINI -> GeminiChat(config)
+            AiProvider.LOCAL -> throw IllegalStateException(tr("Yerel model uygulamadan verilir (LocalAi)"))
         }
     }
 }

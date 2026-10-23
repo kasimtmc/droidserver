@@ -11,6 +11,11 @@ import dev.droidserver.core.phone.PhoneHost
 import dev.droidserver.core.phone.PhoneService
 import dev.droidserver.core.security.FieldEncryption
 import kotlinx.serialization.json.JsonPrimitive
+import dev.droidserver.core.packages.InstalledPackage
+import dev.droidserver.core.packages.PackageFile
+import dev.droidserver.core.templates.SampleSeed
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import dev.droidserver.core.config.FieldType
 import dev.droidserver.core.config.GeoPoint
 import kotlinx.serialization.json.contentOrNull
@@ -121,6 +126,10 @@ class ServerEngine(
 
     /** YZ: günlük kullanım ve anlamsal dizin durumu (uygulamadaki YZ ekranı). */
     val ai = AiHost()
+
+    /** Telefonda çalışan modeller (uygulama atar; bir sonraki deploy'da geçerli). */
+    @Volatile
+    var localAi: dev.droidserver.core.ai.LocalAi? = null
 
     /** MQTT: bağlı cihazlar ve son mesajlar (uygulamadaki MQTT ekranı). */
     val mqtt = dev.droidserver.core.mqtt.MqttHost()
@@ -292,6 +301,9 @@ class ServerEngine(
     /** Script'ler (`*.js`); uygulamadaki düzenleyiciyle değiştirilir, deploy'da yüklenir. */
     val scriptsDir: File? = dataDir?.let { File(it, "scripts") }
 
+    /** Kurulan paketlerin deploy'dan sonra eklenecek örnek verileri (`<ad>.json`). */
+    private val pendingSamples: File? = dataDir?.let { File(it, "packages/pending") }
+
     /** Ağ sürücüsü (WebDAV) klasörü; yedeğe girmez. */
     val driveDir: File? = dataDir?.let { File(it, "drive") }
 
@@ -370,7 +382,7 @@ class ServerEngine(
                 log("Bu sunucu yokken $replaced devraldı; yazmalar kapalı")
             }
             server = embeddedServer(CIO, port = config.server.port, host = config.server.host) {
-                droidServerModule(config, newDriver, startedAt, gate, fileStore, siteDir, resizer, scripts, metrics, adminSessions, adminHost, log = log, webhooks = webhooks, automationHost = automations, aiHost = ai, keyUsage = keyUsage, requestCounts = requestCounts, smsGuard = smsGuard, davDirs = mapOf("drive" to driveDir, "scripts" to scriptsDir), audit = audit, clientGuard = guard, health = health,
+                droidServerModule(config, newDriver, startedAt, gate, fileStore, siteDir, resizer, scripts, metrics, adminSessions, adminHost, log = log, webhooks = webhooks, automationHost = automations, aiHost = ai, localAi = localAi, keyUsage = keyUsage, requestCounts = requestCounts, smsGuard = smsGuard, davDirs = mapOf("drive" to driveDir, "scripts" to scriptsDir), audit = audit, clientGuard = guard, health = health,
                     phone = PhoneService(config.phone, phone, device, dataDir?.let { File(it, "phone-sms.json") }, audit), appsHost = appsHost, failover = failoverPort, mqttHost = mqtt,
                     mqttRetained = dataDir?.let { File(it, "mqtt-retained.json") })
             }.start(wait = false)
@@ -388,6 +400,7 @@ class ServerEngine(
             writes = gate
             running = config
             _state.value = EngineState.Running(config.server.port, startedAt, report.toString())
+            seedPendingPackages(newDriver, config, gate)
             log("Sunucu ${config.server.host}:${config.server.port} üzerinde çalışıyor")
             audit.keepDays = config.audit.keepDays
             if (previous == null) {
@@ -442,6 +455,41 @@ class ServerEngine(
     }
 
     /**
+     * Paketin dosyaları, konfigürasyon kaydedilip deploy edilmeden önce: script'ler yazılır (önceki sürümün artık
+     * olmayanları silinir), örnek veri deploy'dan sonra boş koleksiyonlara eklenmek üzere bekletilir.
+     */
+    fun stagePackage(pkg: PackageFile, previous: InstalledPackage?) {
+        val dir = scriptsDir
+        if (pkg.scripts.isNotEmpty() && dir == null) throw IllegalStateException(tr("Script klasörü yok"))
+        dir?.mkdirs()
+        previous?.scripts.orEmpty().filter { it !in pkg.scripts }.forEach { File(dir, it).delete() }
+        pkg.scripts.forEach { (name, text) -> File(dir, name).writeText(text) }
+        val pending = pendingSamples ?: return
+        val file = File(pending, "${pkg.manifest.name}.json")
+        if (pkg.samples.isEmpty()) { file.delete(); return }
+        pending.mkdirs()
+        file.writeText(kotlinx.serialization.json.JsonObject(pkg.samples.associate { (c, records) -> c to kotlinx.serialization.json.JsonArray(records) }).toString())
+    }
+
+    /** Kaldırılan paketin script dosyaları ve bekleyen örnek verisi. */
+    fun unstagePackage(p: InstalledPackage) {
+        p.scripts.forEach { name -> scriptsDir?.let { File(it, name).delete() } }
+        pendingSamples?.let { File(it, "${p.name}.json").delete() }
+    }
+
+    private fun seedPendingPackages(db: SqlDriver, config: ServerConfig, gate: WriteGate) {
+        val files = pendingSamples?.listFiles { f -> f.name.endsWith(".json") }.orEmpty()
+        for (f in files) {
+            runCatching {
+                val samples = kotlinx.serialization.json.Json.parseToJsonElement(f.readText()).jsonObject.map { (c, v) -> c to v.jsonArray.map { it.jsonObject } }
+                val n = gate.write { SampleSeed.seed(db, config, samples) }
+                log(tr("Paket örnek verisi eklendi ({0}): {1} kayıt", f.nameWithoutExtension, n))
+            }.onFailure { log(tr("Paket örnek verisi eklenemedi ({0}): {1}", f.nameWithoutExtension, it.message)) }
+            f.delete()
+        }
+    }
+
+    /**
      * Uygulama şablonunun deploy sonrası kurulumu: örnek kayıtlar (boş koleksiyonlara) ve statik site. Site klasörü
      * doluysa [overwriteSite] olmadan dokunulmaz. Yapılanların özeti; şablonun koleksiyonları çalışan konfigürasyonda
      * yoksa [IllegalStateException].
@@ -480,6 +528,16 @@ class ServerEngine(
         return JsonArray(cfg.sensors.mapNotNull { s ->
             cfg.collections.firstOrNull { it.name == s.collection }?.let { c -> Sensors.series(RecordService(db, c, collections = cfg.schemaCollections()), s, since) }
         })
+    }
+
+    /** Panonun verisi (uygulamadaki "Panolar" ekranı; bkz. DashboardService); sunucu çalışmıyorsa veya pano yoksa null. Bloklayıcıdır. */
+    @Synchronized
+    fun dashboard(name: String): JsonObject? {
+        val cfg = running ?: return null
+        val db = driver ?: return null
+        val d = cfg.dashboards.firstOrNull { it.name == name } ?: return null
+        val services = cfg.collections.associate { it.name to RecordService(db, it, collections = cfg.schemaCollections()) }
+        return dev.droidserver.core.api.DashboardService(cfg, dev.droidserver.core.api.ViewService(cfg, services)).data(d)
     }
 
     /** Haritadaki bir kayıt: kimlik, ilk metin alanı ve konum. */

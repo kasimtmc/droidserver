@@ -35,7 +35,13 @@ android {
         targetSdk = 28
         versionCode = versionCodeOf(appVersion)
         versionName = appVersion
+        // Yerel YZ (llama.cpp) yalnızca bu ABI'ler için derlenir; paketlenen diğer kitaplıklar (tüm ABI'ler) etkilenmez,
+        // uygulama 32 bit telefonlara da kurulur (yerel YZ orada yok).
+        externalNativeBuild { cmake { abiFilters += listOf("arm64-v8a", "x86_64"); arguments += listOf("-DCMAKE_BUILD_TYPE=Release") } }
     }
+
+    ndkVersion = "29.0.14206865"
+    externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "4.1.2" } }
 
     signingConfigs {
         if (releaseKeystore != null) {
