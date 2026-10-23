@@ -1,6 +1,7 @@
 package dev.droidserver.core.admin
 
 import dev.droidserver.core.backup.BackupInfo
+import dev.droidserver.core.replication.ReplicaStatus
 import kotlinx.serialization.json.JsonObject
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -102,4 +103,10 @@ interface AdminHost {
     fun backups(): List<BackupInfo>
 
     fun createBackup(): BackupInfo
+
+    /** Canlı kopyanın eşitleme durumu; bu sunucu kopya değilse null. */
+    fun replica(): ReplicaStatus?
+
+    /** Kopyayı yazılabilir ana sunucu yapar ve deploy'u başlatır (uygulamadaki "Devral" ile aynı yol). */
+    fun takeover()
 }
