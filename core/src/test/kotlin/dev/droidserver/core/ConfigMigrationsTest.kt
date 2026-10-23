@@ -66,10 +66,10 @@ class ConfigMigrationsTest {
 
     @Test
     fun `yukseltmede neyin degisecegi kullaniciya anlatilir`() {
-        assertEquals(20, ConfigMigrations.CURRENT)
+        assertEquals(21, ConfigMigrations.CURRENT)
         val changes = ConfigMigrations.changes(1)
-        assertEquals(19, changes.size)
-        assertTrue(changes[0].startsWith("v1 → v2") && changes[18].startsWith("v19 → v20"), changes.joinToString())
+        assertEquals(20, changes.size)
+        assertTrue(changes[0].startsWith("v1 → v2") && changes[19].startsWith("v20 → v21"), changes.joinToString())
         assertTrue(ConfigMigrations.changes(ConfigMigrations.CURRENT).isEmpty())
         // v2 dosyası yeni alanlar olmadan aynen okunur, yalnızca sürüm numarası değişir.
         val v2 = """{ "version": 2, "name": "iki" }"""

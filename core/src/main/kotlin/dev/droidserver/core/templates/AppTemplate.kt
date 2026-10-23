@@ -1,5 +1,9 @@
 package dev.droidserver.core.templates
 
+import dev.droidserver.core.config.AutomationAction
+import dev.droidserver.core.config.AutomationActionType
+import dev.droidserver.core.config.AutomationConfig
+import dev.droidserver.core.config.AutomationTrigger
 import dev.droidserver.core.config.CollectionConfig
 import dev.droidserver.core.config.FieldConfig
 import dev.droidserver.core.config.FieldType
@@ -14,6 +18,7 @@ import dev.droidserver.core.config.TextFormat
 import dev.droidserver.core.config.TrashConfig
 import dev.droidserver.core.db.SqlDriver
 import dev.droidserver.core.i18n.tr
+import dev.droidserver.core.payments.PaymentStatus
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -206,10 +211,57 @@ enum class AppTemplate(val id: String, val title: String, val description: Strin
      */
     fun apply(config: ServerConfig, site: Boolean = true): ServerConfig {
         conflicts(config).takeIf { it.isNotEmpty() }?.let { throw IllegalArgumentException(tr("Bu adlarda koleksiyon zaten var: {0}", it.joinToString())) }
-        var out = config.copy(collections = config.collections + collections())
+        val pay = config.payments.enabled && this in PAYABLE
+        var out = config.copy(
+            collections = config.collections + collections().map { if (pay) payable(it) else it },
+            automations = config.automations + if (pay) paymentRules(config) else emptyList(),
+        )
         if (needsUsers && !out.auth.users.enabled) out = out.copy(auth = out.auth.copy(users = out.auth.users.copy(enabled = true, allowSignup = true)))
         if (site) out = out.copy(static = out.static.copy(enabled = true))
         return out
+    }
+
+    /**
+     * Ödemeler açıksa sipariş ve randevuya ödeme: durum ve ödeme adresi alanları (istemci yazamaz). Randevuda bağlantı
+     * talep gelince hizmetin fiyatıyla üretilir ve e-postayla gider; siparişte tutarı müşteri gönderdiği için siz
+     * siparişi "onaylandı" yapınca üretilir ve müşteri Siparişlerim'de görür.
+     */
+    private fun payable(c: CollectionConfig): CollectionConfig {
+        val target = when (this) { SHOP -> "orders"; APPOINTMENTS -> "appointments"; else -> null }
+        if (c.name != target) return c
+        val statuses = listOf(PaymentStatus.PENDING, PaymentStatus.PAID, PaymentStatus.FAILED, PaymentStatus.CANCELED, PaymentStatus.REFUNDED)
+        val fields = c.fields.map { f ->
+            when {
+                this == SHOP && f.name == "status" -> f.copy(options = f.options.orEmpty().toMutableList().apply { add(1, APPROVED) })
+                this == APPOINTMENTS && f.name == "email" -> f.copy(required = true)
+                else -> f
+            }
+        } + listOf(FieldConfig("payment_status", FieldType.SELECT, options = statuses), FieldConfig("payment_url", FieldType.TEXT, maxLength = 2000))
+        val create = c.rules.conditions["create"]?.filter.orEmpty()
+        val guarded = RuleCondition(listOf(create, "payment_status[null]=true", "payment_url[null]=true").filter { it.isNotEmpty() }.joinToString("&"))
+        return c.copy(fields = fields, rules = c.rules.copy(conditions = c.rules.conditions + ("create" to guarded)))
+    }
+
+    private fun paymentRules(config: ServerConfig): List<AutomationConfig> = when (this) {
+        SHOP -> listOf(
+            AutomationConfig(
+                "siparis-odeme", AutomationTrigger(collection = "orders", events = listOf("update")), condition = "status=$APPROVED&payment_url[null]=true",
+                actions = listOf(AutomationAction(AutomationActionType.PAYMENT, amount = "{total}", subject = tr("Sipariş #{id}"), field = "payment_url")),
+            ),
+        )
+        APPOINTMENTS -> listOf(
+            AutomationConfig(
+                "randevu-odeme", AutomationTrigger(collection = "appointments", events = listOf("create")),
+                actions = listOfNotNull(
+                    AutomationAction(AutomationActionType.PAYMENT, amount = "{service.price}", subject = tr("Randevu: {service.name}"), to = "{email}", field = "payment_url"),
+                    AutomationAction(
+                        AutomationActionType.EMAIL, to = "{email}", subject = tr("Randevu ödemesi"),
+                        body = tr("Merhaba {name}, randevu talebiniz alındı. Tamamlamak için ödeme sayfası: {payment_url}"),
+                    ).takeIf { config.email.enabled },
+                ),
+            ),
+        )
+        else -> emptyList()
     }
 
     /** Statik sitenin `index.html`'i; API yolu konfigürasyondan. */
@@ -230,6 +282,12 @@ enum class AppTemplate(val id: String, val title: String, val description: Strin
 
     companion object {
         fun of(id: String): AppTemplate? = entries.firstOrNull { it.id == id }
+
+        /** Ödemeler açıkken ödeme bağlantısı alan şablonlar. */
+        private val PAYABLE = setOf(SHOP, APPOINTMENTS)
+
+        /** Siparişte ödeme bağlantısını üreten durum. */
+        const val APPROVED = "onaylandı"
 
         private val SAMPLES: Map<AppTemplate, List<Pair<String, String>>> = mapOf(
             BLOG to listOf(

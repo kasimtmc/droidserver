@@ -98,6 +98,9 @@ data class ServerConfig(
     /** Kurulu paketler ve getirdikleri (bkz. Packages); elle düzenlenmez. */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val packages: List<dev.droidserver.core.packages.InstalledPackage> = emptyList(),
+    /** Ödemeler ve abonelikler (Stripe, iyzico, Paddle). */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val payments: PaymentsConfig = PaymentsConfig(),
     /** Yapay zekâ: Claude vekil ucu, kayıtlar üzerinde soru-cevap ve anlamsal arama; kapalıyken dosyaya yazılmaz. */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val ai: AiConfig = AiConfig(),
@@ -127,7 +130,7 @@ data class ServerConfig(
                 SystemCollections.changes.takeIf { replication.source },
                 SystemCollections.passkeys.takeIf { auth.passkeys.enabled && auth.users.enabled },
                 SystemCollections.panelPasskeys.takeIf { auth.passkeys.enabled && adminPanel.enabled },
-            )
+            ) + (if (payments.providers.isEmpty()) emptyList() else listOf(SystemCollections.payments, SystemCollections.subscriptions, SystemCollections.paymentEvents))
 
     companion object {
         /** Eski sürümleri günceller (sırlar yerinde kalır; depoya taşımak için ConfigSecrets.secureText). */

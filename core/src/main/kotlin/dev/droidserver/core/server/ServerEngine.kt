@@ -51,6 +51,7 @@ import dev.droidserver.core.auth.UserService
 import dev.droidserver.core.config.ConfigValidator
 import dev.droidserver.core.config.DatabaseConfig
 import dev.droidserver.core.config.ServerConfig
+import dev.droidserver.core.config.SystemCollections
 import dev.droidserver.core.db.MigrationPlan
 import dev.droidserver.core.db.SchemaBlockedException
 import dev.droidserver.core.db.SchemaMigrator
@@ -538,6 +539,14 @@ class ServerEngine(
         val d = cfg.dashboards.firstOrNull { it.name == name } ?: return null
         val services = cfg.collections.associate { it.name to RecordService(db, it, collections = cfg.schemaCollections()) }
         return dev.droidserver.core.api.DashboardService(cfg, dev.droidserver.core.api.ViewService(cfg, services)).data(d)
+    }
+
+    /** Son ödemeler (uygulamadaki "Ödemeler" ekranı), yeniden eskiye; ödemeler kurulmamışsa null. Bloklayıcıdır. */
+    fun recentPayments(limit: Int = 30): List<JsonObject>? {
+        val cfg = running ?: return null
+        val db = driver ?: return null
+        if (cfg.payments.providers.isEmpty()) return null
+        return RecordService(db, SystemCollections.payments).list(1, limit, "-id", emptyList()).items
     }
 
     /** Haritadaki bir kayıt: kimlik, ilk metin alanı ve konum. */

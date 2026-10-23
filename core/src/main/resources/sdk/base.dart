@@ -396,6 +396,32 @@ class RecordCollection<T, I> {
       OfflineCollection(_client, name, _at(_paths.sync, 'sync'), _paths.idField, _fromJson, _toJson, store, key ?? 'droidserver-$name');
 }
 
+/// Abonelikler: planlar, ödeme sayfası (rol ödeme bildirimi gelince verilir) ve kullanıcının abonelikleri. Yanıtlar JSON.
+class Payments {
+  final DroidServerBase _client;
+  final String? _plans, _subscribe, _subscriptions;
+
+  Payments(this._client, {String? plans, String? subscribe, String? subscriptions})
+      : _plans = plans,
+        _subscribe = subscribe,
+        _subscriptions = subscriptions;
+
+  String _at(String? p, String key) {
+    if (p == null) throw DroidServerException(404, 'Bu ödeme ucu kapalı: $key');
+    return p;
+  }
+
+  /// `{items: [{name, title, provider, role}]}`
+  Future<Map<String, dynamic>> plans() async => await _client.request('GET', _at(_plans, 'plans')) as Map<String, dynamic>;
+
+  /// `{plan, url}`: kullanıcıyı ödeme sayfasına (`url`) yönlendirin.
+  Future<Map<String, dynamic>> subscribe(String plan) async =>
+      await _client.request('POST', _at(_subscribe, 'subscribe'), json: {'plan': plan}) as Map<String, dynamic>;
+
+  /// `{items: [{id, plan, provider, status, period_end, manage_url}]}`
+  Future<Map<String, dynamic>> subscriptions() async => await _client.request('GET', _at(_subscriptions, 'subscriptions')) as Map<String, dynamic>;
+}
+
 /// Takımlar (`team` kuralı): kullanıcının takımları; üye ekleme, rol ve silme takım sahibinindir. Yanıtlar JSON.
 class Teams {
   final DroidServerBase _client;
