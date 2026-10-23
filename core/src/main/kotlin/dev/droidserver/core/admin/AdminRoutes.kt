@@ -174,7 +174,7 @@ internal fun Route.adminPanel(
                         for (e in listOf(
                             Endpoint.SCHEMA, Endpoint.METRICS, Endpoint.OPENAPI, Endpoint.REALTIME, Endpoint.USERS_LIST, Endpoint.USERS_UPDATE, Endpoint.USERS_DELETE, Endpoint.VIEWS, Endpoint.VIEW,
                             Endpoint.USERS_SESSIONS, Endpoint.USERS_SESSIONS_CLOSE,
-                            Endpoint.CLI, Endpoint.MQTT, Endpoint.MQTT_PUBLISH, Endpoint.MQTT_SCENE, Endpoint.SENSORS, Endpoint.AI_STATUS, Endpoint.AI_REINDEX, Endpoint.APPS, Endpoint.APP_DEPLOY,
+                            Endpoint.CLI, Endpoint.MQTT, Endpoint.MQTT_PUBLISH, Endpoint.MQTT_SCENE, Endpoint.SENSORS, Endpoint.SQL, Endpoint.SAMPLE, Endpoint.AI_STATUS, Endpoint.AI_REINDEX, Endpoint.APPS, Endpoint.APP_DEPLOY,
                             Endpoint.AUTOMATIONS, Endpoint.AUTOMATION_RUN, Endpoint.TEAMS, Endpoint.TEAMS_CREATE, Endpoint.TEAM, Endpoint.TEAM_DELETE,
                             Endpoint.TEAM_ADD_MEMBER, Endpoint.TEAM_UPDATE_MEMBER, Endpoint.TEAM_REMOVE_MEMBER,
                         )) {

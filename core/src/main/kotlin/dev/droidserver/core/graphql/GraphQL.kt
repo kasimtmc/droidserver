@@ -38,6 +38,7 @@ private class GqlError(message: String, val path: List<Any>, val extensions: Jso
  * Koleksiyonlardan türetilen GraphQL şeması ve yürütücü. Her koleksiyon için:
  *   query    `<ad>(filter, sort, page, perPage, q)` → sayfa, `<ad>_by_id(id)` → kayıt
  *   mutation `create_<ad>(data)`, `update_<ad>(id, data)`, `delete_<ad>(id)`
+ *   subscription `<ad>(id, events)` → `{action, record}` ([subscriptions] açıksa; `graphql-transport-ws` ile, bkz. [subscribe])
  * İlişki alanı alt seçimle istenirse genişletilir (REST'teki `expand`, aynı görüntüleme kuralıyla). İçgözlem
  * (`__schema`) yerine SDL `/graphql/schema` adresindedir; kod üreticiler bu dosyayı okuyabilir.
  */
@@ -46,6 +47,8 @@ class GraphQL(
     private val ops: (CollectionConfig) -> GqlOps,
     /** İlişkinin hedefi kullanıcılarsa görünür alanlar (uzman modu adlarıyla). */
     private val userFields: Set<String> = emptySet(),
+    /** Abonelikler (canlı abonelik açıksa). */
+    private val subscriptions: Boolean = false,
 ) {
     private val exposed = collections.filter { c -> ops(c).let { it.list || it.view || it.create || it.update || it.delete } }
     private val byName = collections.associateBy { it.name }
@@ -108,6 +111,18 @@ class GraphQL(
                 appendLine("type ${t}Page {\n  items: [$t!]!\n  totalItems: Int!\n  page: Int!\n  perPage: Int!\n}")
             }
         }
+        val subscribable = exposed.filter { subscriptions && ops(it).view }
+        if (subscribable.isNotEmpty()) {
+            appendLine()
+            appendLine("type Subscription {")
+            for (c in subscribable) appendLine("  ${c.name}(id: ID, events: [String!]): ${typeName(c.name)}Event!")
+            appendLine("}")
+            for (c in subscribable) {
+                appendLine()
+                appendLine("# action: create, update veya delete; silmede record yalnızca id taşır, ilişkiler genişletilmez.")
+                appendLine("type ${typeName(c.name)}Event {\n  action: String!\n  record: ${typeName(c.name)}\n}")
+            }
+        }
         if (collections.any { c -> c.fields.any { it.type == FieldType.RELATION && it.collection == SystemCollections.USERS } }) {
             appendLine()
             appendLine("type User {")
@@ -116,23 +131,83 @@ class GraphQL(
         }
     }
 
-    /** `{query, variables, operationName}` → `{data, errors}`. */
-    fun execute(request: JsonObject, backend: GqlBackend): JsonObject {
-        val query = (request["query"] as? JsonPrimitive)?.contentOrNull ?: return failure(tr("'query' alanı gerekli"))
+    private class Prepared(val doc: GqlDocument, val op: GqlOperation, val vars: Map<String, JsonElement>)
+
+    /** İstekten çalıştırılacak işlem ve değişkenler; hatalıysa `{errors}` yanıtı. */
+    private fun prepare(request: JsonObject): Pair<Prepared?, JsonObject?> {
+        val query = (request["query"] as? JsonPrimitive)?.contentOrNull ?: return null to failure(tr("'query' alanı gerekli"))
         val vars = (request["variables"] as? JsonObject).orEmpty()
         val opName = (request["operationName"] as? JsonPrimitive)?.contentOrNull
         val doc = try {
             GqlParser.parse(query)
         } catch (e: GqlSyntaxException) {
-            return failure(e.message.orEmpty())
+            return null to failure(e.message.orEmpty())
         }
         val op = when {
-            opName != null -> doc.operations.firstOrNull { it.name == opName } ?: return failure(tr("'{0}' adlı işlem yok", opName))
+            opName != null -> doc.operations.firstOrNull { it.name == opName } ?: return null to failure(tr("'{0}' adlı işlem yok", opName))
             doc.operations.size == 1 -> doc.operations.single()
-            else -> return failure(tr("Belgede birden çok işlem var; operationName verin"))
+            else -> return null to failure(tr("Belgede birden çok işlem var; operationName verin"))
         }
         val variables = op.variables.associate { v -> v.name to (vars[v.name] ?: v.default?.resolve(emptyMap()) ?: JsonNull) }
-        val ctx = Ctx(doc, variables, backend)
+        return Prepared(doc, op, variables) to null
+    }
+
+    /**
+     * Abonelik: koleksiyon, kayıt kimliği ve olay süzgeci; [payload] olayı istemcinin seçimine göre `{data}` yanıtına
+     * çevirir ([record] istemciye görünür haliyle, API adlarıyla).
+     */
+    class Subscription internal constructor(val collection: String, val id: Long?, val events: Set<String>, private val render: (String, JsonObject) -> JsonObject) {
+        fun payload(action: String, record: JsonObject): JsonObject = render(action, record)
+    }
+
+    /** İstek bir abonelikse planı; abonelik değilse (sorgu, mutasyon) ikisi de null; hatalıysa `{errors}` yanıtı. */
+    fun subscribe(request: JsonObject): Pair<Subscription?, JsonObject?> {
+        val (p, failure) = prepare(request)
+        if (p == null) return null to failure
+        if (p.op.type != "subscription") return null to null
+        if (!subscriptions) return null to failure(tr("Abonelikler kapalı; canlı aboneliği açın"))
+        val ctx = Ctx(p.doc, p.vars, NoBackend)
+        return try {
+            val f = ctx.collect(p.op.selection, "Subscription").singleOrNull() ?: throw GqlError(tr("Abonelikte tek kök alan olmalı"), emptyList())
+            val path = listOf<Any>(f.key)
+            val c = byName[f.name]?.takeIf { c -> exposed.any { it.name == c.name } && ops(c).view }
+                ?: throw GqlError(tr("'{0}' türünde '{1}' alanı yok", "Subscription", f.name), path)
+            val eventType = typeName(c.name) + "Event"
+            val fields = ctx.collect(f.selection ?: throw GqlError(tr("'{0}' için alt seçim gerekli", f.name), path), eventType, path)
+            val recordFields = fields.filter { it.name == "record" }.associate { r ->
+                r.key to ctx.collect(r.selection ?: throw GqlError(tr("'record' için alt seçim gerekli"), path + r.key), typeName(c.name), path + r.key)
+            }
+            fields.firstOrNull { it.name !in setOf("action", "record", "__typename") }?.let {
+                throw GqlError(tr("'{0}' türünde '{1}' alanı yok", eventType, it.name), path + it.key)
+            }
+            val id = ctx.arg(f, "id")?.let { (it as? JsonPrimitive)?.let { v -> v.longOrNull ?: v.content.toLongOrNull() } ?: throw GqlError(tr("'id' bir sayı olmalı"), path) }
+            val events = (ctx.arg(f, "events") as? JsonArray)?.map { (it as? JsonPrimitive)?.content.orEmpty() }?.toSet() ?: EVENTS
+            if (events.isEmpty() || !EVENTS.containsAll(events)) throw GqlError(tr("Olaylar: {0}", EVENTS.joinToString()), path)
+            val render = { action: String, rec: JsonObject ->
+                val event = JsonObject(fields.associate { ef ->
+                    ef.key to when (ef.name) {
+                        "action" -> JsonPrimitive(action)
+                        "__typename" -> JsonPrimitive(eventType)
+                        else -> record(ctx, c, rec, recordFields.getValue(ef.key), path + ef.key)
+                    }
+                })
+                JsonObject(mapOf("data" to JsonObject(mapOf(f.key to event))))
+            }
+            render("create", JsonObject(emptyMap())) // seçimdeki alan adları şimdi denetlenir
+            Subscription(c.name, id, events, render) to null
+        } catch (e: GqlError) {
+            null to JsonObject(mapOf("errors" to JsonArray(listOf(e.toJson()))))
+        }
+    }
+
+    /** `{query, variables, operationName}` → `{data, errors}`. */
+    fun execute(request: JsonObject, backend: GqlBackend): JsonObject {
+        val (p, failure) = prepare(request)
+        if (p == null) return failure!!
+        if (p.op.type == "subscription") return failure(tr("Abonelik için WebSocket ({0}) kullanın", "/graphql/ws"))
+        val doc = p.doc
+        val op = p.op
+        val ctx = Ctx(doc, p.vars, backend)
         val errors = mutableListOf<GqlError>()
         val data = LinkedHashMap<String, JsonElement>()
         val roots = try {
@@ -331,7 +406,17 @@ class GraphQL(
 
     private fun failure(message: String) = JsonObject(mapOf("errors" to JsonArray(listOf(JsonObject(mapOf("message" to JsonPrimitive(message)))))))
 
+    /** Abonelik seçimi doğrulanırken kayıt okunmaz. */
+    private object NoBackend : GqlBackend {
+        override fun list(c: CollectionConfig, page: Int, perPage: Int, sort: String?, params: List<Pair<String, String>>, expand: Set<String>) = error("abonelik")
+        override fun get(c: CollectionConfig, id: Long, expand: Set<String>) = error("abonelik")
+        override fun create(c: CollectionConfig, data: JsonObject) = error("abonelik")
+        override fun update(c: CollectionConfig, id: Long, data: JsonObject) = error("abonelik")
+        override fun delete(c: CollectionConfig, id: Long) = error("abonelik")
+    }
+
     companion object {
+        private val EVENTS = setOf("create", "update", "delete")
         const val MAX_ROOTS = 20
         const val MAX_FIELDS = 1_000
     }

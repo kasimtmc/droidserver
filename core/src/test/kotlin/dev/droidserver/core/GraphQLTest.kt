@@ -8,6 +8,7 @@ import dev.droidserver.core.config.CollectionConfig
 import dev.droidserver.core.config.ConfigValidator
 import dev.droidserver.core.config.FieldConfig
 import dev.droidserver.core.config.FieldType
+import dev.droidserver.core.config.RealtimeConfig
 import dev.droidserver.core.config.Rule
 import dev.droidserver.core.config.Rules
 import dev.droidserver.core.config.ServerConfig
@@ -18,16 +19,27 @@ import dev.droidserver.core.graphql.GqlFragmentSpread
 import dev.droidserver.core.graphql.GqlParser
 import dev.droidserver.core.graphql.GqlSyntaxException
 import dev.droidserver.core.graphql.GqlValue
+import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
+import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import io.ktor.websocket.Frame
+import io.ktor.websocket.readText
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -102,7 +114,7 @@ class GraphQLTest {
         assertEquals(150.0, data.getValue("ratio").jsonPrimitive.content.toDouble())
         assertEquals("[\"A\",null]", data.getValue("tags").toString())
         assertFailsWith<GqlSyntaxException> { GqlParser.parse("{ tasks { ") }
-        assertFailsWith<GqlSyntaxException> { GqlParser.parse("subscription { tasks }") }
+        assertEquals("subscription", GqlParser.parse("subscription { tasks { action } }").operations.single().type, "abonelik sözdizimi (17.9)")
         assertFailsWith<GqlSyntaxException> { GqlParser.parse("{ a(x: \"kapanmamış) }") }
         assertFailsWith<GqlSyntaxException> { GqlParser.parse("{" + "a {".repeat(10) + "b" + "}".repeat(11)) }
     }
@@ -189,6 +201,62 @@ class GraphQLTest {
         assertTrue("create_tasks(data: JSON!): Tasks!" in sdl && "project: Projects" in sdl && "points: Int" in sdl, sdl)
         // Sözdizimi hatası HTTP 200 ile errors.
         assertTrue(gql("{ tasks { ").errors().single().getValue("message").jsonPrimitive.content.isNotBlank())
+    }
+
+    /** 17.9: graphql-transport-ws üzerinden abonelik, olay süzgeci, kurallar ve WebSocket'te sorgu. */
+    @Test
+    fun `abonelikler`() = testApplication {
+        val live = config.copy(realtime = RealtimeConfig(enabled = true))
+        application { droidServerModule(live, db) }
+        val sdl = client.get("/api/graphql/schema") { bearerAuth(key) }.bodyAsText()
+        assertTrue("type Subscription {" in sdl && "tasks(id: ID, events: [String!]): TasksEvent!" in sdl, sdl)
+        val ws = createClient { install(WebSockets) }
+        suspend fun DefaultClientWebSocketSession.sendJson(json: String) = send(Frame.Text(json))
+        suspend fun DefaultClientWebSocketSession.next(): JsonObject =
+            Json.parseToJsonElement((withTimeout(5_000) { incoming.receive() } as Frame.Text).readText()).jsonObject
+        suspend fun create(title: String) = client.post("/api/collections/tasks/records") {
+            bearerAuth(key); contentType(ContentType.Application.Json); setBody("""{"title":"$title"}""")
+        }.bodyAsText().let { Json.parseToJsonElement(it).jsonObject.getValue("id").jsonPrimitive.content }
+
+        ws.webSocket("/api/graphql/ws", request = { header(HttpHeaders.SecWebSocketProtocol, "graphql-transport-ws") }) {
+            sendJson("""{"type":"connection_init","payload":{"Authorization":"Bearer $key"}}""")
+            assertEquals("connection_ack", next().getValue("type").jsonPrimitive.content)
+            sendJson("""{"type":"ping"}""")
+            assertEquals("pong", next().getValue("type").jsonPrimitive.content)
+
+            sendJson("""{"id":"1","type":"subscribe","payload":{"query":"subscription { t: tasks(events: [\"create\", \"delete\"]) { action record { title done } } }"}}""")
+            delay(300) // abonelik arka planda açılır
+            val id = create("süt al")
+            val created = next()
+            assertEquals("next", created.getValue("type").jsonPrimitive.content)
+            val event = created.getValue("payload").jsonObject.getValue("data").jsonObject.getValue("t").jsonObject
+            assertEquals("create", event.getValue("action").jsonPrimitive.content)
+            assertEquals("süt al", event.getValue("record").jsonObject.getValue("title").jsonPrimitive.content)
+
+            client.patch("/api/collections/tasks/records/$id") { bearerAuth(key); contentType(ContentType.Application.Json); setBody("""{"done":true}""") }
+            client.delete("/api/collections/tasks/records/$id") { bearerAuth(key) }
+            val deleted = next().getValue("payload").jsonObject.getValue("data").jsonObject.getValue("t").jsonObject
+            assertEquals("delete", deleted.getValue("action").jsonPrimitive.content, "güncelleme süzgeçte yok")
+            assertEquals(JsonNull, deleted.getValue("record").jsonObject.getValue("title"), "silmede yalnızca kimlik")
+
+            // WebSocket'te sorgu: tek next, sonra complete.
+            sendJson("""{"id":"q","type":"subscribe","payload":{"query":"{ tasks { totalItems } }"}}""")
+            assertEquals(0, next().getValue("payload").jsonObject.getValue("data").jsonObject.getValue("tasks").jsonObject.getValue("totalItems").jsonPrimitive.content.toInt())
+            assertEquals("complete", next().getValue("type").jsonPrimitive.content)
+
+            sendJson("""{"id":"x","type":"subscribe","payload":{"query":"subscription { tasks { action yok } }"}}""")
+            assertEquals("error", next().getValue("type").jsonPrimitive.content, "bilinmeyen alan")
+            sendJson("""{"id":"1","type":"complete"}""")
+        }
+        // Kimliksiz: bağlanır ama yönetici koleksiyonuna abone olamaz.
+        ws.webSocket("/api/graphql/ws", request = { header(HttpHeaders.SecWebSocketProtocol, "graphql-transport-ws") }) {
+            sendJson("""{"type":"connection_init"}""")
+            assertEquals("connection_ack", next().getValue("type").jsonPrimitive.content)
+            sendJson("""{"id":"1","type":"subscribe","payload":{"query":"subscription { tasks { action } }"}}""")
+            assertEquals("error", next().getValue("type").jsonPrimitive.content)
+        }
+        // HTTP'den abonelik istenirse WebSocket'e yönlendirilir.
+        assertTrue("WebSocket" in gql("subscription { tasks { action } }").toString())
     }
 
     @Test

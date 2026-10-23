@@ -1,5 +1,8 @@
 package dev.droidserver.core.files
 
+import dev.droidserver.core.api.ApiException
+import dev.droidserver.core.config.FieldConfig
+import dev.droidserver.core.i18n.tr
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -41,6 +44,23 @@ class FileStore(val root: File) {
             .replace(Regex("[^a-z0-9_-]+"), "_").trim('_').take(40).ifEmpty { "dosya" }
         val suffix = (1..10).map { ALPHABET[random.nextInt(ALPHABET.length)] }.joinToString("")
         return "${base}_$suffix.$ext"
+    }
+
+    /**
+     * [temp]'i [f] alanına yüklenen dosya olarak denetler: boş olmamalı, alanın boyut sınırını aşmamalı, uzantısı
+     * içerikten tespit edilen tiple çelişmemeli, tip alanın izinli tiplerinden olmalı. [head]: ilk baytlar
+     * ([MimeTypes.HEAD_BYTES]).
+     */
+    fun accept(f: FieldConfig, temp: File, size: Long, head: ByteArray, original: String): Upload {
+        fun invalid(message: String): Nothing = throw ApiException(400, tr("Doğrulama hatası"), mapOf(f.name to message))
+        if (size == 0L) invalid(tr("boş dosya"))
+        if (size > f.maxBytes) throw ApiException(413, tr("'{0}' dosyası en çok {1} MB olabilir", f.name, f.maxBytes / 1024 / 1024))
+        val kind = MimeTypes.sniff(head, original.substringAfterLast('.', "").ifEmpty { null })
+        MimeTypes.extensionMismatch(original, kind)?.let(::invalid)
+        if (!MimeTypes.matches(kind.mime, f.mimeTypes)) {
+            invalid(tr("izin verilmeyen içerik tipi: {0} (izinli: {1})", kind.mime, f.mimeTypes!!.joinToString()))
+        }
+        return Upload(f.name, temp, kind, original, size, newName(original, kind.ext))
     }
 
     fun recordDir(collection: String, id: Long) = File(File(root, collection), id.toString())

@@ -23,6 +23,13 @@ interface SqlDriver : Closeable {
     fun query(sql: String, args: List<Any?> = emptyList()): List<Map<String, Any?>>
 
     fun <T> transaction(block: () -> T): T
+
+    /**
+     * SQL konsolu: [sql]'i ayrı, salt okunur bir bağlantıda çalıştırır (yazma veritabanı katmanında da reddedilir);
+     * en çok [maxRows] satır, [timeoutSec] saniyede iptal. Önce [SqlConsole.check] çağrılmalıdır.
+     */
+    fun readOnly(sql: String, maxRows: Int, timeoutSec: Int): ReadOnlyResult =
+        throw UnsupportedOperationException(tr("Bu veritabanında SQL konsolu desteklenmiyor"))
 }
 
 /** SQL tanımlayıcısını tırnaklar. Adlar ConfigValidator'dan geçtiği için ek güvenlik katmanıdır. */
