@@ -915,7 +915,8 @@ async function showApi() {
     el("p", { class: "muted" }, T("Adres: ") + location.origin + op + T(" — herkes kendi yetkisine göre görür (burada yönetici görünümü). ") +
       T("Postman, Insomnia veya Swagger Editor'e içe aktarılabilir, istemci kod üreticileriyle kullanılabilir. ") +
       T("Tipli istemci (SDK): koleksiyon tipleri, CRUD, giriş, dosya ve canlı abonelik içeren tek dosya; konfigürasyon değişince yeniden indirin.")),
-    el("div", { class: "row" }, download, sdk("ts", "droidserver.ts"), sdk("kotlin", "DroidServerClient.kt"))));
+    el("div", { class: "row" }, download, sdk("ts", "droidserver.ts"), sdk("kotlin", "DroidServerClient.kt"),
+      sdk("dart", "droidserver.dart"), sdk("swift", "DroidServer.swift"))));
 
   const byTag = new Map();
   for (const [path, methods] of Object.entries(doc.paths)) {

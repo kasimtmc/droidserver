@@ -1092,6 +1092,8 @@ ve alan adları kullanılır. Uygulamada API gezgini → İstemci SDK'sı (payla
 ```bash
 curl -H "Authorization: Bearer <yönetici anahtarı>" -o droidserver.ts http://<telefon>:8080/api/_sdk/ts
 curl -H "Authorization: Bearer <yönetici anahtarı>" -o DroidServerClient.kt "http://<telefon>:8080/api/_sdk/kotlin?package=com.ornek.api"
+curl -H "Authorization: Bearer <yönetici anahtarı>" -o droidserver.dart http://<telefon>:8080/api/_sdk/dart
+curl -H "Authorization: Bearer <yönetici anahtarı>" -o DroidServer.swift http://<telefon>:8080/api/_sdk/swift
 ```
 
 ```ts
@@ -1105,6 +1107,35 @@ const stop = ds.subscribe(["todos"], (e) => console.log(e.action, e.record));
 TypeScript istemcisi bağımlılıksızdır (`fetch`; tarayıcı, Node 18+, React Native, Deno) ve yalnızca tip silmeyle
 çalışan sözdizimi kullanır. Kotlin istemcisi JVM ve Android'de `HttpURLConnection` ve kotlinx.serialization ile çalışır
 (JVM'de PATCH için sunucu `X-HTTP-Method-Override` başlığını tanır). Şemayı içerdiği için `/_sdk` yalnızca yöneticiye açıktır.
+
+**Dart / Flutter** (`droidserver.dart`): yalnızca Dart 3 SDK'sı (`dart:io`); Dart VM ve Flutter Android, iOS ve masaüstünde
+çalışır, Flutter web'de çalışmaz. Kayıtlar `fromJson`'lu sınıflar, girdiler adlandırılmış parametreli sınıflardır (Dart'ta
+ayrılmış sözcük olan alan `_` ile biter: `in` → `in_`). Canlı abonelik bir `Stream`'dir; dinlemeyi iptal etmek kapatır.
+İş bitince `close()`.
+
+```dart
+final ds = DroidServerClient('https://evim.duckdns.org/api', fallbackUrls: ['http://192.168.1.20:8080/api']);
+await ds.auth.login('ali@example.com', 'parola');
+final page = await ds.todos.list(const ListOptions(filter: {'done': 'false'}, sort: '-created_at'));
+await ds.todos.create(const TodosInput(title: 'Süt al'), files: {'image': [File('foto.jpg')]});
+final sub = ds.subscribe(['todos']).listen((e) => print('${e.action} ${e.record}'));
+```
+
+**Swift** (`DroidServer.swift`): Swift 5.9+ ve async/await, bağımlılık yok; Apple platformları ve Linux
+(FoundationNetworking). Swift 6 kipinde uyarısız derlenir. Kayıtlar `Decodable`, girdiler `Encodable` yapılardır; JSON
+alanları ve takım/hesap yanıtları `JSONValue`. Canlı abonelik bir `AsyncStream`'dir.
+
+```swift
+let ds = DroidServerClient("https://evim.duckdns.org/api")
+_ = try await ds.auth.login("ali@example.com", "parola")
+let page = try await ds.todos.list(ListOptions(sort: "-created_at", filter: ["done": "false"]))
+_ = try await ds.todos.create(TodosInput(title: "Süt al"), files: ["image": [URL(fileURLWithPath: "foto.jpg")]])
+for await e in ds.subscribe(["todos"]) { print(e.action, e.record) }
+```
+
+Dört istemci de aynı yüzeyi sunar: CRUD ve filtre, dosya yükleme ve adresi, giriş (iki adımlı, e-posta ve SMS koduyla),
+token'ı 401'de bir kez yenileme, takımlar, yedek adresler (`fallbackUrls`), QR bağlantı metni (`fromLink`) ve canlı
+abonelik (koparsa kaldığı olaydan sürer). Dart ve Swift istemcileri testlerde gerçek sunucuya karşı derlenip çalıştırılır.
 
 ### E-posta: doğrulama ve parola sıfırlama
 

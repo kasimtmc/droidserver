@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -209,11 +210,11 @@ private fun SdkShare(config: ServerConfig) {
     Text(tr("İstemci SDK'sı"), style = MaterialTheme.typography.titleSmall)
     Text(
         tr("Uygulamanız için tipli istemci: koleksiyon tipleri, listeleme/filtre, ekleme/güncelleme/silme, dosya yükleme, giriş ve " +
-            "canlı abonelik. TypeScript (tarayıcı, Node, React Native) bağımlılıksız; Kotlin (Android/JVM) kotlinx.serialization ister. " +
-            "Sunucudan da indirilebilir: GET …/_sdk/ts veya …/_sdk/kotlin (yönetici anahtarı)."),
+            "canlı abonelik. TypeScript (tarayıcı, Node, React Native), Dart (Flutter) ve Swift (iOS, macOS) bağımlılıksız; Kotlin " +
+            "(Android/JVM) kotlinx.serialization ister. Sunucudan da indirilebilir: GET …/_sdk/{ts|kotlin|dart|swift} (yönetici anahtarı)."),
         style = MaterialTheme.typography.bodySmall,
     )
-    Row {
+    FlowRow {
         SdkGenerator.Lang.entries.forEach { lang ->
             TextButton(onClick = {
                 val send = Intent(Intent.ACTION_SEND).apply {
@@ -222,12 +223,12 @@ private fun SdkShare(config: ServerConfig) {
                     putExtra(Intent.EXTRA_TEXT, SdkGenerator.generate(config, lang))
                 }
                 ctx.startActivity(Intent.createChooser(send, lang.fileName))
-            }) { Text(if (lang == SdkGenerator.Lang.TS) tr("TypeScript paylaş") else tr("Kotlin paylaş")) }
+            }) { Text(tr("{0} paylaş", lang.title)) }
         }
     }
-    Row {
+    FlowRow {
         SdkGenerator.Lang.entries.forEach { lang ->
-            TextButton(onClick = { pending = lang; save.launch(lang.fileName) }) { Text(if (lang == SdkGenerator.Lang.TS) tr("TypeScript kaydet") else tr("Kotlin kaydet")) }
+            TextButton(onClick = { pending = lang; save.launch(lang.fileName) }) { Text(tr("{0} kaydet", lang.title)) }
         }
     }
 }

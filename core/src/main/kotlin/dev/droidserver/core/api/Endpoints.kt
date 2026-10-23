@@ -56,7 +56,7 @@ enum class Endpoint(val key: String, val method: String, val path: String, val t
     FIREWALL("firewall", "GET", "/_firewall", tr("Güvenlik duvarı: engeller"), EndpointGroup.ADMIN),
     FIREWALL_BAN("firewall.ban", "POST", "/_firewall/bans", tr("Adres engelle"), EndpointGroup.ADMIN),
     FIREWALL_UNBAN("firewall.unban", "DELETE", "/_firewall/bans/{client}", tr("Engeli kaldır"), EndpointGroup.ADMIN),
-    SDK("sdk", "GET", "/_sdk/{lang}", tr("İstemci SDK'sı (ts, kotlin)"), EndpointGroup.ADMIN),
+    SDK("sdk", "GET", "/_sdk/{lang}", tr("İstemci SDK'sı (ts, kotlin, dart, swift)"), EndpointGroup.ADMIN),
     METRICS("metrics", "GET", "/_metrics", tr("Metrikler"), EndpointGroup.ADMIN),
     WEBHOOKS("webhooks", "GET", "/_webhooks", tr("Webhook teslimleri"), EndpointGroup.ADMIN),
     WEBHOOK_TEST("webhooks.test", "POST", "/_webhooks/{name}/test", tr("Webhook deneme"), EndpointGroup.ADMIN),
