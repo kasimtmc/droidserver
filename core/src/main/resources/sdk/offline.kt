@@ -261,6 +261,7 @@ class OfflineCollection<T, I> internal constructor(
             }.apply { isDaemon = true }.start()
         }
         run()
-        return client.subscribe(listOf(name), onError) { run() }
+        // Abonelik kurulunca (ve her yeniden bağlanmada) bir kez daha: ilk eşitlemeyle bağlantı arasındaki değişiklik kaçmasın.
+        return client.subscribe(listOf(name), onError, onReady = { run() }) { run() }
     }
 }

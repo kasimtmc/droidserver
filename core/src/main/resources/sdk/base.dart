@@ -278,7 +278,8 @@ abstract class DroidServerBase {
 
   /// Canlı abonelik (Server-Sent Events): bağlantı koparsa kaldığı olaydan devam eder; hatalar akışa hata olarak gelir.
   /// Dinlemeyi iptal etmek ([StreamSubscription.cancel]) aboneliği kapatır.
-  Stream<RealtimeEvent> subscribe(List<String> collections) {
+  /// [onReady]: abonelik sunucuda kurulunca (her yeniden bağlanmada); o andan sonraki olaylar kaçmaz.
+  Stream<RealtimeEvent> subscribe(List<String> collections, {void Function()? onReady}) {
     final path = realtimePath;
     if (path == null) throw const DroidServerException(404, 'Canlı abonelik kapalı');
     final http = HttpClient();
@@ -306,6 +307,8 @@ abstract class DroidServerBase {
               if (event == 'message' && data.isNotEmpty) {
                 final o = jsonDecode(data.toString()) as Map<String, dynamic>;
                 out.add(RealtimeEvent(o['action'] as String, o['collection'] as String, o['record'] as Map<String, dynamic>));
+              } else if (event == 'ready') {
+                onReady?.call();
               }
               event = 'message';
               data.clear();
