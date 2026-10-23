@@ -215,11 +215,11 @@ eşlenebilsin diye validator'ı `List<ValidationError(path, message)>` döndüre
 sunucu ona bağlanır ve tüm CRUD/migration özellikleri SQLite'takiyle aynı davranır.
 
 ### 3.0 Riskleri erken kapat (önce bunlar)
-- [ ] **pgjdbc Android'de çalışıyor mu?** Boş bir test uygulamasında pgjdbc ile yerel bir Postgres'e bağlanıp
+- [x] **pgjdbc Android'de çalışıyor mu?** Boş bir test uygulamasında pgjdbc ile yerel bir Postgres'e bağlanıp
   sorgu at. Sorun çıkarsa: pgjdbc'nin eski 42.2.x serisi Android'de bilinen çalışan sürümdür; o da olmazsa
   basit bir PG wire protokol istemcisi değerlendirilir.
   *Durum:* pgjdbc 42.7.14 eklendi; `DriverManager` yerine sürücü doğrudan kullanılıyor (Android'de ServiceLoader
-  kaydına güvenilmez). JVM'de gerçek Postgres'e karşı test edildi, **cihazda henüz denenmedi**.
+  kaydına güvenilmez). JVM'de gerçek Postgres'e karşı test edildi; cihaz testinde de çalıştı (p4-p5, 14 Ekim 2026).
 - [x] **Binary kaynağı.** Postgres Android'de doğrudan derlenmiş haliyle çalışmaz: Android'de SysV shared memory yok.
   Termux bunu yamalarla (`libandroid-shmem`, `dynamic_shared_memory_type = mmap`) çözüyor. Pratik yol:
   - Termux deposundan `postgresql` ve bağımlılık `.deb` paketlerini (`libandroid-shmem`, `openssl`, `libxml2`,
@@ -230,7 +230,7 @@ sunucu ona bağlanır ve tüm CRUD/migration özellikleri SQLite'takiyle aynı d
   - Betik ve sonucu README'de belgelenir; zip kendi bileşen deponuzda barındırılır.
   *Durum:* betik çalıştırıldı: PostgreSQL 18.6 + 16 bağımlılık, 26 MB zip; tüm `NEEDED` kütüphaneler pakette
   veya Android sisteminde, RUNPATH `$ORIGIN/../lib`. Binary'ler bu makinede çalıştırılamadığı için davranış doğrulanmadı.
-- [ ] Gerçek cihazda elle doğrula: `initdb` → `postgres` → `psql` ile bağlantı.
+- [x] Gerçek cihazda elle doğrula: `initdb` → `postgres` → `psql` ile bağlantı. *(Cihaz testi p2-p4.)*
   *(Manifest komutları — parola dosyalı `initdb`, `pg_ctl stop`, `set-password` işi — JVM testinde gerçek
   PostgreSQL ikilileriyle uçtan uca doğrulandı; Termux derlemesi cihazda denenmedi.)*
 
@@ -268,11 +268,11 @@ sunucu ona bağlanır ve tüm CRUD/migration özellikleri SQLite'takiyle aynı d
   JVM'de Postgres için `io.zonky.test:embedded-postgres` (gerçek Postgres binary'si indirir) kullan.
   (`DialectContractTest`'e taşındı; `SchemaPlanTest` ve `DataCopierTest` de iki lehçede. Postgres root olarak
   çalışmadığı için root ile koşturulursa bu testler atlanır.)
-- [ ] Cihazda: Postgres bileşeni kurulur, deploy edilir, uygulama yeniden başlatılınca veri yerinde, telefon yeniden
-  başlatılınca (otomatik başlatma açıkken) Postgres ve API sırasıyla geri geliyor. *(Cihazda denenmedi.)*
-- [ ] Postgres çökerse supervisor yeniden başlatıyor; API bu sürede 503 dönüyor ve bağlantı geri gelince düzeliyor.
-  *(503 ve kendiliğinden yeniden bağlanma JVM'de `PostgresResilienceTest` ile doğrulandı; supervisor'ın cihazda
-  Postgres'i yeniden başlatması denenmedi.)*
+- [x] Cihazda: Postgres bileşeni kurulur, deploy edilir, uygulama yeniden başlatılınca veri yerinde, telefon yeniden
+  başlatılınca (otomatik başlatma açıkken) Postgres ve API sırasıyla geri geliyor. *(Cihaz testi p4-p6.)*
+- [x] Postgres çökerse supervisor yeniden başlatıyor; API bu sürede 503 dönüyor ve bağlantı geri gelince düzeliyor.
+  *(503 ve kendiliğinden yeniden bağlanma JVM'de `PostgresResilienceTest` ile doğrulandı; cihazda da doğrulandı:
+  cihaz testi p7.)*
 
 **Uygulama notları** (sonraki fazlar için)
 - Lehçe ortak değer biçimi: TEXT→String, INTEGER→Long, REAL→Double, BOOLEAN→Boolean, DATETIME→Instant,
@@ -317,7 +317,7 @@ Faz 3 sonunda uygulamanın kullanıcı adına verdiği kararlar seçeneğe çevr
 - [x] **Root ile testler:** uyarı verilip Postgres süreçleri `nobody` ile çalıştırılıyor (`NonRootPostgres`); atlanan test yok.
 - [x] **Postgres paketinin barındırılması:** GitHub Releases (`.github/workflows/components.yml`,
   `tools/make-manifest.sh`). Depo gizliyken uygulama indiremez (bkz. README).
-- [ ] **Cihazda deneme:** kullanıcı yapacak.
+- [x] **Cihazda deneme:** cihaz testi `postgres` ve `secenekler` bölümleri (14 Ekim 2026).
 
 ---
 
@@ -533,7 +533,7 @@ Ktor'un CIO motoru sunucu tarafında TLS desteklemediği için TLS uygulamadaki 
 - [x] API sıkılaştırma: istemci başına istek sınırı, hatalı kimlik denemesinde geçici engel, gövde sınırı, düz HTTP
   portuna internetten gelen isteği reddetme, güvenlik başlıkları; internete açık modda kimlik doğrulama zorunlu
   (bilinçli onay hariç).
-- [ ] Cihazda doğrulama: cloudflared (DNS, QUIC/HTTP2), UPnP (gerçek modemler), mobil IPv6.
+- [x] Cihazda doğrulama: cloudflared (DNS, QUIC/HTTP2), UPnP (gerçek modemler), mobil IPv6. *(Cihaz testi e1-e6.)*
 - [x] Doğrudan erişimde gerçek sertifika: DuckDNS adıyla Let's Encrypt DNS-01 (tarayıcı uyarısı kalkar).
   *Durum:* `AcmeClient` (RFC 8555, ES256 JWS, nonce yenileme, Retry-After'lı yoklama), `CertificateManager` (yenileme
   bitişe 30 gün kala, başarısızlıkta 6 saat bekleme), DuckDNS TXT kaydı + DoH ile yayılma beklemesi. Sertifika HTTPS
@@ -896,32 +896,56 @@ oturtmasın), sonra panelin eksiklerini kapatma, sonra güvenlik, en son yeni ö
 ### Grup 1 — Sağlamlaştırma ve web paneli eşitleme
 
 **17.1 Cihaz testi bulguları**
-- [ ] Cihaz testi sonuçlarındaki `fail` adımların hepsi: kök neden, düzeltme, ilgili JVM testi; adım metni yanlışsa metni
+- [x] Cihaz testi sonuçlarındaki `fail` adımların hepsi: kök neden, düzeltme, ilgili JVM testi; adım metni yanlışsa metni
   düzelt. (Sonuç dosyası kullanıcıdan gelecek; bu alt faz ona göre büyüyüp küçülür.)
-- [ ] Ağ sürücüsü bağlanma talimatına KDE/Dolphin (Sunucu: yalnızca IP, Kapı: 8080, Klasör: /dav, şifreleme kapalı;
+  *Durum (23 Ekim 2026):* 137 adımın 77'si Tamam, `fail` yok; Faz 12-16 ve yeni arayüz adımları (60) henüz denenmedi.
+- [x] Ağ sürücüsü bağlanma talimatına KDE/Dolphin (Sunucu: yalnızca IP, Kapı: 8080, Klasör: /dav, şifreleme kapalı;
   ya da `webdav://ip:8080/dav`) ve Windows'un Digest/Basic davranışına göre not.
-- [ ] "Cihazda doğrulama bekliyor" işaretli maddeler için hedefli adımlar: cloudflared (DNS, QUIC/HTTP2), UPnP gerçek
+- [x] "Cihazda doğrulama bekliyor" işaretli maddeler için hedefli adımlar: cloudflared (DNS, QUIC/HTTP2), UPnP gerçek
   modem, mobil IPv6, PostgreSQL bileşeni, bileşen kataloğu.
+  *Durum:* cloudflared, UPnP, IPv6 ve PostgreSQL cihazda geçti (e1-e6, p1-p7); katalog adımları zaten var (f15k1, f15r1,
+  f15p1). Eksik çıkan Faz 16.5-16.12 adımları eklendi (`faz16b`, f16h1-f16m2).
 
 **17.2 Android 14/15 uyumu ve pil**
-- [ ] Ön plan servis türleri (`dataSync`/`specialUse`) ve Android 15'in süre sınırları; uzun süre çalışmada servisin
+- [x] Ön plan servis türleri (`dataSync`/`specialUse`) ve Android 15'in süre sınırları; uzun süre çalışmada servisin
   öldürülmemesi için kontroller (sorun gidericiye ek bulgular).
+  *Durum:* servis zaten `specialUse` (Android 14+ türüyle başlatılıyor). Tür zorunluluğu (targetSdk 34+) ve Android 15'in
+  `dataSync` süre sınırı ile açılışta ön plan servis kısıtları (targetSdk 35+) targetSdk 28'de uygulanmaz; `specialUse`'un
+  süre sınırı yok. Sorun gidericiye eklendi: "Kısıtlı" pil ayarı (`isBackgroundRestricted`), bileşen varken Android 12+
+  alt süreç kısıtı, sistemin servisi yeniden başlatması (Android 11+ `ApplicationExitInfo` nedeniyle).
 - [ ] Kesintisiz çalışma ölçümü: 24 saatlik çalışmada pil ve bellek; sağlık uyarılarına "servis yeniden başlatıldı"
   olayı.
+  *Durum:* `AlertKind.RESTART` eklendi (START_STICKY ile yeniden başlatmada; çökme uyarısı varsa onun yerine gelmez),
+  Loglar'a ve sorun gidericiye de düşer. Ölçüm cihaz testi f17b3'te (kullanıcı); f17b1-f17b2 yeni denetimler için.
 - [ ] Hedef SDK güncellemesi ve lint uyarılarının (WakelockTimeout dahil) gözden geçirilmesi.
+  *Durum:* lint temiz (0 hata, 0 uyarı; önceden var olan 1 Compose ipucu). WakelockTimeout bilinçli olarak bastırıldı:
+  süreli kilit uzun yedekte veya bakım döngüsü durursa sunucuyu uyutur. Hedef SDK açık karar: 29+ indirilen bileşenlerin
+  çalıştırılmasını (W^X) engeller; bkz. 17.14 Play Store sorusu.
 
 **17.3 İlk imzalı sürüm**
 - [ ] Release iş akışının uçtan uca denenmesi (imza anahtarı ve GitHub secrets kullanıcıda), sürüm notu şablonu,
   uygulama içi güncellemenin gerçek sürümle doğrulanması.
 - Karar: sürüm numaralandırması (0.x mi 1.0 mı) ve ilk sürümde hangi özelliklerin "deneysel" işaretleneceği.
+  *Karar (kullanıcı, 23 Ekim 2026):* ilk sürüm **0.9.0**; cihaz testinde henüz denenmemiş her özellik "deneysel"
+  (test geçtikçe listeden çıkar), targetSdk 28'de kalır.
+  *Durum:* sürüm notu şablonu (`.github/release-notes/TEMPLATE.md`) ve `0.9.0.md` hazır; `release.yml` `<sürüm>.md`'yi
+  notun başına koyar. Kalan (kullanıcıda): imza anahtarı ve dört secret (şu an tanımlı değil), `v0.9.0` etiketi, ardından
+  `v0.9.1` ile uygulama içi güncellemenin gerçek sürümle denenmesi (cihaz testi g2'nin imzalı yolu).
 
 **17.4 Web panelini eşitleme**
-- [ ] Panelde yalnızca uygulamada olan ekranlar: Takımlar, MQTT (durum, yönlendirmeler, komut), Canlı kopya ve devralma
+- [x] Panelde yalnızca uygulamada olan ekranlar: Takımlar, MQTT (durum, yönlendirmeler, komut), Canlı kopya ve devralma
   durumu/ayarları, Ağ sürücüsü, YZ (kullanım, dizin), Kendi uygulamalarınız (durum, deploy), Komut satırı (kurulum
   komutları), Otomasyonlar ve Formlar düzenleme.
-- [ ] Her ekran için önce yönetici API'si (yoksa) — panel ve CLI aynı uçları kullanır.
+- [x] Her ekran için önce yönetici API'si (yoksa) — panel ve CLI aynı uçları kullanır.
 - Kabul: panelden yapılan değişiklik uygulamadaki ile aynı doğrulamadan geçer (aynı `ConfigValidator`), denetim kaydına
   `panel` olarak düşer; panel testleri (mevcut `AdminPanelTest` kalıbında) her ekran için.
+  *Durum:* Kullanıcılar sekmesinde Takımlar; yeni **Otomasyon** (kurallar, Şimdi dene, formlar) ve **Servisler** (MQTT,
+  ağ sürücüsü, canlı kopya/devralma, YZ, kendi uygulamalarınız, CLI) sekmeleri. Ayarlar `config/plan` + `config/deploy`
+  yolundan (AppAdminHost → ConfigValidator, denetimde `panel`). Yeni uçlar: `GET /_admin/api/replica`,
+  `POST /_admin/api/replica/takeover` (AdminHost.replica/takeover; uygulamadaki Devral ile aynı `Failover.promote`).
+  Mevcut durum uçları (`/_mqtt`, `/_ai`, `/_apps`, `/_automations`, `/teams`) `/info` yollarına eklendi. Testler:
+  `AdminPanelTest` (otomasyon, servisler ve takımlar; canlı kopya ekranı). Sırlar (YZ anahtarı, kopya anahtarı) ve zip
+  yükleme telefonda kalır. Cihaz testi f17p1-f17p3.
 
 ### Grup 2 — Güvenli bağlantılar ve ev otomasyonu
 

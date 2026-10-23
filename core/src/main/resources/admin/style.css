@@ -179,3 +179,6 @@ details summary:hover { color: var(--accent); }
 .schema-fields td { vertical-align: top; }
 .schema-fields .row { margin: 0; }
 @media (max-width: 700px) { .schema { grid-template-columns: 1fr; } .schema-list { flex-direction: row; flex-wrap: wrap; } }
+.form-grid { display: grid; grid-template-columns: minmax(140px, max-content) 1fr; gap: 8px 12px; align-items: center; margin: 10px 0; }
+.form-grid .row { margin: 0; }
+@media (max-width: 700px) { .form-grid { grid-template-columns: 1fr; } }

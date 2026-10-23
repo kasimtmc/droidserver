@@ -1,11 +1,13 @@
 package dev.droidserver.app.ui.status
 
 import android.annotation.SuppressLint
+import android.app.ActivityManager
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
@@ -44,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import dev.droidserver.app.AppGraph
 import dev.droidserver.app.data.NetUtil
+import dev.droidserver.app.data.ServiceRestart
 import dev.droidserver.app.service.ServerService
 import dev.droidserver.app.ui.common.ScreenScaffold
 import dev.droidserver.core.config.AccessMode
@@ -116,6 +119,8 @@ private fun FindingCard(f: Finding, onFix: (Fix) -> Unit) {
 private fun fixLabel(fix: Fix) = when (fix) {
     Fix.START_SERVER -> tr("Sunucuyu başlat")
     Fix.BATTERY_SETTINGS -> tr("Pil ayarını aç")
+    Fix.APP_SETTINGS -> tr("Uygulama bilgisini aç")
+    Fix.DEVELOPER_SETTINGS -> tr("Geliştirici seçeneklerini aç")
     Fix.NOTIFICATION_SETTINGS -> tr("Bildirim ayarlarını aç")
     Fix.OPEN_WIZARD -> tr("Sihirbazı aç")
     Fix.OPEN_ACCESS -> tr("Erişim adımına git")
@@ -130,6 +135,8 @@ private fun handle(ctx: Context, fix: Fix, onFix: (Fix) -> Unit) {
     val intent = when (fix) {
         Fix.START_SERVER -> { ServerService.start(ctx); null }
         Fix.BATTERY_SETTINGS -> Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, "package:${ctx.packageName}".toUri())
+        Fix.APP_SETTINGS -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${ctx.packageName}".toUri())
+        Fix.DEVELOPER_SETTINGS -> Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
         Fix.NOTIFICATION_SETTINGS -> Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName)
         Fix.OPEN_WIFI_SETTINGS -> Intent(Settings.ACTION_WIFI_SETTINGS)
         else -> return onFix(fix)
@@ -178,6 +185,12 @@ private fun collect(ctx: Context, g: AppGraph): DiagnosticInput {
         certificateUntil = if (access == AccessMode.DIRECT) direct.certificateUntil else null,
         failedComponents = g.supervisor.statuses.value.values.filter { it.phase == ProcessSupervisor.Phase.FAILED }.map { it.id },
         batteryOptimized = ctx.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(ctx.packageName)?.not(),
+        backgroundRestricted = if (Build.VERSION.SDK_INT >= 28) ctx.getSystemService(ActivityManager::class.java)?.isBackgroundRestricted else null,
+        // Geliştirici seçeneği ve README'deki ADB komutu bu ayarı "false" yapar; yoksa Android 12+ kısıt açıktır.
+        childProcessLimit = if (Build.VERSION.SDK_INT >= 31 && g.supervisor.statuses.value.isNotEmpty()) {
+            Settings.Global.getString(ctx.contentResolver, "settings_enable_monitor_phantom_procs") != "false"
+        } else null,
+        serviceRestart = ServiceRestart.last,
         notificationsAllowed = ctx.getSystemService(NotificationManager::class.java)?.areNotificationsEnabled(),
         freeStorageBytes = g.dataRoot.usableSpace,
         activeAlerts = g.engine.health.active().map { "${it.title}: ${it.message}" },

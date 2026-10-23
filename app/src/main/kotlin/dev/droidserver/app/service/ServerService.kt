@@ -1,5 +1,6 @@
 package dev.droidserver.app.service
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -20,6 +21,7 @@ import dev.droidserver.app.data.AlertNotifier
 import dev.droidserver.app.data.AndroidDeviceStats
 import dev.droidserver.app.data.CrashMarker
 import dev.droidserver.app.data.NetUtil
+import dev.droidserver.app.data.ServiceRestart
 import dev.droidserver.app.AppGraph
 import dev.droidserver.app.graph
 import dev.droidserver.app.ui.MainActivity
@@ -90,6 +92,7 @@ class ServerService : Service() {
             return START_NOT_STICKY
         }
         goForeground(tr("Başlatılıyor…"))
+        if (intent == null) owner.logs.add(ServiceRestart.record(this))
         acquireLocks()
         watchNetwork()
         startMaintenance()
@@ -209,7 +212,9 @@ class ServerService : Service() {
                     }
                     if (!crashChecked) {
                         crashChecked = true
-                        CrashMarker.take(this@ServerService)?.let { g.engine.health.event(AlertKind.CRASH, it) }
+                        val crash = CrashMarker.take(this@ServerService)
+                        if (crash != null) g.engine.health.event(AlertKind.CRASH, crash)
+                        else ServiceRestart.last?.let { g.engine.health.event(AlertKind.RESTART, it) }
                     }
                     g.engine.health.check(
                         HealthInput(
@@ -277,8 +282,13 @@ class ServerService : Service() {
         }
     }
 
-    /** CPU'nun ve Wi-Fi'ın uykuya geçip bağlantıları düşürmesini engeller (pil tüketimini artırır). */
+    /**
+     * CPU'nun ve Wi-Fi'ın uykuya geçip bağlantıları düşürmesini engeller (pil tüketimini artırır). Kilit bilinçli olarak
+     * süresiz: sunucu çalıştığı sürece gerekli, onDestroy'da bırakılır, süreç ölünce sistem bırakır. Süreli kilit uzun
+     * yedekte veya bakım döngüsü durursa sunucuyu uyutur (WakelockTimeout gözden geçirildi, Faz 17.2).
+     */
     @Suppress("DEPRECATION")
+    @SuppressLint("WakelockTimeout")
     private fun acquireLocks() {
         if (wakeLock == null) {
             wakeLock = getSystemService(PowerManager::class.java)
