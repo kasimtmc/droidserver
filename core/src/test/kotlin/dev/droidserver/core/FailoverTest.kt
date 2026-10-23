@@ -165,7 +165,8 @@ class FailoverTest {
         b.engine.deploy(b.config)
         waitFor("kopya eşitlendi") { titles(b) == listOf("bir") }
         assertEquals("replica", b.role)
-        assertEquals(503, add(b, "kopyaya yazılmaz").first)
+        assertEquals(201, add(b, "kopyadan").first, "kopyaya yazma ana sunucuya iletilir")
+        waitFor("iletilen yazma kopyaya döndü") { titles(b) == listOf("bir", "kopyadan") }
 
         // Ana sunucu düşer: kopya 30 × 50 ms sonra devralır ve yazılabilir olur.
         a.engine.stop()
@@ -177,14 +178,14 @@ class FailoverTest {
         // Eski ana sunucu döner: yazmadan önce devralındığını görür ve yeni ana sunucunun kopyası olur.
         a.engine.deploy(a.config)
         assertEquals(503, add(a, "çatışma").first)
-        waitFor("eski ana kopyaya döndü") { "replica.demoted" in a.events && titles(a) == listOf("bir", "iki") }
+        waitFor("eski ana kopyaya döndü") { "replica.demoted" in a.events && titles(a) == listOf("bir", "kopyadan", "iki") }
 
         // Güncel kaldıktan sonra rolünü kayıpsız geri alır; devralan yeniden kopya olur.
         waitFor("geri alındı") { a.role == "primary" && b.role == "replica" }
         assertTrue("replica.failback" in a.events, a.events.toString())
         waitFor("ana yazılabilir") { add(a, "üç").first == 201 }
-        waitFor("kopya yeniden eşit") { titles(b) == listOf("bir", "iki", "üç") }
-        assertEquals(503, add(b, "dört").first)
+        waitFor("kopya yeniden eşit") { titles(b) == listOf("bir", "kopyadan", "iki", "üç") }
+        assertEquals(201, add(b, "dört").first, "yeniden kopya: yazma iletilir")
         assertTrue(a.events.none { it.startsWith("hata") } && b.events.none { it.startsWith("hata") }, "${a.events} ${b.events}")
     }
 

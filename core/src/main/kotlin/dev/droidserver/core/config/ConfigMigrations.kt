@@ -29,6 +29,8 @@ import kotlinx.serialization.json.intOrNull
  *  v5 -> v6: koleksiyonların `publicRead` / `readOnly` bayrakları `rules`'a dönüşür (davranış aynı kalır):
  *            `publicRead` → list/view `public`, değilse `admin`; `readOnly` → create/update/delete `nobody`, değilse
  *            `admin`. İsteğe bağlı yeni alanlar: `auth.users`, `collections[].ownerField`.
+ *  v17 -> v18: Faz 18: çevrimdışı eşitleme (`collections[].sync`; `_sync`, `_sync_fields` tabloları); mevcut alanlar
+ *            değişmez.
  *  v16 -> v17: Faz 17: `auth.passkeys` (passkey ile giriş; `_passkeys`, `_panel_passkeys` tabloları), MQTT cihaz kimlikleri
  *            ve tutulan mesajlar, `alerts.telegram.adminChatId` (Telegram'dan yönetim), `email.templates` (hesap e-postası
  *            şablonları) ve toplu bildirim (`_unsubscribed` tablosu); mevcut alanlar değişmez.
@@ -54,7 +56,7 @@ import kotlinx.serialization.json.intOrNull
  *            mevcut alanlar değişmez.
  */
 object ConfigMigrations {
-    const val CURRENT = 17
+    const val CURRENT = 18
 
     private val steps: Map<Int, (JsonObject, SecretSink?) -> JsonObject> = mapOf(
         1 to ::v1ToV2,
@@ -73,6 +75,7 @@ object ConfigMigrations {
         14 to { json: JsonObject, _: SecretSink? -> json }, // yalnızca isteğe bağlı alanlar eklendi
         15 to { json: JsonObject, _: SecretSink? -> json }, // yalnızca isteğe bağlı alanlar eklendi
         16 to { json: JsonObject, _: SecretSink? -> json }, // yalnızca isteğe bağlı alanlar eklendi
+        17 to { json: JsonObject, _: SecretSink? -> json }, // yalnızca isteğe bağlı alanlar eklendi
     )
 
     /** Kullanıcıya gösterilen değişiklikler: adım (vN -> vN+1) başına bir satır. */
@@ -104,6 +107,7 @@ object ConfigMigrations {
         14 to tr("Ortak ortam değişkenleri ve sırlar (.env), kendi uygulamalarınızı (Node.js, Python, Java) çalıştırma ve Git'ten deploy eklenir. Mevcut ayarlar değişmez."),
         15 to tr("Kod yazmadan otomasyon kuralları (kayıt eklenince veya belirli saatlerde e-posta, bildirim, webhook gönderme ya da kayıt güncelleme), koleksiyonlara kayıt ekleyen herkese açık formlar, isteğe bağlı GraphQL ucu ve yapay zekâ (Claude ile sohbet, kayıtlara soru sorma, anlamsal arama) eklenir. Mevcut ayarlar değişmez."),
         16 to tr("Passkey ile parolasız giriş (kullanıcılar ve web paneli), MQTT'de cihaz başına kimlik, ev otomasyonu, Telegram'dan yönetim ve hesap e-postası şablonları eklenir. Mevcut ayarlar değişmez."),
+        17 to tr("Uygulamaların bağlantı yokken de çalışabilmesi için koleksiyon başına çevrimdışı eşitleme eklenir. Mevcut ayarlar değişmez."),
     )
 
     /** [from] sürümünden güncel sürüme yükseltirken neler değişir; güncelse boş. */

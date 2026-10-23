@@ -51,6 +51,8 @@ class FailoverPort(
     val timing: FailoverTiming = FailoverTiming(),
     val replicaSeen: (String) -> Unit = {},
     val fenced: (url: String, key: String) -> Unit = { _, _ -> },
+    /** Kopyaların durumu (ana sunucudaki kopya tablosu). */
+    val registry: ReplicaRegistry? = null,
 ) {
     /** Devredildi (yeniden deploy edilene kadar salt okunur). */
     @Volatile
@@ -164,6 +166,25 @@ class ReplicaRegistry(private val file: File?) {
                 Json.decodeFromString(ListSerializer(Entry.serializer()), f.readText()).forEach { entries[it.url] = Instant.parse(it.lastSeen) }
             }
         }
+    }
+
+    /** Kopyanın son bildirdiği durum: uyguladığı sıra, o anda anadaki son sıra, konfigürasyon şema sürümü. */
+    data class Report(val url: String, val lastSeen: Instant, val appliedSeq: Long?, val latestSeq: Long?, val version: Int?)
+
+    private val stats = HashMap<String, Triple<Long, Long, Int?>>()
+
+    /** Kopya değişiklik istedi: [applied] onun son uyguladığı sıra, [latest] anadaki son sıra. */
+    @Synchronized
+    fun report(url: String, applied: Long, latest: Long, version: Int?, now: Instant = Instant.now()) {
+        seen(url, now)
+        stats[url] = Triple(applied, latest, version)
+    }
+
+    /** Bilinen kopyalar, en son görüleni önce (bu açılışta bildirmemiş olanın sırası ve sürümü yok). */
+    @Synchronized
+    fun reports(): List<Report> = entries.entries.sortedByDescending { it.value }.map { (url, seen) ->
+        val s = stats[url]
+        Report(url, seen, s?.first, s?.second, s?.third)
     }
 
     @Synchronized

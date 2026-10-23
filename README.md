@@ -116,6 +116,7 @@ yer tutucu anahtar yerine yeni üretilmiş bir anahtarla). Sonrasında **Sunucu*
 | `fields[].format`, `minLength`, `maxLength`, `pattern` | `text`: `email` veya `url` biçimi, karakter sayısı sınırı, düzenli ifade (tüm değer eşleşmeli). `multiselect`'te `minLength`/`maxLength` seçim sayısıdır |
 | `history` | `{keep: 50}`: kayıt geçmişi (kayıt başına en çok `keep` sürüm; bkz. Geçmiş ve çöp kutusu) |
 | `trash` | `{days: 30}`: çöp kutusu (silinen kayıt `days` gün saklanır) |
+| `sync` | `{conflict: "lww"\|"manual", keepDays: 30}`: çevrimdışı istemci eşitlemesi (bkz. Çevrimdışı eşitleme) |
 | `fields[].min`, `max` | `integer`/`real`: değer aralığı |
 | `fields[].computed` | `text`/`integer`/`real`/`boolean`: başka alanlardan hesaplanan değer (bkz. Alan kuralları ve hesaplanan alanlar) |
 | `fields[].maxSizeMb`, `mimeTypes`, `multiple`, `thumbs` | `file`: dosya başına sınır (10 MB), kabul edilen tipler (örn. `["image/*", "application/pdf"]`; boşsa hepsi), çoklu dosya (en çok 20), ek küçük resim boyutları (örn. `["400x0"]`; `100x100` her zaman) |
@@ -1365,6 +1366,44 @@ tamamlanır (değişmeyen kayıt yeniden gönderilmez). Yedeğe ve veri taşıma
 }
 ```
 
+### Çevrimdışı eşitleme
+
+Koleksiyonda **Çevrimdışı eşitleme** (Sihirbaz → Koleksiyon → Geçmiş, çöp kutusu, saklama ve eşitleme; `sync`) açıkken
+istemci SDK'ları (TypeScript, Kotlin, Dart, Swift) kayıtları cihazda tutar, bağlantı yokken de okur ve yazar, bağlanınca
+eşitler. Sunucu her değişikliği veritabanı tetikleyicisiyle izler (API, script, içe aktarma ve zincirleme silmeler dahil):
+kayıt başına sürüm, alan başına son değiştiği sürüm ve zaman, silinenler için iz (`keepDays` gün; daha uzun bağlanmayan
+istemci baştan eşitlenir).
+
+| Uç | Açıklama |
+|---|---|
+| `GET /api/sync/{c}?since=&epoch=&limit=` | İmleçten sonraki değişiklikler: `{epoch, reset, next, more, changes:[{id, version, action, record}]}`. Liste kuralı ve alan gizliliği uygulanır; istemcinin artık göremediği kayıt `delete` olarak gelir. `reset`: istemci yerel kopyayı silip baştan eşitlenmeli |
+| `POST /api/sync/{c}` `{now, changes:[…]}` | Bekleyen değişiklikler (en çok 100): `create` (`tempId`), `update` ve `delete` (`id`, son görülen sürüm `base`, alan düzenleme zamanları `times`). Her biri ayrı uygulanır: `ok`, `merged`, `conflict`, `gone` veya `error` |
+
+**Çakışma:** istemci çevrimdışıyken aynı alanı sunucuda başkası da değiştirdiyse varsayılan **son yazan kazanır**
+(`lww`, alan başına; istemcinin saati gönderdiği `now` ile sunucu saatine göre düzeltilir): kaybeden alan sunucudaki
+değerinde kalır, diğer alanlar uygulanır ve istemciye `merged` bildirilir. **Elle çöz** (`manual`) kipinde çakışan alan
+uygulanmaz, istemci `onConflict` ile her iki değeri görür ve isterse yeniden yazar. Sunucuda daha yeni değişikliği olan
+kaydın silinmesi de çakışmadır.
+
+```ts
+const notes = ds.notes.offline();                 // tarayıcıda IndexedDB, Node'da bellek; kendi deponuzu da verebilirsiniz
+notes.onConflict = (c) => console.warn(c.status, c.local, c.server);
+await notes.create({ title: "Uçakta yazıldı" });   // bağlantı gerekmez; kimlik eşitlenene kadar negatif
+const stop = notes.live();                         // bağlanınca ve sunucuda değişiklik oldukça eşitler
+```
+
+```kotlin
+val notes = ds.notes.offline(FileOfflineStore(context.filesDir.resolve("offline")))
+notes.create(NotesInput(title = "Uçakta yazıldı"))
+notes.sync()   // bloklayıcı; ağ yoksa IOException, bekleyenler kalır
+```
+
+Dart'ta `ds.notes.offline(FileOfflineStore(dir))`, Swift'te `try ds.notes.offline(FileOfflineStore(directory: url))`
+(`actor`). Depo bir arayüzdür (anahtar → JSON metni): hazır olanlar bellek, dosya ve tarayıcıda IndexedDB; SQLite gibi bir
+depo takılabilir. Sınırlar: dosya alanları yalnızca adıyla gelir (dosya indirilmez, çevrimdışıyken yüklenmez); çevrimdışı
+oluşturulan kayda başka koleksiyondan ilişki, kayıt eşitlendikten sonra kurulmalı. Eşitleme ana sunucuyla yapılır (kopyaya
+gelen eşitleme istekleri ana sunucuya iletilir).
+
 ### Canlı abonelik
 
 `realtime.enabled` iken (Sihirbaz → Genel → Canlı abonelik) istemciler kayıt değişikliklerini anında alır:
@@ -1753,8 +1792,13 @@ Ana telefon çökerse veriler kaybolmasın ve hizmet sürsün diye ikinci bir te
    eşitlenir. Durum ekranındaki **Canlı kopya** kartı geride kalan değişiklik sayısını, son temas ve hatayı gösterir;
    5 dakikadan uzun süre eşitlenemezse sağlık uyarısı gelir.
 
-Kopya **salt okunurdur**: okuma istekleri aynı anahtar ve token'larla çalışır, yazma/giriş/kayıt `503` alır, zamanlanmış
-görevler ve iş kuyruğu bekler. Ana sunucunun konfigürasyonu değişince (yeni koleksiyon, alan, kural) kopya bunu görür,
+Kopya kendi veritabanına **yazmaz**: okuma istekleri aynı anahtar ve token'larla kopyada yanıtlanır; veri yazmaları
+(kayıt ekleme/güncelleme/silme, giriş, kayıt olma, takım, push aboneliği, toplu işlem, GraphQL ve eşitleme; uzman
+modundaki yollarıyla) **ana sunucuya iletilir** ve yanıtı istemciye döner. İstek istemcinin yetki başlığıyla aynen gider;
+kuralları ve doğrulamayı yalnızca ana sunucu uygular. İstemcinin adresi de iletilir (ana sunucu bunu yalnızca kendi API
+anahtarıyla gelen kopyaya güvenerek kullanır), böylece istek sınırı ve güvenlik duvarı kopyaya değil istemciye uygulanır.
+Ana sunucuya ulaşılamazsa yazma `502` ile açıkça reddedilir. Yönetim uçları (SQL konsolu, MQTT, yedek…) kopyanın kendisinde
+kalır; zamanlanmış görevler ve iş kuyruğu bekler. Ana sunucunun konfigürasyonu değişince (yeni koleksiyon, alan, kural) kopya bunu görür,
 yeni konfigürasyonu kaydedip kendini yeniden kurar; o sırada değişiklik uygulamaz. Oturumlar ve iş kuyruğu kopyalanmaz.
 
 **Elle devralma:** kopyada Durum → Canlı kopya → **Devral**: eşitleme durur, kopya yazılabilir ana sunucu olur (kimlik
@@ -1784,6 +1828,16 @@ açılır (iki dakika sonra kendiliğinden de açılır).
 - **DuckDNS:** iki telefonda aynı DuckDNS adını ayarlayın. Kopya adı yayınlamaz; devralınca yeni ana sunucu yayınlar.
 - **Yedek adres (SDK):** istemciye iki adresi de verin; bağlantı kurulamazsa veya sunucu `503` dönerse (salt okunur kopya)
   sıradaki denenir ve çalışan adres hatırlanır.
+
+**Birden çok kopya ve okuma dağıtımı:** bir ana sunucuya istediğiniz kadar kopya bağlanabilir. Ana sunucu her kopyanın
+adresini, bağlı olup olmadığını, kaç değişiklik geride olduğunu ve konfigürasyon sürümünü tutar (uygulamada Durum →
+**Kopyalar**, panelde Servisler → Canlı kopya, `GET /_replication/replicas`). SDK'lara `readUrls` verilirse okumalar
+sırayla kopyalara gider (ulaşılamazsa ana adres); bir yazmadan sonra `readYourWritesMs` (5000) boyunca okumalar ana
+sunucudan yapılır, böylece istemci kendi yazdığını hemen görür.
+
+```ts
+const ds = new DroidServer("http://192.168.1.20:8080/api", { apiKey, readUrls: ["http://192.168.1.21:8080/api", "http://192.168.1.22:8080/api"] });
+```
 
 ```kotlin
 val ds = DroidServerClient("http://192.168.1.20:8080/api", apiKey = key, fallbackUrls = listOf("http://192.168.1.21:8080/api"))
@@ -2181,3 +2235,5 @@ tools/          package-postgres.sh, package-cloudflared.sh (Termux derlemelerin
 - [x] **Telegram'dan yönetim:** ayrı yönetici sohbetinden `/durum`, `/yedek`, `/loglar`, `/baslat`, `/durdur` (onaylı)
 - [x] **E-posta şablonları ve toplu bildirim:** hesap e-postaları dil başına şablonla; kullanıcılara süzgeçli, hız sınırlı, iptal edilebilir toplu e-posta / web push, abonelikten çıkma
 - [x] **Yaygınlaştırma:** ilk açılış rehberi ve örnek proje, uygulama içi çevrimdışı yardım, F-Droid meta verisi, tekrarlanabilir derleme, gizlilik politikası
+- [x] **Çevrimdışı eşitleme:** koleksiyon başına; SDK'larda (TS, Kotlin, Dart, Swift) yerel kopya, bekleyen yazma kuyruğu, alan bazında son yazan kazanır veya elle çözme
+- [x] **Kopyalarla ölçek:** kopyaya gelen yazma ana sunucuya iletilir, birden çok kopya ve kopya tablosu, SDK'da okuma adresleri ve kendi yazdığını oku

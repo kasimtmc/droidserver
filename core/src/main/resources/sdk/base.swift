@@ -79,15 +79,19 @@ public struct RealtimeEvent: Sendable {
     public let record: [String: JSONValue]
 }
 
+/// Koleksiyonun uç yolları; `sync` eşitleme kapalıysa nil, `idField` kimlik alanının API adı.
 public struct CollectionPaths: Sendable {
-    public let list: String?, view: String?, create: String?, update: String?, delete: String?
+    public let list: String?, view: String?, create: String?, update: String?, delete: String?, sync: String?
+    public let idField: String
 
-    public init(list: String?, view: String?, create: String?, update: String?, delete: String?) {
+    public init(list: String?, view: String?, create: String?, update: String?, delete: String?, sync: String? = nil, idField: String = "id") {
         self.list = list
         self.view = view
         self.create = create
         self.update = update
         self.delete = delete
+        self.sync = sync
+        self.idField = idField
     }
 }
 
@@ -164,6 +168,10 @@ public class DroidServerBase: @unchecked Sendable {
     private let lock = NSLock()
     private let urls: [String]
     private var current = 0
+    private let reads: [String]
+    private var nextRead = 0
+    private var primaryUntil = Date.distantPast
+    private let readYourWrites: TimeInterval
     private var _apiKey: String?
     private var _token: String?
     private var _refreshToken: String?
@@ -173,8 +181,13 @@ public class DroidServerBase: @unchecked Sendable {
     let filesPath: String?
     let session: URLSession
 
-    init(baseUrl: String, apiKey: String?, token: String?, refreshToken: String?, realtimePath: String?, refreshPath: String?, filesPath: String?, fallbackUrls: [String], session: URLSession) {
+    init(
+        baseUrl: String, apiKey: String?, token: String?, refreshToken: String?, realtimePath: String?, refreshPath: String?, filesPath: String?,
+        fallbackUrls: [String], readUrls: [String] = [], readYourWritesMs: Int = 5000, session: URLSession,
+    ) {
         urls = ([baseUrl] + fallbackUrls).map { $0.hasSuffix("/") ? String($0.dropLast()) : $0 }
+        reads = readUrls.map { $0.hasSuffix("/") ? String($0.dropLast()) : $0 }
+        readYourWrites = TimeInterval(readYourWritesMs) / 1000
         _apiKey = apiKey
         _token = token
         _refreshToken = refreshToken
@@ -215,6 +228,23 @@ public class DroidServerBase: @unchecked Sendable {
     /// Ham istek; `json` (kodlanmış) veya `multipart` gövde. Yanıt gövdesi (boşsa nil). Yedek adres varsa: bağlantı
     /// kurulamazsa veya 503 dönerse (salt okunur kopya) sıradaki denenir, çalışan adres hatırlanır.
     public func request(_ method: String, _ path: String, query: [String: String] = [:], json: Data? = nil, multipart: Multipart? = nil, retry: Bool = true) async throws -> Data? {
+        // Okuma kopyalara (sırayla); yazmadan sonra kısa süre ana sunucudan ("kendi yazdığını oku").
+        if method == "GET" && !reads.isEmpty && Date() >= locked({ primaryUntil }) {
+            for _ in 0..<reads.count {
+                let url = locked { () -> String in
+                    defer { nextRead += 1 }
+                    return reads[nextRead % reads.count]
+                }
+                do {
+                    return try await requestAt(url, method, path, query, json, multipart, retry)
+                } catch let e as DroidServerError {
+                    if e.status != 503 { throw e }
+                } catch is URLError {
+                    // sıradaki
+                }
+            }
+        }
+        if method != "GET" { locked { primaryUntil = Date().addingTimeInterval(readYourWrites) } }
         var failed: DroidServerError?
         var networkError: Error?
         let start = locked { current }
@@ -476,6 +506,17 @@ public struct RecordCollection<T: Decodable & Sendable, I: Encodable & Sendable>
 
     public func delete(_ id: Int64) async throws {
         _ = try await client.request("DELETE", try at(paths.delete, "delete", id))
+    }
+
+    /// Çevrimdışı kopya (koleksiyonda eşitleme açık olmalı). `key`: depodaki anahtar; sunucu başına farklı verin.
+    public func offline(
+        _ store: OfflineStore, key: String? = nil,
+        onConflict: (@Sendable (SyncConflictInfo) -> Void)? = nil, onRejected: (@Sendable (Int64, DroidServerError) -> Void)? = nil,
+    ) throws -> OfflineCollection<T, I> {
+        OfflineCollection(
+            client: client, name: name, path: try at(paths.sync, "sync"), idField: paths.idField, store: store, key: key ?? "droidserver-" + name,
+            onConflict: onConflict, onRejected: onRejected,
+        )
     }
 }
 

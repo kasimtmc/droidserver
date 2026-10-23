@@ -8,6 +8,7 @@ import dev.droidserver.core.webdav.DavChallenge
 import dev.droidserver.core.config.StaticConfig
 import dev.droidserver.core.data.DataTransfer
 import dev.droidserver.core.net.AddressScope
+import dev.droidserver.core.replication.REPLICA_HEADER
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.createApplicationPlugin
@@ -15,6 +16,7 @@ import io.ktor.server.application.hooks.ResponseSent
 import io.ktor.server.request.ApplicationRequest
 import io.ktor.server.request.header
 import io.ktor.server.response.respond
+import io.ktor.util.AttributeKey
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readRemaining
 import kotlinx.io.readByteArray
@@ -134,8 +136,23 @@ class ClientGuard(
 /** İsteğin kaynağı: [key] sınırlar için istemci kimliği; [internet] düz HTTP portuna internetten mi gelindi. */
 internal data class Origin(val key: String, val internet: Boolean)
 
-internal fun origin(request: ApplicationRequest): Origin =
-    origin(request.local.remoteAddress, request::header, LocalNetworks::contains)
+/** Kopyadan iletilen istekte kopyanın kimliğini doğrular (ana sunucu kurar); doğruysa `X-Forwarded-For` istemcidir. */
+internal val ReplicaTrust = AttributeKey<(String) -> Boolean>("droidserver.replicaTrust")
+
+internal fun origin(request: ApplicationRequest): Origin {
+    forwardedClient(request.header(REPLICA_HEADER), request.header(HttpHeaders.XForwardedFor), request.call.application.attributes.getOrNull(ReplicaTrust))
+        ?.let { return Origin(it, internet = false) }
+    return origin(request.local.remoteAddress, request::header, LocalNetworks::contains)
+}
+
+/**
+ * Kopyanın ilettiği istemci adresi: kopyanın kimliği ([REPLICA_HEADER]) doğrulanırsa `X-Forwarded-For`'daki son adres.
+ * Yalnızca IP adresi kabul edilir ("yerel" işareti iletilemez: o istek kopyanın kendisinden sayılır).
+ */
+internal fun forwardedClient(token: String?, forwardedFor: String?, trust: ((String) -> Boolean)?): String? {
+    if (token == null || trust == null || !trust(token)) return null
+    return forwardedFor?.substringAfterLast(',')?.trim()?.let(::parseIp)?.hostAddress?.substringBefore('%')
+}
 
 internal fun origin(remoteAddress: String, header: (String) -> String?, sameNetwork: (InetAddress) -> Boolean): Origin {
     val remote = parseIp(remoteAddress)
