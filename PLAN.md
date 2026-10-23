@@ -1098,6 +1098,8 @@ oturtmasın), sonra panelin eksiklerini kapatma, sonra güvenlik, en son yeni ö
 - Karar: Play Store'a SMS izni olmayan ayrı bir sürüm mü çıkılacak.
   *Karar (kullanıcı, 23 Ekim 2026):* **şimdilik yalnız F-Droid.** Play, targetSdk 28 ve paket kurma izni yüzünden şu an
   kabul etmez; ayrı sürüm targetSdk yükseltilene kadar ertelendi.
+  *Güncelleme (24 Ekim 2026):* Play sürümü Faz 19'da planlandı (ayrı yapı türü, güncel targetSdk, bileşenler Play
+  Feature Delivery ile; SMS için karar orada).
 
 ### Kabul (her grup)
 - `:core:test`, `:app:testDebugUnitTest`, `:app:lintDebug` temiz (yalnızca bilinen uyarılar).
@@ -1292,6 +1294,96 @@ başlar (panel eşitleme ve güvenli bağlantılar bunların temelidir). Dört g
   ekranlar için ekran görüntüsü testi; SQLite ve PostgreSQL'de aynı davranış (konum ve eşitleme için parametreli test).
 - Ödemelerde sağlayıcıların test/sandbox ortamına karşı sahte webhook testleri (gerçek ödeme yok).
 - README (TR/EN) bölümü, konfigürasyon tablosu satırı, yol haritası maddesi; cihaz testi adımları ve güncel paket.
+
+## Faz 19 — Play Store sürümü (planlandı)
+
+Amaç: uygulamayı özelliklerden vazgeçmeden Google Play'de de yayınlamak. GitHub/F-Droid sürümü olduğu gibi kalır
+(targetSdk 28, her şey açık); Play için ayrı bir **yapı türü** (product flavor) eklenir. Kod tek; fark derleme
+seçenekleri, birkaç izin ve bileşenlerin nasıl geldiği. 0.9.x cihaz testlerinden sonra başlar. Not: aşağıdaki Play
+kuralları Haziran 2026'daki haline göre yazıldı; başlamadan önce güncelleri denetlenmeli (hedef SDK alt sınırı, izin
+politikaları).
+
+**Play'in bugünkü APK'yı reddedeceği yerler**
+
+| Engel | Play kuralı | Play sürümünde çözüm | Kayıp |
+|---|---|---|---|
+| targetSdk 28 | Yeni uygulama ~1 yıllık hedef SDK ister (2025'te 35; 2026 sonunda büyük olasılıkla 36) | `play` türünde güncel targetSdk | Yok (aşağıdaki işleri doğurur) |
+| İndirilen ikililer (bileşen kataloğu, uygulama çalışma ortamları) | targetSdk 29+ uygulama klasöründen çalıştırmayı engeller (W^X); Play dışından çalıştırılabilir kod indirmek yasak | İkililer yerel kitaplık (`lib*.so`) olarak paketlenir: Play Feature Delivery'nin isteğe bağlı modülleri ("İndir ve kur" korunur) | Yok; en büyük iş |
+| Uygulama içi güncelleyici, `REQUEST_INSTALL_PACKAGES` | Play dışından kendini güncelleme yasak; izin kısıtlı | `play` türünde güncelleyici ve izin yok; güncellemeyi Play yapar | Fiilen yok |
+| `SEND_SMS` (SMS ile giriş, `ctx.sms`) | Kısıtlı izin: yalnızca varsayılan SMS uygulaması veya onaylı istisna | Karar gerekiyor (aşağıda) | Kendi hattından otomatik SMS |
+| Ekran kapalıyken konum (`ctx.device.location`) | targetSdk 34+'ta konum okuyan ön plan servisi `location` türü ve beyan ister | Servise `location` türü (yalnızca konum açıkken), Play Console'da gerekçe | Büyük olasılıkla yok; inceleme riski |
+| Ön plan servisi `specialUse`, pil iyileştirmesi muafiyeti | Beyan ve gerekçe (gerekirse video) | Console beyanı; muafiyet izni yerine ayarlar ekranına yönlendirme | Yok |
+
+Sorun olmayanlar: JavaScript script'leri, paketler ve şablonlar (yorumlanan kod), yerel YZ (llama.cpp APK'da derleniyor,
+modeller veri), ödemeler (Play'in ödeme kuralı uygulamanın kendi dijital satışları için; burada kullanıcının sunucusu
+kendi müşterisinden para alıyor). Gri alan: kendi uygulamalarınızda npm/pip'in indirdiği yerel eklentiler (`.node`,
+`.so`) indirilmiş çalıştırılabilir kod sayılabilir; saf JS/Python uygulamalar sorunsuz.
+
+### Grup 1 — İki yapı türü ve güncel targetSdk
+
+**19.1 Yapı türleri**
+- [ ] `full` (bugünkü, targetSdk 28, GitHub/F-Droid) ve `play` türleri; `BuildConfig` bayrakları (güncelleyici, SMS,
+  bileşen kaynağı). Kaynak tek; türe özel manifest yalnızca izinler için.
+- [ ] Release iş akışı iki APK'yı da üretir (ya da `play` için AAB); `full` yayını değişmez.
+- Karar: Play'de aynı uygulama kimliği (`dev.droidserver.app`) mi, ayrı mı (`dev.droidserver.play`)? Play App Signing
+  Google'ın anahtarıyla imzaladığı için iki kanal birbirinin üzerine güncellenemez; aynı kimlik telefonda karışıklık
+  yaratır (önce kaldırmak gerekir). Öneri: ayrı kimlik.
+
+**19.2 targetSdk geçişi (`play` türünde)**
+- [ ] Güncel targetSdk'nın davranış değişiklikleri: bildirim izni, ön plan servisi türleri ve başlatma kısıtları,
+  kesin alarmlar, paket görünürlüğü (Tasker, Tailscale), kapsamlı depolama (SAF zaten kullanılıyor), `exported`
+  bileşenler, kenardan kenara görünüm (Compose), dinamik kod yükleme kısıtları.
+- [ ] Sorun gidericinin bulguları türe göre (targetSdk 28'e özgü açıklamalar `play`'de gizlenir).
+- [ ] Lint ve ekran görüntüsü testleri iki türde.
+
+### Grup 2 — Bileşenlerin Play'e uygun paketlenmesi
+
+**19.3 İkililer yerel kitaplık olarak**
+- [ ] Her bileşenin ana programı ve yardımcıları `lib<ad>.so` adıyla `jniLibs`'e (arm64-v8a, x86_64); çalıştırma
+  `nativeLibraryDir`'den. Veri dosyaları (Postgres `share/`, Python standart kitaplığı, Node modülleri) varlık olarak
+  uygulama klasörüne açılır.
+- [ ] Postgres (initdb, pg_ctl, postgres), Redis, cloudflared, Node.js, Python, OpenJDK için Android derleme betikleri
+  (NDK; mümkünse Termux paketlerinden) ve sürüm sabitleme (sha256).
+- [ ] `ComponentManager` iki kaynağı destekler: indirme (`full`) ve kurulu modül (`play`); bileşen tanımı (komut,
+  ortam, hazır olma denetimi) aynı kalır.
+
+**19.4 Play Feature Delivery**
+- [ ] Bileşen başına isteğe bağlı modül (`:components:postgres` …); Bileşenler ekranında "İndir ve kur" modülü
+  `SplitInstallManager` ile kurar, kaldırır, ilerlemeyi gösterir.
+- [ ] Boyut: temel APK küçük kalır (llama.cpp dahil ~25 MB hedef); modüller ayrı.
+- Karar: hangi bileşenler Play'de olsun (önerilen: hepsi; OpenJDK büyükse sonraya).
+
+### Grup 3 — İzinler ve politika uyumu
+
+**19.5 SMS**
+- [ ] Karar gerekiyor:
+  1. `play`'de SMS ile giriş ve `ctx.sms` kapalı (en az risk).
+  2. SMS sağlayıcısı (Twilio, Netgsm, İleti Merkezi…) üzerinden gönderme: özellik kalır, kendi hattı yerine sağlayıcı
+     hesabı ve ücreti (her iki türe de eklenebilir).
+  3. Play'e istisna başvurusu (sonuç belirsiz; reddedilirse 1'e döner).
+  Öneri: 1 + 2 (sağlayıcı seçeneği iki türde de, telefon hattı yalnızca `full`'da).
+
+**19.6 Konum, ön plan servisi, pil**
+- [ ] Ön plan servisi: `specialUse` (sunucu) + konum açıksa `location` türü; Play Console beyan metinleri ve kısa video.
+- [ ] Pil iyileştirmesi muafiyeti: `play`'de izin yerine ayarlar ekranına yönlendirme (sorun giderici bunu zaten
+  anlatıyor).
+- [ ] Veri güvenliği formu (Data safety) ve gizlilik politikası `play` türüne göre (güncelleyici yok, SMS durumu).
+
+### Grup 4 — Mağaza ve yayın
+
+**19.7 Play Console**
+- [ ] Mağaza kaydı: başlık, açıklamalar (fastlane metinlerinden), ekran görüntüleri, içerik derecelendirmesi, hedef
+  kitle, reklam yok beyanı, uygulama erişimi (inceleyici için test hesabı/talimat).
+- [ ] Kapalı test kanalı (yeni kişisel geliştirici hesaplarında üretim öncesi 12+ test kullanıcısıyla 14 gün kapalı
+  test şartı var; güncel hali denetlenmeli), sonra üretim.
+- [ ] Release iş akışında `play` AAB'sini Play'e yükleme (servis hesabı anahtarı GitHub secret'ında; kullanıcıda).
+
+### Kabul (her grup)
+- İki tür de `:core:test`, `:app:testDebugUnitTest` (iki tür), `:app:lintDebug` temiz; `full` türünün davranışı ve APK'sı
+  değişmez (mevcut testler aynen geçer).
+- `play` türünde bileşenler modülden kurulup çalışır (Postgres ile uçtan uca test cihazda); SMS kararına göre uçlar ve
+  ekranlar tutarlı (kapalıysa sihirbazda görünmez, API 503 yerine 404).
+- README (TR/EN) "Dağıtım" ve "Neden targetSdk 28?" bölümleri iki kanala göre; cihaz testi adımları (`play` türü).
 
 ## Açık sorular (karar verilmesi gerekenler)
 
