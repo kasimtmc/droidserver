@@ -37,6 +37,22 @@ class PooledJdbcDriver(
 
     override fun query(sql: String, args: List<Any?>): List<Map<String, Any?>> = withConnection { Jdbc.query(it, sql, args) }
 
+    /** Havuzdan bir bağlantıda READ ONLY işlem ve `statement_timeout`; sonunda geri alınır. */
+    override fun readOnly(sql: String, maxRows: Int, timeoutSec: Int): ReadOnlyResult = withConnection { c ->
+        val auto = c.autoCommit
+        c.autoCommit = false
+        try {
+            c.createStatement().use { st ->
+                st.execute("SET TRANSACTION READ ONLY")
+                st.execute("SET LOCAL statement_timeout = ${timeoutSec * 1000}")
+            }
+            Jdbc.readOnly(c, sql, maxRows, timeoutSec)
+        } finally {
+            runCatching { c.rollback() }
+            c.autoCommit = auto
+        }
+    }
+
     override fun <T> transaction(block: () -> T): T {
         if (current.get() != null) return block() // iç içe çağrılar dış işleme katılır
         val conn = borrow()

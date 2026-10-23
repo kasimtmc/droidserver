@@ -38,5 +38,15 @@ class JdbcSqlDriver(
         }
     }
 
+    /** Tek bağlantı: sorgu süresince `query_only` açık (SQLite yazmayı reddeder). */
+    override fun readOnly(sql: String, maxRows: Int, timeoutSec: Int): ReadOnlyResult = synchronized(lock) {
+        Jdbc.execute(connection, "PRAGMA query_only = 1", emptyList())
+        try {
+            Jdbc.readOnly(connection, sql, maxRows, timeoutSec)
+        } finally {
+            Jdbc.execute(connection, "PRAGMA query_only = 0", emptyList())
+        }
+    }
+
     override fun close() = synchronized(lock) { connection.close() }
 }

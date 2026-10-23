@@ -231,8 +231,11 @@ internal val RequestGuard = createApplicationPlugin("DroidServerGuard", ::Reques
     val base = pluginConfig.basePath
     val appPaths = pluginConfig.appPaths
     fun appPath(path: String) = appPaths.any { StaticConfig.underPath(path, it) }
-    // İçe aktarılan dosya genel gövde sınırından büyük olabilir (yalnızca yönetici kullanır).
+    // İçe aktarılan dosya genel gövde sınırından büyük olabilir (yalnızca yönetici kullanır). Zip bellekte toplanmaz;
+    // sınırı DataTransfer.importZip okurken uygular.
+    fun ApplicationRequest.zipImport() = DataTransfer.isImportPath(local.uri.substringBefore('?')) && queryParameters["format"]?.lowercase() == "zip"
     fun limitFor(path: String) = if (DataTransfer.isImportPath(path)) maxOf(maxBody, DataTransfer.MAX_IMPORT_BYTES) else maxBody
+    fun limitFor(request: ApplicationRequest) = if (request.zipImport()) DataTransfer.MAX_ZIP_BYTES else limitFor(request.local.uri.substringBefore('?'))
 
     onCall { call ->
         call.response.headers.append("X-Content-Type-Options", "nosniff")
@@ -257,15 +260,15 @@ internal val RequestGuard = createApplicationPlugin("DroidServerGuard", ::Reques
             return@onCall
         }
         val length = call.request.header(HttpHeaders.ContentLength)?.toLongOrNull()
-        if (length != null && length > limitFor(path) && !call.request.isMultipart() && !appPath(path)) {
-            call.respond(HttpStatusCode.PayloadTooLarge, apiError(413, tr("İstek gövdesi çok büyük (en çok {0} KB)", limitFor(path) / 1024)))
+        if (length != null && length > limitFor(call.request) && !call.request.isMultipart() && !appPath(path)) {
+            call.respond(HttpStatusCode.PayloadTooLarge, apiError(413, tr("İstek gövdesi çok büyük (en çok {0} KB)", limitFor(call.request) / 1024)))
         }
     }
 
     // Content-Length'i olmayan gövdeler okunurken sınırlanır.
     onCallReceive { call ->
         transformBody { data: ByteReadChannel ->
-            if (origin(call.request).key == ClientGuard.LOCAL || call.request.isMultipart() || appPath(call.request.local.uri.substringBefore('?'))) return@transformBody data
+            if (origin(call.request).key == ClientGuard.LOCAL || call.request.isMultipart() || call.request.zipImport() || appPath(call.request.local.uri.substringBefore('?'))) return@transformBody data
             val limit = limitFor(call.request.local.uri.substringBefore('?'))
             val packet = data.readRemaining(limit + 1)
             val bytes = packet.readByteArray()

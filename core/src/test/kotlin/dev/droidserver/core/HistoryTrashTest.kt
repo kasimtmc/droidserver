@@ -127,6 +127,14 @@ class HistoryTrashTest(private val dialect: Dialect) {
         assertEquals("revert", history.first().getValue("action").jsonPrimitive.content)
         assertEquals(HttpStatusCode.NotFound, client.send("POST", "$base/records/$id/history/1/revert").status, "silinen sürüm")
 
+        // Alan bazında: yalnızca seçilen alan döner, diğerleri olduğu gibi kalır.
+        client.ok("PATCH", "$base/records/$id", """{"title":"Pazar","qty":9}""")
+        val one = client.ok("POST", "$base/records/$id/history/5/revert?fields=title")
+        assertEquals("Market", one.getValue("title").jsonPrimitive.content)
+        assertEquals("9", one.getValue("qty").jsonPrimitive.content)
+        assertEquals(HttpStatusCode.BadRequest, client.send("POST", "$base/records/$id/history/5/revert?fields=yok").status)
+        client.ok("POST", "$base/records/$id/history/5/revert?fields=qty")
+
         // Kural herkese açık olsa da geçmiş ve çöp kutusu yöneticiye.
         assertEquals(HttpStatusCode.Unauthorized, client.send("GET", "$base/records/$id/history", token = null).status)
         assertEquals(HttpStatusCode.Unauthorized, client.send("GET", "$base/trash", token = null).status)

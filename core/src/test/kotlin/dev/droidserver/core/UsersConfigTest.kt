@@ -14,6 +14,7 @@ import dev.droidserver.core.config.Rules
 import dev.droidserver.core.config.ServerConfig
 import dev.droidserver.core.config.SystemCollections
 import dev.droidserver.core.config.UsersConfig
+import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -34,7 +35,10 @@ class UsersConfigTest {
         assertFalse("gizli" in a)
         assertTrue(h.verify("gizli-parola", a))
         assertFalse(h.verify("gizli-parolA", a))
-        assertFalse(h.verify("gizli-parola", a.dropLast(2) + "AA"))
+        // Özetin bir baytı değişir (son karakterleri değiştirmek, dolgusuz base64'ün kullanılmayan bitlerine denk gelirse
+        // aynı baytlara çözülebilir).
+        val tampered = Base64.getDecoder().decode(parts[3]).also { it[0] = (it[0].toInt() xor 1).toByte() }
+        assertFalse(h.verify("gizli-parola", parts.take(3).joinToString("$") + "$" + Base64.getEncoder().withoutPadding().encodeToString(tampered)))
         assertFalse(h.verify("gizli-parola", "md5$" + a.substringAfter('$')))
         // Tur sayısı özetle saklandığı için varsayılan değişse de eski özetler doğrulanır.
         assertTrue(PasswordHasher(iterations = 2_000).verify("gizli-parola", a))

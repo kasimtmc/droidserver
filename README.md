@@ -500,6 +500,7 @@ kayıtlar da, o koleksiyonda açıksa) dosyalarıyla `days` gün saklanır, sonr
 ```bash
 GET    /api/collections/notes/records/5/history                  # {items:[{version, action, at, actor, data}], totalItems}
 POST   /api/collections/notes/records/5/history/3/revert         # 3. sürümün değerlerine dön (yeni sürüm olarak)
+POST   /api/collections/notes/records/5/history/3/revert?fields=title   # yalnızca title alanı
 GET    /api/collections/notes/trash                              # {items:[{id, deletedAt, expiresAt, actor, data}], totalItems}
 POST   /api/collections/notes/trash/5/restore                    # aynı kimlikle geri yükle
 DELETE /api/collections/notes/trash/5                            # dosyalarıyla kalıcı sil
@@ -507,7 +508,8 @@ DELETE /api/collections/notes/trash/5                            # dosyalarıyla
 
 Bu uçlar kayıtların gizli alanları dahil tam halini içerdiğinden kurallardan bağımsız olarak yalnızca yönetici (ve o
 koleksiyonda yetkili adlandırılmış anahtar; sürüme dönme ve geri yükleme için yazma yetkisi) kullanabilir; web
-panelinde kayıt satırındaki **Geçmiş** ve koleksiyondaki **Çöp kutusu** düğmeleriyle açılır. Sürüme dönmede dosya ve
+panelinde kayıt satırındaki **Geçmiş** (sürümün tamamı veya **Tek alan…** ile bir alan) ve koleksiyondaki **Çöp kutusu**
+düğmeleriyle açılır. Sürüme dönmede dosya ve
 hesaplanan alanlar değişmez. Geri yüklenen kayıt bugünkü kurallarla doğrulanır: bağlandığı kayıt silinmişse veya
 sonradan zorunlu alan eklendiyse `400` (önce bağlandığı kaydı geri yükleyin). Silmede `set_null` ile boşaltılan
 ilişkiler geri yüklemede geri bağlanmaz. Geçmiş ve çöp kutusu `_history` ve `_trash` tablolarındadır; yedeğe ve veri
@@ -612,7 +614,7 @@ başlığından okunur; bu başlıklara yalnızca telefonun içinden gelen bağl
 internetten (genel IPv4/IPv6 adresinden; ev ağının IPv6 öneki hariç) gelen istekler `403` alır: internete açılan uç
 HTTPS ucu veya tüneldir. Tüm yanıtlarda `X-Content-Type-Options: nosniff`, API yanıtlarında `Cache-Control: no-store`.
 
-**İçe / dışa aktarma:** `GET /api/collections/{c}/export?format=csv|json` koleksiyonu dosya olarak indirir (liste
+**İçe / dışa aktarma:** `GET /api/collections/{c}/export?format=csv|json|zip` koleksiyonu dosya olarak indirir (liste
 kuralı, filtreler, `q` ve `sort` geçerli; gizli alanlar hariç; en çok 100 000 kayıt). `delimiter=semicolon` Türkçe Excel'in
 beklediği noktalı virgüllü CSV'dir; CSV UTF-8 BOM ile başlar ve formül gibi başlayan metinlerin (`=`, `+`, `-`, `@`)
 başına `'` eklenir (elektronik tabloda çalışmasınlar diye; içe aktarırken geri alınır).
@@ -630,9 +632,32 @@ başlıktan anlaşılır; `12,5` gibi virgüllü ondalık, `evet/hayır`, `2026-
 hücre alanı göndermez (yeni kayıtta varsayılan değer, güncellemede değişmez). Sütun adları alan adlarıyla eşleşir
 (büyük/küçük harf duyarsız) ya da `mapping={"Ürün adı":"name","Not":null}` ile eşlenir. `mode=upsert`'te `id`'si olan kayıt
 güncellenir, olmayan eklenir (dışa aktarılan dosyayı düzenleyip geri yüklemek için). JSON'da kayıt dizisi gönderilir.
-Dosya alanları içe aktarılmaz; içe aktarılan kayıtlar webhook, canlı abonelik ve script olayı üretmez. En çok 10 000 satır
-ve 20 MB (genel gövde sınırından bağımsız). Uygulamada Sunucu → İçe / dışa aktarma (önizleme ve sütun eşleme), web
-panelinde kayıt tablosunun üstünde.
+İçe aktarılan kayıtlar webhook, canlı abonelik ve script olayı üretmez. En çok 10 000 satır ve 20 MB (genel gövde
+sınırından bağımsız). Uygulamada Sunucu → İçe / dışa aktarma (önizleme ve sütun eşleme), web panelinde kayıt tablosunun
+üstünde.
+
+Dosya alanları **zip** ile taşınır: `format=zip` dışa aktarmada `data.json` ve kayıtların dosyaları (`files/<id>/<ad>`)
+gelir; aynı zip (ya da `data.csv` içeren bir zip) `import?format=zip` ile `Content-Type: application/zip` gövdesi olarak geri
+yüklenir. Satırdaki dosya adı, satırın `id`'siyle zip'teki dosyaya bağlanır ve normal yükleme gibi denetlenir (boyut, içerikten
+tespit edilen tip, izinli tipler); dosyalar yeni adla kaydedilir, güncellenen kaydın o alandaki eski dosyaları zip'tekilerle
+değişir ve ancak işlem kalıcı olunca silinir. Deneme veya hata nedeniyle geri alınan aktarmada taşınan dosyalar da silinir.
+Zip en çok 512 MB (sıkıştırılmış ve açılmış). CSV/JSON içe aktarmada dosya alanı eşlenemez.
+
+```bash
+curl -H "$H" "$BASE/collections/notes/export?format=zip" -o notlar.zip
+curl -H "$H" -X POST "$BASE/collections/notes/import?format=zip&dryRun=true" -H 'Content-Type: application/zip' --data-binary @notlar.zip
+curl -H "$H" "$BASE/collections/notes/import/template?delimiter=semicolon" -o notlar-sablon.csv
+```
+
+**Şablon** (`GET /api/collections/{c}/import/template`, yönetici) yazılabilir alanların başlıklarını ve kurallara uyan bir
+örnek satırı verir; başlıktaki parantez ipucudur (`durum (zorunlu; açık|bitti)`, `etiketler (ev|iş; birden çok: virgülle)`,
+`proje (projects kimliği)`) ve içe aktarmada yok sayılır, yani şablon doldurulup doğrudan yüklenebilir. Web panelinde
+**Şablon** düğmesi.
+
+**Toplu düzenleme ve silme:** web panelinde kayıt tablosunda satırları (veya başlıktaki kutuyla sayfanın hepsini) seçip
+**Alan değiştir…** (seçilen alana yeni değer; boş bırakılırsa alan temizlenir) ya da **Seçilenleri sil**. Dosya alanı
+olmayan koleksiyonda tek `/batch` isteğidir (hepsi ya da hiçbiri, her kayıt kendi kuralıyla); dosya alanlı koleksiyonda
+`/batch` kullanılamadığından kayıtlar tek tek gönderilir.
 
 **Koşullu kurallar:** bir kurala koşul eklenince (Sihirbaz → Koleksiyon → Kim neyi yapabilir? → "koşul") kural izin
 verse de yalnızca koşula uyan kayıtlar erişilir. Koşul liste filtresi sözdizimidir, `&` ile VE (`like` hariç):
@@ -861,6 +886,18 @@ yönetici oturumu açılır (bellekte; uygulama kapanınca biter, Durum ekranın
 JavaScript'tir (core kaynaklarında `admin/`), yalnızca kendi dosyalarını yükler (`Content-Security-Policy`), başka sitenin
 çerçevesine konamaz ve verileri yalnızca metin olarak yazar. Kayıt/kullanıcı/metrik işleri normal API'yi panel oturumuyla
 kullanır; konfigürasyon, log ve yedek için `/_admin/api/...`.
+
+**SQL** sekmesi salt okunur bir sorgu konsoludur (`POST /api/_sql` `{query, limit}` → `{columns, rows, truncated, ms}`,
+yönetici). Yalnızca tek bir `SELECT`/`WITH`/`VALUES` ifadesi çalışır; sorgu ayrıca salt okunur bir bağlantıda koşar (SQLite'ta
+`query_only`, Android'de salt okunur açılmış veritabanı, PostgreSQL'de `READ ONLY` işlem), yani denetimi atlatan bir yazma
+da veritabanında reddedilir. En çok 1000 satır (varsayılan 200) ve 5 saniye; sunucunun sırlarını tutan iç tablolar ve parola
+özetleri sorgulanamaz, şifreli alanlar `••••` olarak gelir, her sorgu denetim kaydına yazılır. Ctrl+Enter çalıştırır.
+
+**Örnek veri:** kayıt tablosundaki **Örnek veri** düğmesi (`POST /api/_sample/{koleksiyon}` `{count}`, 1-500, yönetici)
+alan tiplerine, seçeneklere, uzunluk ve aralık sınırlarına, benzersizliğe ve biçime (e-posta, adres; alan adından ad, şehir,
+telefon, başlık) uyan kayıtlar ekler; ilişki alanına hedef koleksiyondaki var olan bir kaydı koyar. Tek işlemdir ve otomasyon,
+webhook veya canlı olay üretmez. Zorunlu ilişkinin hedefi boşsa, zorunlu dosya alanı veya desene bağlı zorunlu metin varsa
+`400` döner.
 
 Uygulamadaki ekranların panel karşılıkları:
 
@@ -1192,7 +1229,19 @@ abonelik REST'le aynıdır; REST'te kapatılan uç GraphQL'de de yoktur. Takma a
 parçalar, `@include` / `@skip` desteklenir. Hatalar GraphQL biçimindedir: başarısız kök alan `null`, `errors[]`
 içinde `path` ve `extensions.code` (REST durum kodu) ve doğrulama `details`'i. İçgözlem (`__schema`) yerine şema dili
 (SDL) `GET /api/graphql/schema` adresindedir; kod üreticiler ve IDE'ler bu dosyayı kullanabilir. Sınırlar: en çok 8
-düzey derinlik, 20 kök alan ve 1000 alan; abonelikler yerine canlı abonelik ucunu kullanın.
+düzey derinlik, 20 kök alan ve 1000 alan.
+
+**Abonelikler** (canlı abonelik açıksa): `ws://<telefon>:8080/api/graphql/ws`, `graphql-transport-ws` protokolü
+(graphql-ws, Apollo, urql istemcileriyle doğrudan çalışır). Kimlik `connection_init` içinde verilir (tarayıcı WebSocket'i
+başlık gönderemez): `{"Authorization": "Bearer <token>"}`. Her koleksiyon için `<ad>(id, events)` kökü olay başına
+`{ action record { … } }` gönderir; kurallar canlı abonelikle aynıdır (her olayda görüntüleme kuralı), silmede `record`
+yalnızca `id` taşır, ilişkiler genişletilmez. Aynı bağlantıdan sorgu ve mutasyon da gönderilebilir.
+
+```js
+import { createClient } from "graphql-ws";
+const client = createClient({ url: "ws://192.168.1.20:8080/api/graphql/ws", connectionParams: { Authorization: "Bearer " + token } });
+client.subscribe({ query: 'subscription { tasks(events: ["create"]) { action record { id title } } }' }, { next: (e) => console.log(e.data), error: console.error, complete() {} });
+```
 
 ### Yapay zekâ (Claude, OpenAI, Gemini) ve anlamsal arama
 
@@ -1411,7 +1460,8 @@ node droidserver.mjs api GET /_jobs                              # herhangi bir 
 - `logs`, `config`, `deploy` ve `backup` web panelinin uçlarını kullanır: panel açık olmalı. `deploy` önce planı denetler,
   engel varsa durur; sonra sonucu loglardan izler.
 - Kendinden imzalı HTTPS (doğrudan erişim) için sertifikayı verin: `NODE_EXTRA_CA_CERTS=sertifika.pem node droidserver.mjs …`.
-- Mesajlar sistem diline göre Türkçe veya İngilizce. İçe aktarmada dosya alanları alınmaz.
+- Mesajlar sistem diline göre Türkçe veya İngilizce. Dosya alanları yalnızca zip ile taşınır: `export notes --format zip -o notlar.zip`,
+  `import notes notlar.zip`.
 
 ### MQTT (IoT)
 
@@ -2008,7 +2058,8 @@ tools/          package-postgres.sh, package-cloudflared.sh (Termux derlemelerin
 - [x] **Webhook'lar:** imzalı POST, yeniden deneme, teslim geçmişi
 - [x] **Toplu işlem ve özetler:** `/api/batch` (hepsi ya da hiçbiri), `/aggregate` (toplam, ortalama, gruplama)
 - [x] **İnce yetki:** koşullu kurallar (`status=published`, `@me`, sahip istisnası), alan gizliliği
-- [x] **İçe / dışa aktarma:** CSV (Excel uyumlu) ve JSON, önizleme ve sütun eşleme
+- [x] **İçe / dışa aktarma:** CSV (Excel uyumlu), JSON ve dosyalarıyla zip, önizleme ve sütun eşleme, CSV şablonu;
+  panelde toplu düzenleme/silme, salt okunur SQL konsolu ve örnek veri
 - [x] **Adlandırılmış API anahtarları:** salt okunur / koleksiyona sınırlı, süreli, iptal edilebilir
 - [x] **Sosyal giriş:** Google ve GitHub (OAuth2 + PKCE)
 - [x] **Web push:** VAPID, RFC 8291, `ctx.push`, kayıt olayında bildirim
@@ -2023,7 +2074,8 @@ tools/          package-postgres.sh, package-cloudflared.sh (Termux derlemelerin
 - [x] **Bileşen kataloğu:** Node.js, Python, OpenJDK, Redis paketleri; tek dokunuşla kur ve çalıştır (cihazda doğrulama bekliyor)
 - [x] **Otomasyon kuralları:** kodsuz "şu olunca şunu yap": kayıt olayı veya zamanlama, koşul; e-posta, bildirim, webhook, kayıt güncelleme/oluşturma
 - [x] **Formlar:** koleksiyona kayıt ekleyen herkese açık sayfa, spam koruması, teşekkür sayfası veya yönlendirme
-- [x] **GraphQL:** koleksiyonlardan üretilen şema, sorgu ve mutasyonlar, ilişki genişletme, REST'le aynı kurallar
+- [x] **GraphQL:** koleksiyonlardan üretilen şema, sorgu ve mutasyonlar, ilişki genişletme, REST'le aynı kurallar,
+  WebSocket abonelikleri (`graphql-transport-ws`)
 - [x] **Yapay zekâ:** anahtarı sunucuda tutan vekil (Claude, OpenAI veya Gemini; OpenAI uyumlu yerel modeller), kayıtlara soru sorma, anlamsal arama (Voyage AI veya Ollama), günlük sınır
 - [x] **SMS ile giriş:** telefon numarası ve sunucu telefonundan giden kodla parolasız giriş, numara ve istemci başına sınırlar
 - [x] **Hızlı ayar ve widget:** bildirim panelinden ve ana ekrandan aç/kapat, durum, adres, istek ve pil
