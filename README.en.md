@@ -1215,8 +1215,10 @@ for await e in ds.subscribe(["todos"]) { print(e.action, e.record) }
 
 All four clients offer the same surface: CRUD and filters, file upload and file URLs, sign-in (two-step, e-mail and SMS
 codes), refreshing the token once on 401, teams, fallback addresses (`fallbackUrls`), the QR link text (`fromLink`) and the
-realtime subscription (resumes from the last event after a disconnect). The Dart and Swift clients are compiled and run
-against a real server in the tests.
+realtime subscription (resumes from the last event after a disconnect). Once the subscription is set up on the server
+(and after every reconnect) the optional `onReady` is called (the fourth argument in TypeScript, `onReady` in Kotlin,
+Dart and Swift): no event after that moment is missed, so loading the initial data then avoids losing changes in the gap
+between connecting and fetching. The Dart and Swift clients are compiled and run against a real server in the tests.
 
 ### E-mail: verification and password reset
 
