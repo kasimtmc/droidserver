@@ -353,7 +353,10 @@ object OpenApi {
                 op("/payments/subscribe", "post", operation(tag, tr("Abone ol: ödeme sayfasının adresi; rol ödeme bildirimi gelince verilir"), public = false,
                     body = bodyOf("plan" to "string"), responses = ok(obj("type" to str("object"), "description" to str("{plan, url}")))))
                 op("/payments/subscriptions", "get", operation(tag, tr("Aboneliklerim"), public = false,
-                    responses = ok(obj("type" to str("object"), "description" to str("{items: [{id, plan, provider, status, period_end, manage_url}]}")))))
+                    responses = ok(obj("type" to str("object"), "description" to str("{items: [{id, plan, provider, status, period_end, canceling}]}")))))
+                op("/payments/subscriptions/{id}/cancel", "post", operation(tag, tr("Aboneliği dönem sonunda bitir (rol dönem bitene kadar kalır)"), public = false,
+                    params = buildJsonArray { add(obj("name" to str("id"), "in" to str("path"), "required" to JsonPrimitive(true), "schema" to type("integer"))) },
+                    responses = ok(obj("type" to str("object"), "description" to str("{id, plan, provider, status, period_end, canceling}")))))
             }
             if (config.email.enabled) {
                 val accepted = obj("202" to obj("description" to str(tr("Hesap varsa e-posta gönderildi"))))

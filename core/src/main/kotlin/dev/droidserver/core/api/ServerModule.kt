@@ -14,6 +14,7 @@ import dev.droidserver.core.config.GitSource
 import dev.droidserver.core.packages.PackageFile
 import dev.droidserver.core.payments.PaymentGateway
 import dev.droidserver.core.payments.PaymentGateways
+import dev.droidserver.core.payments.PaymentHost
 import dev.droidserver.core.payments.PaymentService
 import dev.droidserver.core.packages.Packages
 import io.ktor.server.request.receiveChannel
@@ -298,6 +299,8 @@ fun Application.droidServerModule(
     mqttHost: MqttHost? = null,
     /** Ödeme sağlayıcılarının istemcileri; testlerde sahte, normalde ayardan. */
     paymentGateways: Map<PaymentProvider, PaymentGateway>? = null,
+    /** Uygulamanın ödemelere eriştiği yer (iade); sunucu durunca boşalır. */
+    paymentHost: PaymentHost? = null,
 ) {
     if (metrics != null) {
         install(MetricsPlugin) {
@@ -808,6 +811,20 @@ fun Application.droidServerModule(
             users?.let { RecordService(db, SystemCollections.users(config.auth.users), collections = config.schemaCollections()) },
             { c, id, body -> updateRecord(byName.getValue(c), Caller.Admin, id, body) }, log,
         )
+    }
+    // iyzico panelinden yapılan iadeler bildirim göndermez: altı saatte bir son ödemeler sorulur.
+    if (payments != null && config.payments.provider(PaymentProvider.IYZICO) != null) {
+        val refunds = launch(Dispatchers.IO) {
+            while (true) {
+                delay(6 * 3_600_000L)
+                runCatching { writes.write { payments.syncRefunds() } }.onFailure { log(tr("İade durumu sorgulanamadı: {0}", it.message ?: it.toString())) }
+            }
+        }
+        monitor.subscribe(ApplicationStopping) { refunds.cancel() }
+    }
+    if (paymentHost != null) {
+        paymentHost.bind(payments, writes)
+        monitor.subscribe(ApplicationStopping) { paymentHost.unbind(payments) }
     }
     scripts?.payments = payments?.takeIf { config.payments.enabled }?.let { svc -> { body -> writes.write { svc.create(body, "127.0.0.1") } } }
 
@@ -1342,6 +1359,14 @@ fun Application.droidServerModule(
                     val id = call.parameters["id"]?.toLongOrNull() ?: throw ApiException(404, tr("Ödeme bulunamadı"))
                     call.respond(io { payments.get(id) })
                 }
+                endpoint(paths, Endpoint.PAYMENTS_REFUND) {
+                    requireAdmin(call.caller())
+                    val id = call.parameters["id"]?.toLongOrNull() ?: throw ApiException(404, tr("Ödeme bulunamadı"))
+                    val ip = origin(call.request).key.takeIf { it != ClientGuard.LOCAL } ?: "127.0.0.1"
+                    val refunded = io { writes.write { payments.refund(id, ip) } }
+                    call.audit("payment.refund", id.toString())
+                    call.respond(refunded)
+                }
             }
             // Pano verisi (panel); kutular görünümleri yönetici olarak çalıştırır.
             endpoint(paths, Endpoint.DASHBOARD) {
@@ -1558,6 +1583,11 @@ fun Application.droidServerModule(
                     endpoint(paths, Endpoint.PAYMENT_SUBSCRIPTIONS) {
                         val id = requireUser(call.caller())
                         call.respond(JsonObject(mapOf("items" to JsonArray(io { payments.subscriptionsOf(id) }))))
+                    }
+                    endpoint(paths, Endpoint.PAYMENT_SUBSCRIPTION_CANCEL) {
+                        val user = requireUser(call.caller())
+                        val id = call.parameters["id"]?.toLongOrNull() ?: throw ApiException(404, tr("Abonelik bulunamadı"))
+                        call.respond(io { writes.write { payments.cancelSubscription(user, id) } })
                     }
                 }
                 if (config.auth.users.teams.enabled) {
