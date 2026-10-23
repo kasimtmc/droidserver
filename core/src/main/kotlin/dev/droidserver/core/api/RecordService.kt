@@ -233,7 +233,7 @@ class RecordService(
     }
 
     /** Liste ve özet sorgularının ortak WHERE'i: arama (`q`), sahiplik ve filtreler (bkz. [FilterParser]). */
-    private fun whereClause(params: List<Pair<String, String>>, scope: Scope): Pair<String, List<Any?>> {
+    internal fun whereClause(params: List<Pair<String, String>>, scope: Scope): Pair<String, List<Any?>> {
         val where = mutableListOf<String>()
         val args = mutableListOf<Any?>()
         params.lastOrNull { it.first == "q" }?.second?.takeIf { it.isNotBlank() }?.let { q ->

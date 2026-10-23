@@ -34,6 +34,8 @@ import java.util.Base64
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 /** İsteği yapan. */
 sealed interface Caller {
@@ -774,6 +776,26 @@ class UserService(
         revokedMap.entries.removeIf { it.value < now }
         ids.forEach { revokedMap[it] = now + users.accessTokenMinutes * 60L }
         metaPut(REVOKED_KEY, revokedMap.entries.joinToString(",") { "${it.key}:${it.value}" })
+    }
+
+    /** Toplu e-postadaki "abonelikten çık" bağlantısının belirteci: adrese bağlı, sunucunun anahtarıyla imzalı. */
+    fun unsubscribeToken(email: String): String {
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(signingKey() + "unsubscribe".toByteArray(), "HmacSHA256"))
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(mac.doFinal(email.trim().lowercase().toByteArray())).take(32)
+    }
+
+    /** Adresi toplu e-postalardan çıkarır; belirteç yanlışsa 400. */
+    fun unsubscribe(email: String?, token: String?) {
+        val address = email?.trim()?.lowercase().orEmpty()
+        if (address.isEmpty() || token == null || !MessageDigest.isEqual(unsubscribeToken(address).toByteArray(), token.toByteArray())) {
+            throw ApiException(400, tr("Bağlantı geçersiz"))
+        }
+        val t = quoteIdent(SystemCollections.UNSUBSCRIBED)
+        if (db.query("SELECT \"id\" FROM $t WHERE \"email\" = ?", listOf(address)).isEmpty()) {
+            val now = db.dialect.encode(FieldType.DATETIME, Instant.now())
+            db.execute("INSERT INTO $t (\"email\", \"created_at\", \"updated_at\") VALUES (?, ?, ?)", listOf(address, now, now))
+        }
     }
 
     /** İmza anahtarı `_ds_meta`'da; ilk kullanımda üretilir. */

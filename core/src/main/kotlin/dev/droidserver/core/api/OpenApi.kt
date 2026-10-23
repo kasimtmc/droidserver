@@ -374,6 +374,20 @@ object OpenApi {
                     "properties" to obj("query" to type("string"), "limit" to type("integer")),
                 )))),
                 responses = ok(obj("type" to str("object"), "description" to str(tr("{columns, rows, truncated, ms}"))))))
+            if (config.broadcasts) {
+                op("/_broadcast", "post", operation(tr("Sunucu"), tr("Kullanıcılara toplu e-posta / web push (yönetici; kuyrukta, /_jobs'tan izlenir ve iptal edilir)"), public = false,
+                    body = obj("required" to JsonPrimitive(true), "content" to obj("application/json" to obj("schema" to obj(
+                        "type" to str("object"), "required" to buildJsonArray { add(str("subject")); add(str("text")) },
+                        "properties" to obj(
+                            "channel" to obj("type" to str("string"), "enum" to buildJsonArray { add(str("email")); add(str("push")) }),
+                            "subject" to type("string"), "text" to type("string"), "html" to type("string"), "url" to type("string"),
+                            "role" to type("string"), "team" to type("integer"), "verifiedOnly" to type("boolean"),
+                            "where" to obj("type" to str("string"), "description" to str(tr("_users alanlarına liste filtresi, örn. created_at[gt]=2026-01-01"))),
+                            "perMinute" to type("integer"), "dryRun" to type("boolean"),
+                        ),
+                    )))),
+                    responses = ok(obj("type" to str("object"), "description" to str(tr("dryRun: {recipients}; değilse 202 {job, recipients}"))))))
+            }
             if (config.collections.isNotEmpty()) {
                 op("/_sample/{collection}", "post", operation(tr("Sunucu"), tr("Örnek kayıt üret (yönetici; 1-500, kurallara uyar, olay üretmez)"), public = false,
                     params = buildJsonArray {

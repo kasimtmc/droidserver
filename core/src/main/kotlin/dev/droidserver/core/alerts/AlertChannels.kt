@@ -47,12 +47,12 @@ class TelegramChannel(
             return id to name
         }
 
-        private fun call(base: String, token: String, method: String, form: String): String {
+        internal fun call(base: String, token: String, method: String, form: String, readTimeoutMs: Int = 15_000): String {
             val conn = URI("${base.trimEnd('/')}/bot$token/$method").toURL().openConnection() as HttpURLConnection
             try {
                 conn.requestMethod = "POST"
                 conn.connectTimeout = 10_000
-                conn.readTimeout = 15_000
+                conn.readTimeout = readTimeoutMs
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
                 conn.outputStream.use { it.write(form.toByteArray()) }
@@ -68,7 +68,7 @@ class TelegramChannel(
             }
         }
 
-        private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
+        internal fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
     }
 }
 

@@ -381,7 +381,7 @@ class ScriptRuntime private constructor(
         private val RESERVED = setOf("collections", "files", "auth", "health", "realtime", "batch", "_schema", "_metrics", "_openapi.json", "_webhooks", "push", "_audit", "_firewall", "_alerts", "_jobs", "views", "_phone", "_apps", "_automations")
         private val PATH = Regex("^(/(:?[A-Za-z0-9_.~-]+))+$|^/$")
         private val METHODS = setOf("GET", "POST", "PUT", "PATCH", "DELETE")
-        private val JOB_NAME = Regex("^[A-Za-z0-9_-]{1,64}$")
+        private val JOB_NAME = Regex("^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
         private val FACTORY = object : ContextFactory() {
             override fun makeContext(): Context = super.makeContext().apply {
@@ -487,7 +487,7 @@ class ScriptRuntime private constructor(
                     val timeout = num("timeoutSec") ?: config.cronTimeoutSec
                     val concurrency = num("concurrency") ?: 1
                     when {
-                        !JOB_NAME.matches(name) -> problem(tr("jobAdd: ad harf/rakam/_/- olmalı ('{0}')", name))
+                        !JOB_NAME.matches(name) -> problem(tr("jobAdd: ad harf veya rakamla başlamalı, harf/rakam/_/- içermeli ('{0}')", name))
                         name in jobTypes -> problem(tr("jobAdd: '{0}' iki kez tanımlandı", name))
                         handler == null -> problem(tr("jobAdd({0}): ikinci değer işleyici fonksiyon olmalı", name))
                         retries !in 0..19 -> problem(tr("jobAdd({0}): retries 0-19 olmalı", name))

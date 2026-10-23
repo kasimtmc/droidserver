@@ -104,11 +104,18 @@ data class ServerConfig(
 ) {
     fun toJson(): String = ConfigJson.encodeToString(serializer(), this)
 
+    /** Kullanıcılara toplu e-posta / web push gönderilebilir mi (hesaplar ve en az bir kanal açık). */
+    val broadcasts: Boolean get() = auth.users.enabled && (email.enabled || push.enabled)
+
+    /** Kalıcı iş kuyruğu (`_jobs`): script işleri ve toplu bildirimler. */
+    val jobQueue: Boolean get() = scripts.enabled || broadcasts
+
     /** Veritabanında tablosu olan tüm koleksiyonlar: kullanıcınınkiler ve (açıksa) kullanıcı sistem tabloları. */
     fun schemaCollections(): List<CollectionConfig> =
         collections + SystemCollections.of(auth.users, push.enabled) + SystemCollections.archive(collections) +
             listOfNotNull(
-                SystemCollections.jobs.takeIf { scripts.enabled }, SystemCollections.changes.takeIf { replication.source },
+                SystemCollections.jobs.takeIf { jobQueue }, SystemCollections.unsubscribed.takeIf { broadcasts && email.enabled },
+                SystemCollections.changes.takeIf { replication.source },
                 SystemCollections.passkeys.takeIf { auth.passkeys.enabled && auth.users.enabled },
                 SystemCollections.panelPasskeys.takeIf { auth.passkeys.enabled && adminPanel.enabled },
             )
@@ -303,7 +310,35 @@ data class EmailConfig(
      * gönderilir (istemci uygulama kodu kendisi sorar).
      */
     val publicUrl: String? = null,
+    /** Hesap e-postalarının şablonları; tür ve dil için şablon yoksa yerleşik metin. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val templates: List<EmailTemplate> = emptyList(),
 )
+
+/**
+ * Hesap e-postası şablonu. [kind]: `verify` (adres doğrulama), `reset` (parola sıfırlama), `login` (giriş kodu).
+ * [lang] (`tr`, `en`, …) verilirse yalnızca o dili isteyene (`Accept-Language`); boşsa diğer herkese. Yer tutucular:
+ * `{app}` (gönderen adı), `{email}`, `{code}` (kod), `{link}` (bağlantı; bağlantı kurulamıyorsa kod). [html] isteğe
+ * bağlı; içine yazılan değerler HTML'e göre kaçışlanır.
+ */
+@Serializable
+data class EmailTemplate(
+    val kind: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val lang: String? = null,
+    val subject: String,
+    val text: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val html: String? = null,
+) {
+    companion object {
+        const val VERIFY = "verify"
+        const val RESET = "reset"
+        const val LOGIN = "login"
+        val KINDS = listOf(VERIFY, RESET, LOGIN)
+        val PLACEHOLDERS = setOf("app", "email", "code", "link")
+    }
+}
 
 /**
  * Canlı abonelik: istemciler `GET <basePath>/realtime?collections=a,b` ile kayıt oluşturma/güncelleme/silme olaylarını
@@ -1029,9 +1064,17 @@ data class ReplicaSource(
     val demoted: Boolean = false,
 )
 
-/** Telegram botu: [botToken] @BotFather'dan (`secret:` referansı), [chatId] mesajların gideceği sohbet. */
+/**
+ * Telegram botu: [botToken] @BotFather'dan (`secret:` referansı), [chatId] mesajların gideceği sohbet. [adminChatId]
+ * verilirse bot o sohbetten yönetim komutlarını (`/durum`, `/yedek`, `/loglar`, `/baslat`, `/durdur`) kabul eder.
+ */
 @Serializable
-data class TelegramConfig(val botToken: String, val chatId: String)
+data class TelegramConfig(
+    val botToken: String,
+    val chatId: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val adminChatId: String? = null,
+)
 
 /** Sessiz saatler (yerel saat, `HH:mm`); [from] > [to] ise gece yarısını aşar (23:00-07:00). */
 @Serializable

@@ -4,9 +4,11 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.droidserver.app.ui.theme.DroidServerTheme
@@ -281,5 +283,23 @@ class ScreenshotTest {
         }
         widgetShots("25-sahne-widget", "26-sahne-widget-koyu") { dev.droidserver.app.service.SceneWidget.views(app) }
     }
-}
 
+    @Test
+    fun rehber() {
+        compose.setContent { DroidServerTheme { dev.droidserver.app.ui.help.OnboardingScreen(onDone = {}) } }
+        shot("27-rehber")
+        repeat(3) { click("İleri") }
+        shot("28-rehber-baslangic")
+    }
+
+    @Test
+    fun yardim() {
+        running()
+        render()
+        click("Yardım")
+        shot("29-yardim")
+        compose.onNodeWithText("Yardımda ara").performTextInput("MQTT")
+        click("MQTT (IoT)")
+        shot("30-yardim-bolum")
+    }
+}

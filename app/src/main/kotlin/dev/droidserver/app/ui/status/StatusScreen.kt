@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.BatteryStd
 import androidx.compose.material.icons.filled.BugReport
@@ -96,6 +97,7 @@ fun StatusScreen(
     onConnect: () -> Unit = {},
     onTroubleshoot: () -> Unit = {},
     onSettings: () -> Unit = {},
+    onHelp: () -> Unit = {},
     onOpen: (String) -> Unit = {},
 ) {
     val ctx = LocalContext.current
@@ -117,6 +119,7 @@ fun StatusScreen(
         subtitle = g.profile.name.takeIf { !g.profile.isDefault },
         actions = {
             if (hasConfig) IconButton(onClick = { AppLock.guard(ctx) { onConnect() } }) { Icon(Icons.Default.QrCode2, contentDescription = tr("Bağlan (QR)")) }
+            IconButton(onClick = onHelp) { Icon(Icons.AutoMirrored.Filled.HelpOutline, contentDescription = tr("Yardım")) }
             IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, contentDescription = tr("Ayarlar")) }
         },
     ) { modifier ->

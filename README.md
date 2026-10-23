@@ -132,7 +132,7 @@ yer tutucu anahtar yerine yeni üretilmiş bir anahtarla). Sonrasında **Sunucu*
 | `fullText` | Tam metin dizini: `?q=` kelime başıyla, dizinden ve alaka sırasıyla (bkz. Arama) |
 | `realtime` | `enabled`, `maxConnections` (100): canlı abonelik (bkz. Canlı abonelik) |
 | `webhooks` | `[{name, url, collections, events, secret, enabled}]`: kayıt olaylarında imzalı POST (bkz. Webhook'lar) |
-| `email` | `enabled`, `host`, `port` (587), `security` (`starttls`, `ssl`, `none`), `username`, `password` (şifreli depoda), `from`, `fromName`, `publicUrl` (e-postadaki bağlantıların başı) — bkz. E-posta |
+| `email` | `enabled`, `host`, `port` (587), `security` (`starttls`, `ssl`, `none`), `username`, `password` (şifreli depoda), `from`, `fromName`, `publicUrl` (e-postadaki bağlantıların başı), `templates` (hesap e-postası şablonları) — bkz. E-posta |
 | `auth.users.sendVerification`, `requireVerified` | Kayıtta doğrulama e-postası (true); doğrulanmadan giriş yok (false; e-posta açık olmalı) |
 | `ownerField` | Kaydın sahibini tutan, `_users`'a bağlı ilişki alanı; `owner` kuralı için gerekli (bkz. Kullanıcılar ve kurallar) |
 | `teamField` | Kaydın takımını tutan, `_teams`'e bağlı ilişki alanı; `team` kuralı için gerekli (bkz. Takımlar) |
@@ -228,6 +228,11 @@ Mevcut konfigürasyona eklerken aynı adda koleksiyon varsa eklenmez (yeni profi
 boş koleksiyonlara eklenir; site seçilirse `files/www/index.html` yazılır (mevcut site varsa uyarılır).
 
 ## Sihirbaz ve yönetim ekranları
+
+İlk açılışta (konfigürasyon yokken) kısa bir **rehber** üç sayfada uygulamayı tanıtır ve başlangıcı sordurur: hazır bir
+örnek proje (Blog, Mağaza, Randevu, Görev takibi; koleksiyonlar, kurallar, örnek kayıtlar ve site deploy'dan sonra kurulur)
+veya boş sihirbaz. **Yardım** (Durum ekranındaki ? simgesi) bu README'nin bölümlerini çevrimdışı ve aranabilir gösterir
+(derlemede uygulamaya girer; arayüz diline göre Türkçe veya İngilizce).
 
 Sihirbaz yedi adımdır; adım geçerli değilse **İleri** kapalıdır ve hata ilgili alanın altında görünür
 (`ConfigValidator.validateDetailed()` hataları `collections[0].fields[1].name` gibi alan yollarıyla döndürür).
@@ -961,6 +966,19 @@ dokunun; **Deneme gönder** ile hemen sınayın.
 Süren sorunlar ve son uyarılar: Sunucu → **Sağlık uyarıları** (deneme uyarısı da buradan), panelde **Metrikler**
 sekmesinin başı, API'de `GET /api/_alerts` ve `POST /api/_alerts/test` (yönetici).
 
+**Telegram'dan yönetim:** aynı bot, `alerts.telegram.adminChatId` sohbetinden komut kabul eder (sihirbazda **Yönetici
+sohbeti**; uyarılar örneğin ailece görülen bir gruba giderken yönetim size özel kalır). Komutlar: `/durum` (sunucu,
+adres, pil, boş alan, son bir saatin istekleri, sorunlu bileşenler), `/yedek`, `/loglar [n]` (son 20, en çok 100 satır),
+`/baslat`, `/durdur` (onay düğmesiyle; 2 dakika geçerli), `/yardim`. Bot uzun yoklamayla çalışır, telefona dışarıdan
+bağlantı gerekmez. Başka sohbetlerden gelen komutlar yanıtsız kalır (logda bir kez görünür); bot kapalıyken biriken
+2 dakikadan eski komutlar çalıştırılmaz. `/durdur` sunucuyu durdurur ama uygulamanın servisi Telegram'ı dinlemek için
+açık kalır (bildirimde "Durduruldu"; uyanma kilidi bırakılır), `/baslat` yeniden başlatır. Telefondan veya bildirimden
+**Durdur** her şeyi kapatır; o zaman `/baslat` çalışmaz.
+
+```json
+"telegram": { "botToken": "secret:telegram_token_1", "chatId": "-1001234567890", "adminChatId": "987654321" }
+```
+
 ### Güvenlik duvarı
 
 Sihirbaz → Güvenlik → **Güvenlik duvarı**:
@@ -1112,6 +1130,36 @@ formunu gösterir (JavaScript'siz; istemci uygulama yazmadan akış çalışır)
 istemci uygulama kodu `confirm-*` uçlarına iletir. `requireVerified` açıkken doğrulanmamış kullanıcı giriş yapamaz
 (`403`) ve kayıtta oturum verilmez. Script'ler `ctx.mail.send(alıcı, konu, metin[, html])` ile e-posta gönderebilir
 (aynı sınırlar; aşılırsa 429).
+
+**Şablonlar:** doğrulama, parola sıfırlama ve giriş kodu e-postalarının konusu, metni ve isteğe bağlı HTML'i
+değiştirilebilir (Sihirbaz → Kullanıcılar → E-posta → **Hesap e-postası şablonları**, örnek değerlerle önizleme).
+Yer tutucular `{app}` (gönderen adı), `{email}`, `{code}` ve `{link}`'tir (`publicUrl` yoksa `{link}` kodu verir); HTML'e
+yazılan değerler kaçışlanır. `lang` verilen şablon yalnızca o dili isteyen istemciye (`Accept-Language`'ın ilk dili) gider,
+dilsiz şablon diğerlerine; şablonu olmayan e-posta yerleşik metinle gider.
+
+```json
+"templates": [
+  { "kind": "verify", "subject": "{app}: hesabınızı doğrulayın", "text": "Merhaba,\n\nDoğrulamak için: {link}" },
+  { "kind": "verify", "lang": "en", "subject": "{app}: verify your account", "text": "Hi,\n\nVerify: {link}", "html": "<a href=\"{link}\">Verify</a>" }
+]
+```
+
+**Toplu bildirim:** `POST /api/_broadcast` (yönetici; panelde Kullanıcılar → **Toplu bildirim…**) kullanıcılara e-posta
+(`channel: "email"`) veya web push (`"push"`) gönderir. Alıcı süzgeci: `role`, `team`, `verifiedOnly` (e-postada varsayılan
+açık) ve `_users` alanlarına liste filtresi (`where`, örn. `created_at[gt]=2026-01-01`; parola özetiyle süzülemez).
+`dryRun: true` alıcı sayısını döndürür; asıl gönderim kalıcı iş kuyruğunda bir iştir (`_broadcast`): dakikada en çok
+`perMinute` (30; 1-600) kişiye, kimlik sırasıyla gider, ilerleme (gönderilen, başarısız, son kimlik) işin sonucunda tutulur
+ve sunucu yeniden başlayınca kaldığı yerden sürer. İş `/_jobs/{id}/cancel` ile (panelde İşler) iptal edilir; art arda 10
+gönderim başarısız olursa (örn. SMTP reddi) iş durur. Her e-postaya **abonelikten çıkma** bağlantısı eklenir
+(`/_auth/unsubscribe`; adrese bağlı, imzalı); bağlantı onay sayfası açar, çıkma formla yapılır (e-posta tarayıcıları
+bağlantıyı önceden açsa da kimse istemeden çıkmaz). Çıkan adresler `_unsubscribed`'da tutulur ve hesap e-postalarını
+etkilemez. E-postayla toplu gönderim için `email.publicUrl` gerekir. Push'ta aboneliği olmayan kullanıcılar sayılmaz.
+
+```bash
+curl -H "$H" -X POST "$BASE/_broadcast" -H 'Content-Type: application/json' \
+  -d '{"subject":"Bakım","text":"Pazar 10:00-11:00 arası kapalıyız.","role":"user","dryRun":true}'
+# → {"recipients":42}; dryRun olmadan 202 {"job":7,"recipients":42}
+```
 
 ### Adlandırılmış API anahtarları
 
@@ -1826,6 +1874,14 @@ Android Studio'dan kurulan **debug** sürümü farklı anahtarla imzalıdır; ya
 bunu söyler). Yayın sürümüne geçmek için Yedekler'den yedek alıp dışa aktarın, uygulamayı kaldırın, sürüm sayfasındaki
 APK'yı kurun ve yedeği geri yükleyin.
 
+## F-Droid ve gizlilik
+
+F-Droid için meta veri `fastlane/metadata/android/` altındadır (başlık, açıklamalar, sürüm notu, ekran görüntüleri);
+gönderim adımları ve açık konular `docs/fdroid/README.md`'de. Yayın derlemesi tekrarlanabilir olacak şekilde ayarlıdır
+(APK'ya derleme ortamının Git bilgisi ve Google'ın şifreli bağımlılık bloğu yazılmaz): aynı kaynaktan iki temiz derleme
+bayt bayt aynı APK'yı verir. Gizlilik politikası ve izin gerekçeleri: [PRIVACY.md](PRIVACY.md). Lisans: GPL-3.0-or-later ([LICENSE](LICENSE)). Play Store sürümü
+targetSdk 28 kaldıkça yok (bkz. Neden targetSdk 28?).
+
 ## Sürüm yayınlama
 
 `.github/workflows/release.yml`: `v1.2.3` etiketi gönderilince (veya Actions'tan elle, sürüm girerek) testler koşar,
@@ -2091,3 +2147,6 @@ tools/          package-postgres.sh, package-cloudflared.sh (Termux derlemelerin
 - [x] **Oturum yönetimi:** açık oturumlar (cihaz, adres, son kullanım), tek tek veya hepsini kapatma; kapatılan oturumun token'ı hemen düşer
 - [x] **MQTT güvenliği:** yalnızca yerel ağ, cihaz başına kimlik, tutulan mesajlar
 - [x] **Ev otomasyonu:** otomasyonda MQTT eylemi ve tetikleyicisi, sahneler (widget dahil), sensör panosu ve eşik uyarısı, Home Assistant keşfi
+- [x] **Telegram'dan yönetim:** ayrı yönetici sohbetinden `/durum`, `/yedek`, `/loglar`, `/baslat`, `/durdur` (onaylı)
+- [x] **E-posta şablonları ve toplu bildirim:** hesap e-postaları dil başına şablonla; kullanıcılara süzgeçli, hız sınırlı, iptal edilebilir toplu e-posta / web push, abonelikten çıkma
+- [x] **Yaygınlaştırma:** ilk açılış rehberi ve örnek proje, uygulama içi çevrimdışı yardım, F-Droid meta verisi, tekrarlanabilir derleme, gizlilik politikası
