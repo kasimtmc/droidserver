@@ -133,6 +133,8 @@ const TABS = [
   ["audit", T("Denetim"), showAudit],
   ["jobs", T("İşler"), showJobs],
   ["views", T("Görünümler"), showViews],
+  ["automation", T("Otomasyon"), showAutomation],
+  ["services", T("Servisler"), showServices],
   ["api", "API", showApi],
   ["backups", T("Yedekler"), showBackups],
   ["schema", T("Şema"), showSchema],
@@ -146,7 +148,7 @@ function renderNav() {
     if (id === "users" && !state.info.users) continue;
     if (id === "jobs" && !state.info.jobs) continue;
     if (id === "views" && !state.info.views) continue;
-    if (["logs", "backups", "schema", "config"].includes(id) && !state.info.host) continue;
+    if (["logs", "backups", "schema", "config", "automation", "services"].includes(id) && !state.info.host) continue;
     nav.append(el("button", { class: state.tab === id ? "active" : "", onclick: () => openTab(id) }, title));
   }
   nav.append(el("button", { class: "logout", onclick: () => logout(true) }, T("Çıkış")));
@@ -502,6 +504,56 @@ async function showUsers() {
   });
   main.append(el("div", { class: "card" }, el("div", { class: "row" }, search, el("button", { class: "ghost", onclick: load }, T("Ara"))), out));
   await load();
+  if (state.info.teams) await showTeams();
+}
+
+// Takımlar: panel yönetici olarak tüm takımları görür (uygulamadaki Sunucu → Takımlar gibi).
+async function showTeams() {
+  const out = el("div");
+  const name = el("input", { placeholder: T("Yeni takım adı") });
+  const load = () => guard(out, async () => {
+    clear(out);
+    const r = await api(gp("teams.list", null, "/teams"));
+    if (!r.items.length) { out.append(el("p", { class: "muted" }, T("Henüz takım yok."))); return; }
+    out.append(el("div", { class: "table-wrap" }, el("table", {},
+      el("thead", {}, el("tr", {}, ["id", T("Ad"), T("Üye"), ""].map((h) => el("th", {}, h)))),
+      el("tbody", {}, r.items.map((t) => el("tr", {},
+        el("td", {}, String(t.id)), el("td", {}, t.name), el("td", {}, String(t.memberCount)),
+        el("td", {},
+          el("button", { class: "ghost", onclick: () => teamDialog(t, load) }, T("Üyeler")), " ",
+          el("button", { class: "ghost danger", onclick: async () => {
+            if (!confirm("'" + t.name + T("' silinsin mi? Üyelikler silinir; takıma bağlı kayıtlar takım alanının silme davranışına göre silinir veya boşalır."))) return;
+            await guard(out, async () => { await api(gp("teams.delete", { id: t.id }, "/teams/{id}"), { method: "DELETE" }); await load(); });
+          } }, T("Sil")))))))));
+  });
+  const create = el("button", { class: "btn", onclick: () => guard(out, async () => {
+    await api(gp("teams.create", null, "/teams"), { method: "POST", body: { name: name.value.trim() } });
+    name.value = "";
+    await load();
+  }) }, T("Kur"));
+  main.append(el("div", { class: "card" }, el("h3", {}, T("Takımlar")),
+    el("p", { class: "muted" }, T("Kullanıcılar da kendi takımlarını /teams uçlarıyla yönetir (takımı kuran sahibi olur).")),
+    el("div", { class: "row" }, name, create), out));
+  await load();
+}
+
+function teamDialog(team, reload) {
+  listDialog(team.name, async (body, refresh) => {
+    const t = await api(gp("teams.get", { id: team.id }, "/teams/{id}"));
+    const act = (fn) => guard(body, async () => { await fn(); await refresh(); await reload(); });
+    const member = (m) => ({ id: team.id, user: m.user });
+    body.append(el("div", { class: "table-wrap" }, el("table", {},
+      el("thead", {}, el("tr", {}, [T("e-posta"), T("rol"), ""].map((h) => el("th", {}, h)))),
+      el("tbody", {}, (t.members || []).map((m) => el("tr", {},
+        el("td", {}, m.email || "#" + m.user), el("td", {}, m.role === "owner" ? T("sahip") : T("üye")),
+        el("td", {},
+          el("button", { class: "ghost", onclick: () => act(() => api(gp("teams.updateMember", member(m), "/teams/{id}/members/{user}"),
+            { method: "PATCH", body: { role: m.role === "owner" ? "member" : "owner" } })) }, m.role === "owner" ? T("Üye yap") : T("Sahip yap")), " ",
+          el("button", { class: "ghost danger", onclick: () => act(() => api(gp("teams.removeMember", member(m), "/teams/{id}/members/{user}"), { method: "DELETE" })) }, T("Çıkar")))))))));
+    const email = el("input", { type: "email", placeholder: T("Üye e-postası") });
+    body.append(el("div", { class: "row" }, email, el("button", { class: "btn", onclick: () => act(() =>
+      api(gp("teams.addMember", { id: team.id }, "/teams/{id}/members"), { method: "POST", body: { email: email.value.trim() } })) }, T("Ekle"))));
+  });
 }
 
 // ---- metrikler
@@ -1183,6 +1235,353 @@ async function showConfig() {
         } catch (e) { out.append(errorBox(e)); }
       } }, T("Kaydet ve deploy et"))),
     out));
+}
+
+// ---- konfigürasyon bölümleri (Otomasyon, Servisler): server.json'un bir kısmını düzenler. Kaydetme Şema ve
+// Konfigürasyon sekmeleriyle aynı yoldan gider (plan → onay → deploy): uygulamadaki doğrulamadan geçer, denetim
+// kaydına "panel" olarak düşer. Yeni parolalar düz yazılır; telefon kaydederken şifreli depoya taşır.
+
+async function loadConfig() { return JSON.parse((await api("/_admin/api/config")).text); }
+
+async function saveConfig(cfg, out) {
+  clear(out);
+  const text = JSON.stringify(cfg, null, 2) + "\n";
+  try {
+    const p = await api("/_admin/api/config/plan", { method: "POST", body: { text } });
+    const problems = [...(p.errors || []), ...(p.blockers || [])];
+    if (problems.length) { out.append(el("p", { class: "error" }, problems.join("\n"))); return; }
+    if ((p.warnings || []).length) out.append(el("p", { class: "muted" }, p.warnings.join("\n")));
+    if (!confirm(T("Kaydedilip deploy edilsin mi? Sunucu kısa süre yeniden başlar."))) return;
+    const d = await api("/_admin/api/config/deploy", { method: "POST", body: { text } });
+    out.append(el("p", { class: "ok" }, d.message));
+  } catch (e) { out.append(errorBox(e)); }
+}
+
+// Kaydet düğmesi ve sonucu; [cfg] düzenlenen nesnenin kendisi.
+function saveRow(cfg) {
+  const out = el("div");
+  return el("div", {}, el("div", { class: "row" }, el("button", { class: "btn", onclick: () => saveConfig(cfg, out) }, T("Kaydet ve deploy et"))), out);
+}
+
+function grid(...rows) { return el("div", { class: "form-grid" }, rows.flat()); }
+function line(label, input) { return [el("span", { class: "muted" }, label), input]; }
+function textIn(obj, key, attrs) {
+  return el("input", Object.assign({ value: obj[key] ?? "", onchange: (e) => setProp(obj, key, e.target.value.trim()) }, attrs || {}));
+}
+function numIn(obj, key, fallback) {
+  return el("input", { type: "number", min: "1", value: obj[key] ?? fallback, onchange: (e) => setProp(obj, key, e.target.value === "" ? undefined : Number(e.target.value)) });
+}
+// Varsayılanı false olan ayar (false yazılmaz).
+function checkIn(obj, key, label) {
+  return el("label", {}, el("input", { type: "checkbox", checked: !!obj[key], onchange: (e) => setProp(obj, key, e.target.checked) }), " " + label);
+}
+// Varsayılanı true olan "enabled" (yalnızca kapalıyken yazılır).
+function enabledIn(obj, label) {
+  return el("label", {}, el("input", { type: "checkbox", checked: obj.enabled !== false, onchange: (e) => { if (e.target.checked) delete obj.enabled; else obj.enabled = false; } }), " " + label);
+}
+// Yeni parola: boşsa kayıtlı parola korunur.
+function passwordIn(obj) {
+  const input = el("input", { type: "text", autocomplete: "off", placeholder: obj.password ? T("kayıtlı parola korunuyor") : T("en az 8 karakter"),
+    onchange: (e) => { if (e.target.value) obj.password = e.target.value; } });
+  const gen = el("button", { class: "ghost", onclick: () => {
+    const a = new Uint8Array(15); crypto.getRandomValues(a);
+    input.value = btoa(String.fromCharCode(...a)).replace(/[+/=]/g, "x");
+    obj.password = input.value;
+  } }, T("Parola üret"));
+  return el("span", { class: "row" }, input, gen);
+}
+function collectionNames(cfg) { return (cfg.collections || []).map((c) => c.name); }
+function fieldNames(cfg, name) { return ((cfg.collections || []).find((c) => c.name === name) || { fields: [] }).fields.map((f) => f.name); }
+function pick(list, value, onPick, empty) {
+  return el("select", { onchange: (e) => onPick(e.target.value || undefined) },
+    empty !== undefined ? el("option", { value: "" }, empty) : null, options(list.map((n) => [n, n]), value));
+}
+// Durum ucu açık değilse (özellik kapalı, kural yok) null.
+async function optional(path) {
+  if (!path) return null;
+  const res = await api(path, { raw: true });
+  if (res.status === 404) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || res.statusText);
+  return data;
+}
+function when(iso) { return iso ? new Date(iso).toLocaleString() : "—"; }
+
+// ---- otomasyon: kurallar ve formlar
+
+const EVENTS = [["create", T("eklenince")], ["update", T("değişince")], ["delete", T("silinince")]];
+const ACTION_TYPES = [["log", T("Loga yaz")], ["email", T("E-posta gönder")], ["push", T("Bildirim gönder")], ["webhook", T("Webhook'a gönder")],
+  ["update", T("Kaydı güncelle")], ["create", T("Kayıt oluştur")]];
+
+async function showAutomation() {
+  const cfg = await loadConfig();
+  cfg.automations = cfg.automations || [];
+  cfg.forms = cfg.forms || [];
+  const status = await optional(gp("automations", null, "/_automations"));
+  const rules = el("div"), forms = el("div");
+  const renderRules = () => { clear(rules); cfg.automations.forEach((a, i) => rules.append(ruleCard(cfg, a, i, status, renderRules))); };
+  const renderForms = () => { clear(forms); cfg.forms.forEach((f, i) => forms.append(formCard(cfg, f, i, renderForms))); };
+  main.append(el("div", { class: "card" }, el("h3", {}, T("Otomasyon kuralları")),
+    el("p", { class: "muted" }, T("Kayıt olayında veya belirli zamanlarda, koşula uyunca eylemleri sırayla çalıştırır. Metinlerde {alan} kaydın değeriyle dolar.")),
+    rules,
+    el("div", { class: "row" }, el("button", { class: "ghost", onclick: () => {
+      cfg.automations.push({ name: "kural-" + (cfg.automations.length + 1), trigger: { collection: collectionNames(cfg)[0] }, actions: [{ type: "log", body: "{id}" }] });
+      renderRules();
+    } }, T("+ Kural"))),
+    status && status.runs.length ? el("details", {}, el("summary", {}, T("Son çalışmalar (") + status.runs.length + ")"),
+      el("ul", {}, status.runs.slice(0, 30).map(runLine))) : null,
+    saveRow(cfg)));
+  main.append(el("div", { class: "card" }, el("h3", {}, T("Formlar")),
+    el("p", { class: "muted" }, T("Koleksiyona kayıt ekleyen herkese açık sayfa; yalnızca formdaki alanlar yazılabilir.")),
+    forms,
+    el("div", { class: "row" }, el("button", { class: "ghost", onclick: () => {
+      const c = collectionNames(cfg)[0];
+      if (!c) { alert(T("Önce bir koleksiyon oluşturun.")); return; }
+      cfg.forms.push({ name: "form-" + (cfg.forms.length + 1), collection: c, title: T("Bize yazın") });
+      renderForms();
+    } }, T("+ Form"))),
+    saveRow(cfg)));
+  renderRules();
+  renderForms();
+}
+
+function runLine(r) { return el("li", { class: r.ok ? "" : "error" }, when(r.at) + " · " + r.rule + " · " + r.trigger + " · " + r.message + " (" + r.durationMs + " ms)"); }
+
+function ruleCard(cfg, a, i, status, rerender) {
+  a.trigger = a.trigger || {};
+  const scheduled = !!a.trigger.schedule;
+  const saved = status && status.rules.some((r) => r.name === a.name);
+  const out = el("div");
+  const trigger = scheduled
+    ? line(T("Zamanlama (cron)"), textIn(a.trigger, "schedule", { placeholder: "0 8 * * *" }))
+    : line(T("Olay"), el("span", {}, EVENTS.map(([k, t]) => el("label", {}, el("input", { type: "checkbox", checked: (a.trigger.events || ["create"]).includes(k), onchange: (e) => {
+        const set = new Set(a.trigger.events || ["create"]);
+        if (e.target.checked) set.add(k); else set.delete(k);
+        const list = EVENTS.map(([x]) => x).filter((x) => set.has(x));
+        if (list.length === 1 && list[0] === "create") delete a.trigger.events; else a.trigger.events = list;
+      } }), " " + t + " "))));
+  return el("div", { class: "card" },
+    grid(
+      line(T("Ad"), textIn(a, "name")),
+      line(T("Ne zaman?"), el("select", { onchange: (e) => {
+        if (e.target.value === "schedule") { a.trigger.schedule = "0 3 * * *"; delete a.trigger.events; } else delete a.trigger.schedule;
+        rerender();
+      } }, options([["event", T("Kayıt olayında")], ["schedule", T("Belirli zamanlarda")]], scheduled ? "schedule" : "event"))),
+      line(T("Koleksiyon"), pick(collectionNames(cfg), a.trigger.collection, (v) => setProp(a.trigger, "collection", v), scheduled ? T("(yok)") : undefined)),
+      trigger,
+      line(T("Koşul (isteğe bağlı)"), textIn(a, "condition", { placeholder: "status=open&qty[gt]=0" })),
+      line("", enabledIn(a, T("Açık")))),
+    el("h4", {}, T("Eylemler")),
+    a.actions.map((x, j) => actionRow(cfg, a, x, j, rerender)),
+    el("div", { class: "row" },
+      el("button", { class: "ghost", onclick: () => { a.actions.push({ type: "log", body: "" }); rerender(); } }, T("+ Eylem")),
+      el("button", { class: "ghost", disabled: !saved, title: saved ? "" : T("Önce kaydedin"), onclick: () => guard(out, async () => {
+        clear(out);
+        const r = await api(gp("automations.run", { name: a.name }, "/_automations/{name}/run"), { method: "POST" });
+        out.append(el("p", { class: r.ok ? "ok" : "error" }, r.message));
+      }) }, T("Şimdi dene")),
+      el("button", { class: "ghost danger", onclick: () => { if (confirm("'" + a.name + T("' kuralı silinsin mi?"))) { cfg.automations.splice(i, 1); rerender(); } } }, T("Kuralı sil"))),
+    out);
+}
+
+function actionRow(cfg, a, x, j, rerender) {
+  const values = () => el("textarea", { rows: "2", placeholder: T("alan=değer (satır başına bir)"),
+    onchange: (e) => setProp(x, "values", Object.fromEntries(e.target.value.split("\n").map((l) => l.trim()).filter((l) => l.includes("=")).map((l) => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1).trim()]))) },
+    Object.entries(x.values || {}).map(([k, v]) => k + "=" + v).join("\n"));
+  const fields = {
+    log: [textIn(x, "body", { placeholder: T("metin") })],
+    email: [textIn(x, "to", { placeholder: T("alıcı veya {email}") }), textIn(x, "subject", { placeholder: T("konu") }), textIn(x, "body", { placeholder: T("metin") })],
+    push: [textIn(x, "to", { placeholder: T("owner veya kullanıcı kimliği") }), textIn(x, "subject", { placeholder: T("başlık") }), textIn(x, "body", { placeholder: T("metin") }), textIn(x, "url", { placeholder: T("adres (isteğe bağlı)") })],
+    webhook: [pick((cfg.webhooks || []).map((w) => w.name), x.webhook, (v) => setProp(x, "webhook", v), T("(webhook seçin)"))],
+    update: [values()],
+    create: [pick(collectionNames(cfg), x.collection, (v) => setProp(x, "collection", v), T("(koleksiyon)")), values()],
+  }[x.type] || [];
+  return el("div", { class: "row" },
+    el("select", { onchange: (e) => { a.actions[j] = { type: e.target.value }; rerender(); } }, options(ACTION_TYPES, x.type)),
+    fields,
+    el("button", { class: "ghost danger", title: T("Kaldır"), onclick: () => { a.actions.splice(j, 1); rerender(); } }, "✕"));
+}
+
+function formCard(cfg, f, i, rerender) {
+  f.fields = f.fields || [];
+  const url = location.origin + "/forms/" + f.name;
+  const available = fieldNames(cfg, f.collection);
+  return el("div", { class: "card" },
+    grid(
+      line(T("Adres"), el("span", { class: "row" }, textIn(f, "name"), el("a", { href: url, target: "_blank", rel: "noopener" }, T("Aç")))),
+      line(T("Başlık"), textIn(f, "title")),
+      line(T("Kayıtlar nereye?"), pick(collectionNames(cfg), f.collection, (v) => { f.collection = v; f.fields = []; rerender(); })),
+      line(T("Açıklama"), textIn(f, "description")),
+      line(T("Gönder düğmesi"), textIn(f, "submitLabel", { placeholder: T("Gönder") })),
+      line(T("Teşekkür metni"), textIn(f, "successMessage")),
+      line(T("Yönlendirme"), textIn(f, "redirect", { placeholder: "https://… " + T("veya") + " /…" })),
+      line(T("10 dakikada en çok"), numIn(f, "maxPerTenMinutes", 5)),
+      line("", enabledIn(f, T("Açık")))),
+    el("h4", {}, T("Alanlar")),
+    el("p", { class: "muted" }, T("Boşsa koleksiyonun yazılabilir tüm alanları.")),
+    f.fields.map((x, j) => el("div", { class: "row" },
+      pick(available, x.name, (v) => { x.name = v; }),
+      textIn(x, "label", { placeholder: T("görünen ad") }),
+      checkIn(x, "multiline", T("Çok satırlı")),
+      el("button", { class: "ghost danger", title: T("Kaldır"), onclick: () => { f.fields.splice(j, 1); rerender(); } }, "✕"))),
+    el("div", { class: "row" },
+      el("button", { class: "ghost", disabled: !available.length, onclick: () => { f.fields.push({ name: available[0] }); rerender(); } }, T("+ Alan")),
+      el("button", { class: "ghost danger", onclick: () => { if (confirm("'" + f.name + T("' formu silinsin mi?"))) { cfg.forms.splice(i, 1); rerender(); } } }, T("Formu sil"))));
+}
+
+// ---- servisler: MQTT, ağ sürücüsü, canlı kopya, yapay zekâ, kendi uygulamalarınız, komut satırı
+
+async function showServices() {
+  const cfg = await loadConfig();
+  for (const k of ["mqtt", "webdav", "replication"]) cfg[k] = cfg[k] || {};
+  await guard(main, () => mqttCard(cfg));
+  webdavCard(cfg);
+  await guard(main, () => replicaCard(cfg));
+  await guard(main, aiCard);
+  await guard(main, appsCard);
+  cliCard();
+}
+
+async function mqttCard(cfg) {
+  const m = cfg.mqtt;
+  m.routes = m.routes || [];
+  const status = await optional(gp("mqtt", null, "/_mqtt"));
+  const routes = el("div");
+  const renderRoutes = () => {
+    clear(routes);
+    m.routes.forEach((r, i) => routes.append(el("div", { class: "row" },
+      el("input", { value: r.topic, placeholder: "sensors/+/temp", onchange: (e) => { r.topic = e.target.value.trim(); } }),
+      pick(collectionNames(cfg), r.collection, (v) => { r.collection = v; renderRoutes(); }),
+      pick(fieldNames(cfg, r.collection), r.valueField, (v) => setProp(r, "valueField", v), T("(değer alanı yok)")),
+      pick(fieldNames(cfg, r.collection), r.topicField, (v) => setProp(r, "topicField", v), T("(konu alanı yok)")),
+      el("button", { class: "ghost danger", title: T("Kaldır"), onclick: () => { m.routes.splice(i, 1); renderRoutes(); } }, "✕"))));
+  };
+  const events = el("span", {}, collectionNames(cfg).map((c) => el("label", {}, el("input", { type: "checkbox", checked: (m.events || []).includes(c), onchange: (e) => {
+    const set = new Set(m.events || []);
+    if (e.target.checked) set.add(c); else set.delete(c);
+    setProp(m, "events", [...set]);
+  } }), " " + c + " ")));
+  const out = el("div");
+  const topic = el("input", { placeholder: "ev/salon/lamba" }), payload = el("input", { placeholder: "on" });
+  const publish = el("button", { class: "btn", disabled: !status || !status.listening, onclick: () => guard(out, async () => {
+    clear(out);
+    const r = await api(gp("mqtt.publish", null, "/_mqtt/publish"), { method: "POST", body: { topic: topic.value.trim(), payload: payload.value } });
+    out.append(el("p", { class: "ok" }, r.delivered + T(" cihaza gönderildi")));
+  }) }, T("Gönder"));
+  main.append(el("div", { class: "card" }, el("h3", {}, "MQTT (IoT)"),
+    status && status.listening
+      ? el("p", {}, T("Açık · port ") + status.port + " · " + status.received + T(" mesaj alındı · ") + status.delivered + T(" iletildi · ") + status.failed + T(" hata"))
+      : el("p", { class: "muted" }, T("Kapalı")),
+    grid(
+      line("", checkIn(m, "enabled", T("MQTT açık"))),
+      line(T("Port"), numIn(m, "port", 1883)),
+      line(T("Kullanıcı adı"), textIn(m, "username", { placeholder: "device" })),
+      line(T("Yeni parola"), passwordIn(m))),
+    el("p", { class: "muted" }, T("Bağlantı şifresizdir (düz TCP): yalnızca yerel ağda kullanın.")),
+    el("h4", {}, T("Mesajları kaydet")),
+    el("p", { class: "muted" }, T("Konu süzgeci, koleksiyon, değer alanı (düz değer için), konu alanı (+ bölümü için).")),
+    routes,
+    el("button", { class: "ghost", disabled: !collectionNames(cfg).length, onclick: () => { m.routes.push({ topic: "sensors/+/value", collection: collectionNames(cfg)[0] }); renderRoutes(); } }, T("Yönlendirme ekle")),
+    el("h4", {}, T("Kayıt olaylarını yayınla")), events,
+    saveRow(cfg),
+    status && status.listening ? el("div", {},
+      el("h4", {}, T("Bağlı cihazlar (") + status.clients.length + ")"),
+      el("ul", {}, status.clients.map((c) => el("li", {}, c.id + " · " + c.address + " · " + c.subscriptions.join(", ")))),
+      el("details", {}, el("summary", {}, T("Son mesajlar")), el("ul", {}, status.recent.map((r) => el("li", {}, when(r.at) + " · " + r.topic + " · " + r.result)))),
+      el("h4", {}, T("Cihazlara mesaj gönder")), el("div", { class: "row" }, topic, payload, publish), out) : null));
+  renderRoutes();
+}
+
+function webdavCard(cfg) {
+  const w = cfg.webdav;
+  const url = location.origin + (w.path || "/dav");
+  main.append(el("div", { class: "card" }, el("h3", {}, T("Ağ sürücüsü (WebDAV)")),
+    el("p", { class: "muted" }, w.enabled ? T("Adres: ") + url + " · " + T("kullanıcı: ") + (w.username || "droid") : T("Kapalı")),
+    grid(
+      line("", checkIn(w, "enabled", T("Ağ sürücüsü açık"))),
+      line(T("Yol"), textIn(w, "path", { placeholder: "/dav" })),
+      line(T("Kullanıcı adı"), textIn(w, "username", { placeholder: "droid" })),
+      line(T("Yeni parola"), passwordIn(w)),
+      line(T("Paylaşımlar"), el("span", {}, checkIn(w, "readOnly", T("Sürücü yalnızca okunur")), " ", checkIn(w, "site", "site"), " ", checkIn(w, "scripts", "scripts"), " ", checkIn(w, "uploads", T("uploads (salt okunur)")))),
+      line(T("Tek dosya en çok (MB)"), numIn(w, "maxFileMb", 2048))),
+    el("p", { class: "muted" }, T("Windows: Bu bilgisayar → Ağ konumu ekle. macOS: Finder → Sunucuya Bağlan. Linux: dav:// (GNOME) veya webdav:// (KDE) ile aynı adres.")),
+    saveRow(cfg)));
+}
+
+async function replicaCard(cfg) {
+  const r = await api("/_admin/api/replica");
+  const rep = cfg.replication;
+  rep.failover = rep.failover || {};
+  const s = r.status;
+  const out = el("div");
+  const rows = [line("", checkIn(rep, "source", T("Bu sunucu kopyalanabilir"))), line(T("Değişiklik günlüğü (gün)"), numIn(rep, "keepDays", 7))];
+  if (r.primary) {
+    rows.push(line("", checkIn(rep.failover, "auto", T("Otomatik devral"))), line(T("Ulaşılamazsa (sn)"), numIn(rep.failover, "afterSec", 120)),
+      line(T("Tanık adresi (isteğe bağlı)"), textIn(rep.failover, "witness", { placeholder: "http://192.168.1.1" })));
+  } else {
+    rows.push(line("", checkIn(rep.failover, "failback", T("Dönünce ana rolünü geri al"))));
+  }
+  main.append(el("div", { class: "card" }, el("h3", {}, T("Canlı kopya ve devralma")),
+    el("p", {}, r.primary ? T("Bu sunucu kopya; ana sunucu: ") + r.primary : r.source ? T("Ana sunucu (kopyalanabilir).") : T("Kopyalama kapalı.")),
+    r.formerPrimary ? el("p", { class: "muted" }, T("Eski ana sunucu: ") + r.formerPrimary) : null,
+    s ? el("p", { class: s.error ? "error" : "muted" }, s.phaseTitle + " · " + T("geride ") + Math.max(0, s.latestSeq - s.appliedSeq) + T(" değişiklik · son temas ") + when(s.lastContact) +
+      (s.progress ? " · " + s.progress : "") + (s.error ? "\n" + s.error : "") + (s.failoverNote ? "\n" + s.failoverNote : "") +
+      (s.takeoverAt ? "\n" + T("Otomatik devralma: ") + when(s.takeoverAt) : "")) : null,
+    grid(...rows),
+    el("p", { class: "muted" }, T("Bir telefonu kopya yapmak (ana sunucu adresi ve anahtarı) telefondaki sihirbazdan yapılır.")),
+    saveRow(cfg),
+    r.primary ? el("div", { class: "row" }, el("button", { class: "ghost danger", onclick: () => guard(out, async () => {
+      if (!confirm(T("Bu kopya yazılabilir ana sunucu olsun mu? Eşitleme durur; son saniyelerdeki yazmalar kaybolabilir."))) return;
+      const d = await api("/_admin/api/replica/takeover", { method: "POST" });
+      clear(out); out.append(el("p", { class: "ok" }, d.message));
+    }) }, T("Devral"))) : null,
+    out));
+}
+
+async function aiCard() {
+  const r = await optional(gp("ai.status", null, "/_ai"));
+  const out = el("div");
+  main.append(el("div", { class: "card" }, el("h3", {}, T("Yapay zekâ")),
+    !r ? el("p", { class: "muted" }, T("Kapalı. Sağlayıcı ve anahtar telefonda Sunucu → Yapay zekâ ekranından girilir.")) : el("div", {},
+      el("p", {}, r.provider + " · " + r.model + " · " + T("bugün ") + r.today.requests + T(" istek, ") + r.today.inputTokens + " + " + r.today.outputTokens + T(" token")),
+      r.semantic.length ? el("ul", {}, r.semantic.map((x) => el("li", {}, x.collection + ": " + x.indexed + T(" kayıt dizinde") + (x.pending ? ", " + x.pending + T(" bekliyor") : "")))) : null,
+      r.error ? el("p", { class: "error" }, r.error) : null,
+      r.semantic.length ? el("button", { class: "ghost", onclick: () => guard(out, async () => {
+        await api(gp("ai.reindex", null, "/_ai/reindex"), { method: "POST" });
+        clear(out); out.append(el("p", { class: "ok" }, T("Dizin yeniden kuruluyor.")));
+      }) }, T("Dizini yeniden kur")) : null, out)));
+}
+
+async function appsCard() {
+  const list = await optional(gp("apps", null, "/_apps"));
+  const out = el("div");
+  main.append(el("div", { class: "card" }, el("h3", {}, T("Kendi uygulamalarınız")),
+    !list || !list.length ? el("p", { class: "muted" }, T("Uygulama yok. Zip ile yükleme ve Git kaynağı telefonda Sunucu → Uygulamalar ekranından.")) : el("div", { class: "table-wrap" }, el("table", {},
+      el("thead", {}, el("tr", {}, [T("Ad"), T("Yol"), T("Durum"), T("Sürüm"), ""].map((h) => el("th", {}, h)))),
+      el("tbody", {}, list.map((a) => el("tr", {},
+        el("td", {}, a.name + (a.runtime ? " · " + a.runtime : "")),
+        el("td", {}, el("a", { href: a.path, target: "_blank", rel: "noopener" }, a.path)),
+        el("td", {}, a.enabled === false ? T("kapalı") : (a.phase || "—")),
+        el("td", {}, (a.current || "—") + (a.pending ? T(" (bekleyen: ") + a.pending + ")" : "") + (a.commit ? " · " + String(a.commit).slice(0, 7) : "")),
+        el("td", {}, el("button", { class: "ghost", onclick: () => guard(out, async () => {
+          await api(gp("apps.deploy", { name: a.name }, "/_apps/{name}/deploy"), { method: "POST" });
+          clear(out); out.append(el("p", { class: "ok" }, a.name + T(": deploy başladı; sonuç loglarda")));
+        }) }, a.git ? T("Çek ve deploy et") : T("Yeniden deploy et")))))))),
+    out));
+}
+
+function cliCard() {
+  const apiUrl = location.origin + base();
+  const cli = gp("cli", null, "/_cli");
+  main.append(el("div", { class: "card" }, el("h3", {}, T("Komut satırı (CLI)")),
+    el("p", { class: "muted" }, T("Bilgisayardan yönetim (Node.js 18+). Giriş yönetici anahtarını sorar; adlandırılmış, iptal edilebilir bir anahtar önerilir.")),
+    cli ? el("pre", { class: "code" }, [
+      "curl -o droidserver.mjs " + location.origin + cli,
+      "node droidserver.mjs login " + apiUrl,
+      "node droidserver.mjs status",
+      "node droidserver.mjs list <" + T("koleksiyon") + ">",
+      "node droidserver.mjs logs -f",
+    ].join("\n")) : el("p", { class: "muted" }, T("Komut satırı ucu kapalı (uzman modu)."))));
 }
 
 // ---- başlat

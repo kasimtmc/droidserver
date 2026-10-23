@@ -62,4 +62,18 @@ class DiagnosticsTest {
         assertEquals(Level.WARNING, byId.getValue("certificate").single().level)
         assertEquals(Level.PROBLEM, Diagnostics.run(healthy.copy(access = AccessMode.DIRECT, certificateUntil = now.minusSeconds(60))).first { it.id == "certificate" }.level)
     }
+
+    @Test
+    fun `uzun sure calismayi engelleyenler`() {
+        val ok = Diagnostics.run(healthy.copy(backgroundRestricted = false, childProcessLimit = false))
+        assertTrue(ok.none { it.id in setOf("background", "processes", "restart") }, ok.toString())
+        val f = Diagnostics.run(healthy.copy(backgroundRestricted = true, childProcessLimit = true, serviceRestart = "Önceki süreç bitti: bellek yetmedi."))
+        val byId = f.groupBy { it.id }
+        assertEquals(Level.PROBLEM, f.first().level)
+        assertEquals(Fix.APP_SETTINGS, byId.getValue("background").single().fix)
+        assertEquals(Fix.DEVELOPER_SETTINGS, byId.getValue("processes").single().fix)
+        val restart = byId.getValue("restart").single()
+        assertEquals(Level.WARNING, restart.level)
+        assertTrue(restart.detail.startsWith("Önceki süreç bitti: bellek yetmedi."), restart.detail)
+    }
 }

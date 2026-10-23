@@ -1,6 +1,7 @@
 # Uygulama sürümü: `v1.2.3` (ön sürüm: `v1.3.0-beta.1`) etiketi gönderilince veya bu iş akışı elle çalıştırılınca
 # testler koşar, imzalı APK üretilir ve GitHub Releases'a `droidserver-<sürüm>.apk` + `.sha256` olarak yüklenir.
-# Uygulama içi güncelleme bu sürümleri okur (Durum → Uygulama güncellemesi).
+# Uygulama içi güncelleme bu sürümleri okur (Durum → Uygulama güncellemesi). Sürüm notu: .github/release-notes/<sürüm>.md
+# (varsa; şablon TEMPLATE.md) + commit'lerden üretilen notlar.
 #
 # Gerekli secrets (Settings → Secrets and variables → Actions); anahtarı oluşturma: README → "Sürüm yayınlama".
 #   ANDROID_KEYSTORE_BASE64    imza deposu, base64 (base64 -w0 release.jks)
@@ -94,6 +95,9 @@ jobs:
             gh release upload "$TAG" dist/* --clobber
           else
             FLAGS="--generate-notes --target $GITHUB_SHA"
+            # Elle yazılan not varsa başa konur; commit'lerden üretilen notlar altına eklenir.
+            NOTES=".github/release-notes/$V.md"
+            if [ -f "$NOTES" ]; then FLAGS="$FLAGS --notes-file $NOTES"; fi
             if [ "${{ steps.v.outputs.prerelease }}" = "true" ]; then FLAGS="$FLAGS --prerelease"; fi
             gh release create "$TAG" dist/* --title "DroidServer $V" $FLAGS
           fi

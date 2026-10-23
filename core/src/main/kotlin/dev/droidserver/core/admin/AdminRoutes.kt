@@ -56,6 +56,8 @@ import kotlinx.serialization.json.buildJsonObject
  *   GET  /_admin/api/logs?after=N            → {next, lines}
  *   GET  /_admin/api/logs/stream             → text/event-stream (canlı)
  *   GET  /_admin/api/backups                 → liste;  POST: yeni yedek;  GET /{ad}: indir
+ *   GET  /_admin/api/replica                 → canlı kopya rolü, devralma ayarları ve eşitleme durumu
+ *   POST /_admin/api/replica/takeover        → 202 (kopya ana sunucu olur; sonuç loglarda)
  */
 internal fun Route.adminPanel(
     config: ServerConfig,
@@ -112,12 +114,18 @@ internal fun Route.adminPanel(
                     put("jobs", JsonPrimitive(config.scripts.enabled))
                     put("views", JsonPrimitive(config.views.isNotEmpty()))
                     put("realtime", JsonPrimitive(config.realtime.enabled))
+                    put("teams", JsonPrimitive(config.auth.users.enabled && config.auth.users.teams.enabled))
                     put("collections", JsonArray(config.collections.map { JsonPrimitive(it.name) }))
                     // Uzman modu: uçların etkin yolları (kapalıysa null) ve sistem alanlarının API adları.
                     val api = ApiPaths(config)
                     fun path(p: String?) = p?.let(::JsonPrimitive) ?: JsonNull
                     put("paths", buildJsonObject {
-                        for (e in listOf(Endpoint.SCHEMA, Endpoint.METRICS, Endpoint.OPENAPI, Endpoint.REALTIME, Endpoint.USERS_LIST, Endpoint.USERS_UPDATE, Endpoint.USERS_DELETE, Endpoint.VIEWS, Endpoint.VIEW)) {
+                        for (e in listOf(
+                            Endpoint.SCHEMA, Endpoint.METRICS, Endpoint.OPENAPI, Endpoint.REALTIME, Endpoint.USERS_LIST, Endpoint.USERS_UPDATE, Endpoint.USERS_DELETE, Endpoint.VIEWS, Endpoint.VIEW,
+                            Endpoint.CLI, Endpoint.MQTT, Endpoint.MQTT_PUBLISH, Endpoint.AI_STATUS, Endpoint.AI_REINDEX, Endpoint.APPS, Endpoint.APP_DEPLOY,
+                            Endpoint.AUTOMATIONS, Endpoint.AUTOMATION_RUN, Endpoint.TEAMS, Endpoint.TEAMS_CREATE, Endpoint.TEAM, Endpoint.TEAM_DELETE,
+                            Endpoint.TEAM_ADD_MEMBER, Endpoint.TEAM_UPDATE_MEMBER, Endpoint.TEAM_REMOVE_MEMBER,
+                        )) {
                             put(e.key, path(api.path(e)))
                         }
                         put("collections", buildJsonObject {
@@ -180,6 +188,43 @@ internal fun Route.adminPanel(
                         delay(1_000)
                     }
                 }
+            }
+            get("/replica") {
+                admin()
+                val r = config.replication
+                call.respond(buildJsonObject {
+                    put("source", JsonPrimitive(r.source))
+                    put("keepDays", JsonPrimitive(r.keepDays))
+                    put("primary", r.replicaOf?.url?.let(::JsonPrimitive) ?: JsonNull)
+                    put("formerPrimary", r.formerPrimary?.url?.let(::JsonPrimitive) ?: JsonNull)
+                    put("failover", buildJsonObject {
+                        put("auto", JsonPrimitive(r.failover.auto))
+                        put("afterSec", JsonPrimitive(r.failover.afterSec))
+                        put("witness", r.failover.witness?.let(::JsonPrimitive) ?: JsonNull)
+                        put("failback", JsonPrimitive(r.failover.failback))
+                    })
+                    host?.replica()?.let { s ->
+                        put("status", buildJsonObject {
+                            put("phase", JsonPrimitive(s.phase.name))
+                            put("phaseTitle", JsonPrimitive(s.phase.title))
+                            put("appliedSeq", JsonPrimitive(s.appliedSeq))
+                            put("latestSeq", JsonPrimitive(s.latestSeq))
+                            put("lastContact", s.lastContact?.toString()?.let(::JsonPrimitive) ?: JsonNull)
+                            put("lastApplied", s.lastApplied?.toString()?.let(::JsonPrimitive) ?: JsonNull)
+                            put("error", s.error?.let(::JsonPrimitive) ?: JsonNull)
+                            put("progress", s.progress?.let(::JsonPrimitive) ?: JsonNull)
+                            put("takeoverAt", s.takeoverAt?.toString()?.let(::JsonPrimitive) ?: JsonNull)
+                            put("failoverNote", s.failoverNote?.let(::JsonPrimitive) ?: JsonNull)
+                        })
+                    }
+                })
+            }
+            post("/replica/takeover") {
+                admin()
+                val primary = config.replication.replicaOf ?: throw ApiException(409, tr("Bu sunucu kopya değil"))
+                withContext(Dispatchers.IO) { requireHost().takeover() }
+                audit?.record("panel", "replica.promote", primary.url, ip = ip())
+                call.respond(HttpStatusCode.Accepted, buildJsonObject { put("message", JsonPrimitive(tr("Devralma başladı; sonuç loglarda"))) })
             }
             route("/backups") {
                 get {
