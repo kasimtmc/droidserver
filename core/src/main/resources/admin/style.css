@@ -182,3 +182,6 @@ details summary:hover { color: var(--accent); }
 .form-grid { display: grid; grid-template-columns: minmax(140px, max-content) 1fr; gap: 8px 12px; align-items: center; margin: 10px 0; }
 .form-grid .row { margin: 0; }
 @media (max-width: 700px) { .form-grid { grid-template-columns: 1fr; } }
+svg.chart polyline { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+svg.chart line.limit { stroke: var(--err); stroke-width: 1; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; }
+textarea.short { min-height: 0; width: auto; flex: 1 1 260px; }

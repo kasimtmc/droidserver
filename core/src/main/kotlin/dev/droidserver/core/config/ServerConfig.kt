@@ -98,13 +98,20 @@ data class ServerConfig(
     /** MQTT (IoT): cihaz mesajlarını koleksiyonlara yazar, kayıt olaylarını yayınlar. */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val mqtt: MqttConfig = MqttConfig(),
+    /** Sensör panosu, eşik uyarıları ve Home Assistant keşfi; bkz. [SensorConfig]. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val sensors: List<SensorConfig> = emptyList(),
 ) {
     fun toJson(): String = ConfigJson.encodeToString(serializer(), this)
 
     /** Veritabanında tablosu olan tüm koleksiyonlar: kullanıcınınkiler ve (açıksa) kullanıcı sistem tabloları. */
     fun schemaCollections(): List<CollectionConfig> =
         collections + SystemCollections.of(auth.users, push.enabled) + SystemCollections.archive(collections) +
-            listOfNotNull(SystemCollections.jobs.takeIf { scripts.enabled }, SystemCollections.changes.takeIf { replication.source })
+            listOfNotNull(
+                SystemCollections.jobs.takeIf { scripts.enabled }, SystemCollections.changes.takeIf { replication.source },
+                SystemCollections.passkeys.takeIf { auth.passkeys.enabled && auth.users.enabled },
+                SystemCollections.panelPasskeys.takeIf { auth.passkeys.enabled && adminPanel.enabled },
+            )
 
     companion object {
         /** Eski sürümleri günceller (sırlar yerinde kalır; depoya taşımak için ConfigSecrets.secureText). */
@@ -374,6 +381,22 @@ data class AuthConfig(
     /** Adlandırılmış, kapsamı sınırlanabilen API anahtarları (her iki modda da geçerli); bkz. [ApiKeyConfig]. */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val keys: List<ApiKeyConfig> = emptyList(),
+    /** Passkey (WebAuthn) ile parolasız giriş: kullanıcı hesapları ve web paneli için; bkz. [PasskeysConfig]. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val passkeys: PasskeysConfig = PasskeysConfig(),
+)
+
+/**
+ * Passkey (WebAuthn). [rpId]: sunucunun tarayıcıda açıldığı gerçek alan adı (örn. `ev.duckdns.org` veya tünel adı);
+ * passkey bu ada bağlanır, ad değişirse eskileri çalışmaz. WebAuthn HTTPS ve alan adı ister: yerel IP ile çalışmaz
+ * (yalnızca geliştirmede `localhost`). [rpName]: tarayıcının gösterdiği ad (boşsa sunucu adı).
+ */
+@Serializable
+data class PasskeysConfig(
+    val enabled: Boolean = false,
+    val rpId: String = "",
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val rpName: String? = null,
 )
 
 /**

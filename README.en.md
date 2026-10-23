@@ -122,6 +122,7 @@ with **Advanced (JSON)**; both share the same draft, and the draft is saved to `
 | `static` | `enabled`, `path` (`/`), `spaFallback` (true): serves the site under `files/www/` (see Files and static site) |
 | `backup` | `enabled`, `schedule` (cron, `0 4 * * *`), `keep` (7): scheduled backup (see Backup) |
 | `adminPanel` | `enabled`, `sessionHours` (12): the `/_admin` panel in the browser (see Web admin panel) |
+| `auth.passkeys` | `enabled`, `rpId` (domain name, e.g. `home.duckdns.org`), `rpName`: passkey sign-in (see Passkey sign-in) |
 | `scripts` | `enabled`, `timeoutMs` (2000), `cronTimeoutSec` (60), `allowedHosts` (for `ctx.http`), `env` (added to `ctx.env` on top of the shared `env`; may hold `secret:` references) — see Scripts |
 | `fields[].collection` | Target collection of a `relation` field (may be the collection itself: a tree structure) |
 | `fields[].onDelete` | `relation`: when the target record is deleted, `cascade` (these are deleted too), `set_null` (the field is cleared), `restrict` (the delete is rejected with 409). If empty, `restrict` for a required field, otherwise `set_null` |
@@ -148,7 +149,8 @@ with **Advanced (JSON)**; both share the same draft, and the draft is saved to `
 | `forms` | Public forms: `name` (URL `/forms/<name>`), `collection`, `title`, `fields`, `successMessage`, `redirect` … (see Forms) |
 | `ai` | AI: `enabled`, `provider` (`claude`/`openai`/`gemini`), `url`, `apiKey` (`secret:`), `model`, `effort`, `access`, `dailyLimit`, `embeddings`, `semantic` (see AI) |
 | `webdav` | Network drive: `enabled`, `path`, `username`, `password` (`secret:`), `readOnly`, `site`, `scripts`, `uploads`, `maxFileMb` (see Network drive) |
-| `mqtt` | MQTT (IoT): `enabled`, `port` (1883), `username`, `password` (`secret:`), `routes` (`topic`, `collection`, `valueField`, `topicField`), `events`, `eventPrefix`, `maxClients` (see MQTT) |
+| `mqtt` | MQTT (IoT): `enabled`, `port` (1883), `username`, `password` (`secret:`), `routes` (`topic`, `collection`, `valueField`, `topicField`), `events`, `eventPrefix`, `maxClients`, `devices` (per-device credentials), `scenes`, `homeAssistant` (see MQTT) |
+| `sensors` | Sensor dashboard: `collection`, `field`, `name`, `unit`, `deviceClass`, `min`, `max` (threshold alerts; see MQTT → Home automation) |
 | `replication` | Live copy: `source`, `keepDays` (7), `replicaOf` (`url`, `key`, `intervalSec`), `failover` (`auto`, `afterSec` (120), `witness`, `failback`), `formerPrimary` (see Live copy) |
 | `components[].sharedEnv` | true: the component also receives the shared environment variables (its own `env` takes precedence) |
 
@@ -429,6 +431,43 @@ POST /api/auth/sms-code         {"phone":"+905551234567","code":"123456"}   # �
 **Web panel:** if "Also require authenticator code in the panel" is turned on in the Security step, panel sign-in asks for
 an authenticator code in addition to the pairing code; the key is generated on the phone and kept in encrypted storage ("Add to authenticator app" or copy).
 
+### Passkey sign-in
+
+Wizard → Security → **Sign in with a passkey** (`auth.passkeys`): sign in with the phone's or computer's lock (fingerprint,
+face, PIN) or a security key instead of a password. Users add passkeys to their accounts, you add them to the web panel.
+
+- **A domain name is required:** WebAuthn is bound to a domain (`rpId`) and works only over HTTPS; **it doesn't work with a
+  local IP.** Use a DuckDNS name (direct access + Let's Encrypt) or a named Cloudflare tunnel; the wizard suggests it when
+  available. A quick tunnel's address changes on every start, so it isn't suitable. If the name changes, added passkeys stop working.
+- A user can add several passkeys (at most 10), list and delete them. Passkey sign-in doesn't ask for the second step of
+  two-step verification (device + screen lock are already two factors). Sign-in doesn't ask for an e-mail: the browser
+  offers the passkey on the device, so the response doesn't reveal whether an e-mail has an account.
+- ES256 and RS256 are supported (Android, iOS, Windows Hello, YubiKey). If the signature counter goes backwards the key is
+  considered cloned and sign-in is rejected.
+- **Web panel:** sign in with the pairing code and add this browser under **Panel passkeys** on the Configuration tab;
+  then use **Sign in with a passkey** on the sign-in screen. Panel passkeys are separate from user accounts.
+
+```bash
+POST /api/auth/passkeys/register-options        # (user token) → options for navigator.credentials.create
+POST /api/auth/passkeys {name, credential}      # the browser's response (binary values in base64url) → {id, name, createdAt}
+GET  /api/auth/passkeys    ·    DELETE /api/auth/passkeys/{id}
+POST /api/auth/passkeys/login-options            # → options for navigator.credentials.get
+POST /api/auth/passkeys/login {credential}       # → token pair
+```
+
+In the browser with the SDK:
+
+```ts
+await ds.auth.login(email, password);
+await ds.auth.registerPasskey("phone");        // asks for the device lock
+// on later sign-ins:
+await ds.auth.loginWithPasskey();
+```
+
+```json
+"auth": { "passkeys": { "enabled": true, "rpId": "home.duckdns.org" } }
+```
+
 ### Quotas
 
 `auth.users.quotas` (Users → Quotas in the wizard) puts upper limits on each user; a limit left empty is unlimited,
@@ -538,8 +577,14 @@ curl -H "$H" "$BASE/auth/users?email=ali"                       # admin: list, P
 - **Tokens:** the access token is an HS256 JWT; the signing key is randomly generated in the database (separate from the admin JWT
   secret, so a user token can't stand in for an admin). The user is read from the database on every request: a deleted user's
   token is invalidated immediately, and role changes take effect immediately. The refresh token is a random 256 bits; only its SHA-256 hash
-  is stored in `_sessions`, and it is **single-use** (a new one is issued on every refresh). When the password changes or
+  is stored in `_sessions`, and it is **single-use** (a new one is issued on every refresh; the session stays the same).
+  When the user changes their password, their other sessions are closed (the device making the change stays signed in); when
   the admin resets it, all of the user's sessions are closed.
+- **Sessions:** `GET /api/auth/sessions` lists the open sessions (device from User-Agent, address, last used, `current`);
+  `DELETE /api/auth/sessions/{id}` closes one, `DELETE /api/auth/sessions` closes all the others. A closed session's access
+  token stops working immediately too (not when it expires). The admin sees and closes them with
+  `GET`/`DELETE /api/auth/users/{id}/sessions`, in the app under Users → **Sessions**, and in the panel under Users.
+  SDK: `auth.sessions()`, `auth.closeSession(id)`, `auth.closeOtherSessions()`.
 - **Sign-in limit:** after 5 failed attempts from the same client for the same e-mail, or 20 in total, `429` for 15 minutes (even the correct password
   must wait); the general `authFailures` block also applies.
 - No e-mail verification or password reset by e-mail (requires SMTP); the admin resets passwords from the app.
@@ -1384,8 +1429,11 @@ Sensors, ESP32/Arduino and devices such as Tasmota connect to the phone over MQT
 The phone has its own MQTT server; no separate broker is needed.
 
 - **Credentials:** a shared username and password for all devices (if the password is left empty one is generated,
-  kept in encrypted storage). Failed attempts count towards the firewall. The connection is plain TCP (default 1883):
-  use it only on the local network.
+  kept in encrypted storage) and/or **per-device credentials** (`mqtt.devices`): each device's name is its username and it
+  has its own password; deleting one doesn't affect the others. With a device list, shared sign-in can be turned off (empty
+  shared password). The status shows each connection's identity. Failed attempts count towards the firewall. The connection is plain TCP (default 1883) and
+  works **on the local network only**: connections from the internet are rejected (the home network, the phone's IPv6
+  network and Tailscale are accepted).
 - **Save messages:** a message matching a topic filter is added to the collection as a record; automations, webhooks
   and realtime subscriptions fire too. The fields of a JSON object are written to the collection's fields (unknown ones
   are skipped); a plain value (`23.5`, `on`) goes to the value field. The topic field holds the filter's `+` part
@@ -1393,14 +1441,36 @@ The phone has its own MQTT server; no separate broker is needed.
 - **Record events:** every change in the chosen collections is published as JSON to the
   `droidserver/<collection>/<create|update|delete>` topic.
 - **Commands:** send messages to devices from the app or with `POST /_mqtt/publish {"topic":"home/lamp","payload":"on"}`
-  (admin). Devices can also publish to each other (`+`, `#` wildcards).
-- Messages arriving with QoS 0, 1 and 2 are accepted and forwarded to subscribers with QoS 0; there are no retained
-  messages or wills.
+  (admin; kept with `"retain": true`). Devices can also publish to each other (`+`, `#` wildcards).
+- **Retained messages:** a message with the RETAIN flag is kept as the topic's last value and sent right away to a device
+  that subscribes to that topic later (for Home Assistant and Tasmota states); an empty payload deletes it. Kept across
+  deploys and restarts; at most 1000 topics and 4 MB in total.
+- Messages arriving with QoS 0, 1 and 2 are accepted and forwarded to subscribers with QoS 0; there are no wills.
+
+**Home automation:**
+
+- **MQTT in automations:** the **Send MQTT message** action (`{field}` in topic and payload, optionally retained); the
+  **On an MQTT message** trigger (topic filter): a device message runs the rule without being written to a record; if the
+  payload is JSON its fields are `{field}`, plus `{topic}`, `{payload}`. Example: on `home/+/motion` send `home/livingroom/lamp = on`.
+- **Scenes** (`mqtt.scenes`): named groups of messages (e.g. "Evening": lamp on, curtain closed). Run them from the MQTT
+  screen, the **DroidServer scenes** home screen widget (first four), the panel or `POST /api/_mqtt/scenes/<name>`.
+- **Sensor dashboard** (`sensors`; Server → **Sensor dashboard**, Services in the panel): a 6-hour / 24-hour / 7-day chart
+  for a number or yes/no field of a collection; a new value outside `min`/`max` raises a health alert (Telegram, e-mail,
+  notification). `GET /api/_sensors?hours=24`.
+- **Home Assistant** (`mqtt.homeAssistant.enabled`): connect Home Assistant's MQTT integration to the phone; sensors are added
+  automatically with discovery messages (`homeassistant/sensor/…/config`, retained) and values go to
+  `droidserver/<collection>/state` on every new record. A sensor removed from the list disappears from Home Assistant too.
+
+```json
+"sensors": [{ "collection": "readings", "field": "temp", "name": "Living room", "unit": "°C", "deviceClass": "temperature", "min": 15, "max": 28 }],
+"mqtt": { "homeAssistant": { "enabled": true },
+  "scenes": [{ "name": "Evening", "messages": [{ "topic": "home/livingroom/lamp", "payload": "on" }, { "topic": "home/livingroom/curtain", "payload": "closed", "retain": true }] }] }
+```
 
 ```json
 "mqtt": { "enabled": true, "port": 1883, "username": "device", "password": "secret:mqtt_password_ab12cd34",
   "routes": [{ "topic": "sensors/+/temp", "collection": "readings", "valueField": "temp", "topicField": "device" }],
-  "events": ["readings"] }
+  "events": ["readings"], "devices": [{ "name": "esp-salon", "password": "secret:mqtt_device_9f3a1c2b" }] }
 ```
 
 ```bash
@@ -1441,7 +1511,8 @@ Connecting:
 Security:
 
 - Authentication uses **Digest**; the password never crosses the network in clear text, so Windows can connect over
-  plain HTTP too. Basic is only accepted over HTTPS (direct access or tunnel); use the HTTPS address from the internet.
+  plain HTTP too. Basic is only accepted over HTTPS (direct access or tunnel); use the HTTPS address from the internet. The
+  network drive screen shows that address separately (on Linux `davs://` for GNOME, `webdavs://` for KDE).
 - Wrong passwords count toward the firewall's failed-attempt counter (a client's first request without credentials does
   not).
 - Paths are only resolved inside the shared folder; `..`, symbolic links and paths leaving the folder are rejected.
@@ -1993,3 +2064,9 @@ tools/          package-postgres.sh, package-cloudflared.sh (component packages 
 - [x] **Teams:** users create teams and add members; with the `team` rule each team sees only its own records
 - [x] **Command line (CLI):** records, export/import, logs, deploy and backups from your computer (single file, Node.js)
 - [x] **MQTT (IoT):** an MQTT server on the phone; device messages into collections, record events to devices, commands from the app
+- [x] **Hardening:** troubleshooter checks for "Restricted" battery, child process restrictions and system restarts of the service (with the reason); restart alert
+- [x] **Web panel parity:** Teams, Automation (rules, forms) and Services (MQTT, network drive, live replica and failover, AI, apps, CLI) in the panel
+- [x] **Passkey sign-in:** passwordless sign-in for users and the web panel (WebAuthn; needs a domain name and HTTPS)
+- [x] **Session management:** open sessions (device, address, last used), close one or all; a closed session's token stops working immediately
+- [x] **MQTT security:** local network only, per-device credentials, retained messages
+- [x] **Home automation:** MQTT action and trigger in automations, scenes (incl. a widget), sensor dashboard with threshold alerts, Home Assistant discovery

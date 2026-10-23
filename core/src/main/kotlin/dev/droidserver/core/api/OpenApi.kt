@@ -223,6 +223,13 @@ object OpenApi {
             op("$auth/login", "post", operation(tr("Hesap"), tr("Giriş"), public = true, body = bodyOf("email" to "string", "password" to "string"), responses = ok(tokens)))
             op("$auth/refresh", "post", operation(tr("Hesap"), tr("Token yenile"), public = true, body = bodyOf("refreshToken" to "string"), responses = ok(tokens)))
             op("$auth/logout", "post", operation(tr("Hesap"), tr("Çıkış"), public = true, body = bodyOf("refreshToken" to "string"), responses = obj("204" to obj("description" to str(tr("Tamam"))))))
+            val sessionList = obj("type" to str("object"), "description" to str("{items: [{id, device, ip, createdAt, lastUsedAt, current}]}"))
+            val sessionId = buildJsonArray { add(obj("name" to str("id"), "in" to str("path"), "required" to JsonPrimitive(true), "schema" to type("integer"))) }
+            op("$auth/sessions", "get", operation(tr("Hesap"), tr("Açık oturumlarım (cihaz, adres, son kullanım)"), public = false, responses = ok(sessionList)))
+            op("$auth/sessions", "delete", operation(tr("Hesap"), tr("Diğer oturumlarımı kapat (bu oturum kalır)"), public = false,
+                responses = ok(obj("type" to str("object"), "description" to str("{closed}")))))
+            op("$auth/sessions/{id}", "delete", operation(tr("Hesap"), tr("Oturumu kapat; erişim token'ı da hemen geçersiz olur"), public = false, params = sessionId,
+                responses = obj("204" to obj("description" to str(tr("Kapatıldı"))))))
             if (config.push.enabled) {
                 op("/push/key", "get", operation(tr("Bildirim"), tr("VAPID açık anahtarı (applicationServerKey)"), public = true, responses = ok(obj("type" to str("object")))))
                 op("/push/subscribe", "post", operation(tr("Bildirim"), tr("Tarayıcıyı bildirime abone et (PushSubscription.toJSON())"), public = false,
@@ -274,6 +281,21 @@ object OpenApi {
                 op("$auth/request-sms-code", "post", operation(tr("Hesap"), tr("SMS ile giriş kodu iste (6 hane, 10 dk); numara +90… biçiminde"), public = true, body = bodyOf("phone" to "string"),
                     responses = obj("202" to obj("description" to str(tr("Hesap varsa SMS gönderildi"))))))
                 op("$auth/sms-code", "post", operation(tr("Hesap"), tr("SMS koduyla giriş"), public = true, body = bodyOf("phone" to "string", "code" to "string"), responses = ok(tokens)))
+            }
+            if (config.auth.passkeys.enabled) {
+                val options = obj("type" to str("object"), "description" to str(tr("navigator.credentials.create/get için publicKey seçenekleri (challenge ve kimlikler base64url)")))
+                val credential = obj("required" to JsonPrimitive(true), "content" to obj("application/json" to obj("schema" to obj(
+                    "type" to str("object"),
+                    "description" to str(tr("{name?, credential: {id, response: {clientDataJSON, attestationObject | authenticatorData, signature}}}; ikili değerler base64url")),
+                ))))
+                val key = obj("type" to str("object"), "description" to str("{id, name, createdAt, lastUsedAt}"))
+                val id = buildJsonArray { add(obj("name" to str("id"), "in" to str("path"), "required" to JsonPrimitive(true), "schema" to type("integer"))) }
+                op("$auth/passkeys/register-options", "post", operation(tr("Hesap"), tr("Passkey ekleme seçenekleri (5 dk geçerli)"), public = false, responses = ok(options)))
+                op("$auth/passkeys", "post", operation(tr("Hesap"), tr("Passkey ekle (tarayıcının yanıtı)"), public = false, body = credential, responses = ok(key, "201")))
+                op("$auth/passkeys", "get", operation(tr("Hesap"), tr("Passkey'lerim"), public = false, responses = ok(obj("type" to str("object"), "description" to str("{items: [{id, name, createdAt, lastUsedAt}]}")))))
+                op("$auth/passkeys/{id}", "delete", operation(tr("Hesap"), tr("Passkey'i sil"), public = false, params = id, responses = obj("204" to obj("description" to str(tr("Silindi"))))))
+                op("$auth/passkeys/login-options", "post", operation(tr("Hesap"), tr("Passkey ile giriş seçenekleri (tarayıcı cihazdaki passkey'i önerir)"), public = true, responses = ok(options)))
+                op("$auth/passkeys/login", "post", operation(tr("Hesap"), tr("Passkey ile giriş; iki adımlı doğrulamanın ikinci adımı istenmez"), public = true, body = credential, responses = ok(tokens)))
             }
             if (users.teams.enabled) {
                 val tag = tr("Takımlar")

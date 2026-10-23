@@ -109,6 +109,9 @@ object SdkGenerator {
                 appendLine("    signup: ${p(Endpoint.AUTH_SIGNUP)}, login: ${p(Endpoint.AUTH_LOGIN)}, refresh: ${p(Endpoint.AUTH_REFRESH)}, logout: ${p(Endpoint.AUTH_LOGOUT)},")
                 appendLine("    me: ${p(Endpoint.AUTH_ME)}, verify2fa: ${p(Endpoint.AUTH_2FA_VERIFY)}, requestLoginCode: ${p(Endpoint.AUTH_REQUEST_LOGIN_CODE)}, loginCode: ${p(Endpoint.AUTH_LOGIN_CODE)},")
                 appendLine("    requestSmsCode: ${p(Endpoint.AUTH_REQUEST_SMS_CODE)}, smsCode: ${p(Endpoint.AUTH_SMS_CODE)}, usage: ${p(Endpoint.AUTH_USAGE)},")
+                appendLine("    passkeyRegisterOptions: ${p(Endpoint.AUTH_PASSKEY_REGISTER_OPTIONS)}, passkeyRegister: ${p(Endpoint.AUTH_PASSKEY_REGISTER)}, passkeys: ${p(Endpoint.AUTH_PASSKEYS)},")
+                appendLine("    passkeyDelete: ${p(Endpoint.AUTH_PASSKEY_DELETE)}, passkeyLoginOptions: ${p(Endpoint.AUTH_PASSKEY_LOGIN_OPTIONS)}, passkeyLogin: ${p(Endpoint.AUTH_PASSKEY_LOGIN)},")
+                appendLine("    sessions: ${p(Endpoint.AUTH_SESSIONS)}, closeSessions: ${p(Endpoint.AUTH_SESSIONS_CLOSE)}, closeSession: ${p(Endpoint.AUTH_SESSION_CLOSE)},")
                 appendLine("  });")
                 if (users.teams.enabled) {
                     appendLine("  readonly teams = new Teams(this, {")
@@ -331,6 +334,31 @@ object SdkGenerator {
         |  return fd;
         |}
         |
+        |// Passkey (WebAuthn): sunucu ikili değerleri base64url verir ve bekler.
+        |function fromB64url(s: string): Uint8Array {
+        |  const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (s.length % 4)) % 4));
+        |  return Uint8Array.from(b, (c) => c.charCodeAt(0));
+        |}
+        |function toB64url(buf: ArrayBuffer): string {
+        |  return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+        |}
+        |function passkeyOptions(o: any): any {
+        |  const ids = (list: any[] | undefined) => (list ?? []).map((c) => ({ ...c, id: fromB64url(c.id) }));
+        |  const out: any = { ...o, challenge: fromB64url(o.challenge) };
+        |  if (o.user) out.user = { ...o.user, id: fromB64url(o.user.id) };
+        |  if (o.excludeCredentials) out.excludeCredentials = ids(o.excludeCredentials);
+        |  if (o.allowCredentials) out.allowCredentials = ids(o.allowCredentials);
+        |  return out;
+        |}
+        |function passkeyCredential(c: Credential | null): Record<string, unknown> {
+        |  if (!c) throw new DroidServerError(400, "Passkey işlemi iptal edildi");
+        |  const pk = c as PublicKeyCredential;
+        |  const r = pk.response as any;
+        |  const response: Record<string, string> = {};
+        |  for (const k of ["clientDataJSON", "attestationObject", "authenticatorData", "signature", "userHandle"]) if (r[k]) response[k] = toB64url(r[k]);
+        |  return { id: pk.id, type: pk.type, response };
+        |}
+        |
         |type Paths = { list: string | null; view: string | null; create: string | null; update: string | null; delete: string | null };
         |
         |export class Collection<T, I> {
@@ -360,7 +388,13 @@ object SdkGenerator {
         |  delete(id: number): Promise<void> { return this.ds.request("DELETE", this.at("delete", id)); }
         |}
         |
-        |type AuthPaths = Record<"signup" | "login" | "refresh" | "logout" | "me" | "verify2fa" | "requestLoginCode" | "loginCode" | "requestSmsCode" | "smsCode" | "usage", string | null>;
+        |type AuthPaths = Record<"signup" | "login" | "refresh" | "logout" | "me" | "verify2fa" | "requestLoginCode" | "loginCode" | "requestSmsCode" | "smsCode" | "usage"
+        |  | "passkeyRegisterOptions" | "passkeyRegister" | "passkeys" | "passkeyDelete" | "passkeyLoginOptions" | "passkeyLogin"
+        |  | "sessions" | "closeSessions" | "closeSession", string | null>;
+        |
+        |export interface Passkey { id: number; name: string; createdAt: string; lastUsedAt: string | null }
+        |/** Açık oturum: cihaz (tarayıcı/uygulama), adres, son kullanım; `current` bu istemcinin oturumu. */
+        |export interface Session { id: number; device: string | null; ip: string | null; createdAt: string; lastUsedAt: string; current: boolean }
         |
         |export class Auth {
         |  private readonly ds: DroidServerBase;
@@ -393,6 +427,25 @@ object SdkGenerator {
         |  }
         |  me(): Promise<Record<string, unknown>> { return this.ds.request("GET", this.at("me")); }
         |  usage(): Promise<Record<string, unknown>> { return this.ds.request("GET", this.at("usage")); }
+        |  /** Tarayıcıda: giriş yapmış hesaba passkey ekler (cihazın kilidiyle). Sunucu HTTPS ve passkey alan adıyla açılmış olmalı. */
+        |  async registerPasskey(name?: string): Promise<Passkey> {
+        |    const options = await this.ds.request<Record<string, unknown>>("POST", this.at("passkeyRegisterOptions"));
+        |    const cred = await navigator.credentials.create({ publicKey: passkeyOptions(options) });
+        |    return this.ds.request("POST", this.at("passkeyRegister"), { json: { name, credential: passkeyCredential(cred) } });
+        |  }
+        |  /** Tarayıcıda: e-posta yazmadan passkey ile giriş (tarayıcı cihazdaki passkey'i önerir). */
+        |  async loginWithPasskey(): Promise<Tokens> {
+        |    const options = await this.ds.request<Record<string, unknown>>("POST", this.at("passkeyLoginOptions"));
+        |    const cred = await navigator.credentials.get({ publicKey: passkeyOptions(options) });
+        |    return this.keep(await this.ds.request<Tokens>("POST", this.at("passkeyLogin"), { json: { credential: passkeyCredential(cred) } }));
+        |  }
+        |  passkeys(): Promise<{ items: Passkey[] }> { return this.ds.request("GET", this.at("passkeys")); }
+        |  deletePasskey(id: number): Promise<void> { return this.ds.request("DELETE", this.at("passkeyDelete").replace("{id}", String(id))); }
+        |  sessions(): Promise<{ items: Session[] }> { return this.ds.request("GET", this.at("sessions")); }
+        |  /** Oturumu kapatır; o cihazın erişim token'ı da hemen geçersiz olur. */
+        |  closeSession(id: number): Promise<void> { return this.ds.request("DELETE", this.at("closeSession").replace("{id}", String(id))); }
+        |  /** Bu istemcinin dışındaki tüm oturumları kapatır. */
+        |  closeOtherSessions(): Promise<{ closed: number }> { return this.ds.request("DELETE", this.at("closeSessions")); }
         |}
         |
         |export interface TeamMember { user: number; email: string | null; role: "owner" | "member" }

@@ -32,6 +32,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.droidserver.app.AppGraph
 import dev.droidserver.app.data.NetUtil
+import dev.droidserver.app.data.publicUrl
 import dev.droidserver.app.ui.common.ErrorText
 import dev.droidserver.app.ui.common.ScreenScaffold
 import dev.droidserver.app.ui.common.SectionCard
@@ -70,6 +71,8 @@ fun DriveScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit) {
 
     val running = state as? EngineState.Running
     val address = running?.let { "http://${NetUtil.localIpv4().firstOrNull() ?: "127.0.0.1"}:${it.port}${initial.path}" }
+    // İnternetten (doğrudan erişim veya tünel): HTTPS üzerinden Basic de kabul edilir.
+    val webAddress = remember(running, active) { running?.let { publicUrl(g, active) }?.let { it + initial.path } }
     fun savedPassword(): String? = initial.password.takeIf { it.isNotEmpty() }?.let { if (ConfigSecrets.isRef(it)) g.secrets.get(it.removePrefix(ConfigSecrets.PREFIX)) else it }
 
     fun save() = scope.launch {
@@ -141,6 +144,13 @@ fun DriveScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Text(tr("Android/iOS: Solid Explorer, CX Dosya Gezgini, Dosyalar uygulaması (WebDAV sunucusu ekle)."), style = MaterialTheme.typography.bodySmall)
+                webAddress?.let { web ->
+                    Text(
+                        tr("İnternetten (HTTPS): {0}. Windows ve macOS'ta bu adresi aynı yoldan ekleyin; Linux'ta davs:// (GNOME) veya webdavs:// (KDE).", web),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedButton(onClick = { copyToClipboard(ctx, tr("adres"), web); copied = web }) { Text(tr("HTTPS adresini kopyala")) }
+                }
                 Text(
                     tr("Parola ağda açık gitmez (Digest). İnternetten bağlanacaksanız HTTPS adresini (doğrudan erişim veya tünel) kullanın."),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,

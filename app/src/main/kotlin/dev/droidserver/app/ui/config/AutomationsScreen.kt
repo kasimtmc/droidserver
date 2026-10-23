@@ -151,7 +151,9 @@ private fun RunRow(r: AutomationRun) {
 
 private fun triggerText(rule: AutomationConfig): String {
     val t = rule.trigger
-    return if (t.scheduled) {
+    return if (t.onMqtt) {
+        tr("MQTT mesajında: {0}", t.mqtt!!)
+    } else if (t.scheduled) {
         tr("Zamanlama: {0}", SCHEDULES.firstOrNull { it.second == t.schedule }?.first ?: t.schedule!!) +
             (t.collection?.let { tr(" · {0}", it) } ?: "")
     } else {
@@ -182,6 +184,8 @@ private fun AutomationEditor(g: AppGraph, wizard: WizardViewModel, cfg: ServerCo
     var name by remember { mutableStateOf(initial?.name.orEmpty()) }
     var enabled by remember { mutableStateOf(initial?.enabled ?: true) }
     var scheduled by remember { mutableStateOf(initial?.trigger?.scheduled ?: false) }
+    var onMqtt by remember { mutableStateOf(initial?.trigger?.onMqtt ?: false) }
+    var mqttTopic by remember { mutableStateOf(initial?.trigger?.mqtt ?: "ev/+/hareket") }
     var collection by remember { mutableStateOf(initial?.trigger?.collection ?: collections.firstOrNull()) }
     var events by remember { mutableStateOf(initial?.trigger?.events?.toSet() ?: setOf("create")) }
     var schedule by remember { mutableStateOf(initial?.trigger?.schedule ?: "0 8 * * *") }
@@ -193,11 +197,12 @@ private fun AutomationEditor(g: AppGraph, wizard: WizardViewModel, cfg: ServerCo
     fun build() = AutomationConfig(
         name = name.trim(),
         trigger = AutomationTrigger(
-            collection = collection,
-            events = if (scheduled) listOf("create") else WebhookConfig.EVENTS.filter { it in events },
+            collection = collection.takeIf { !onMqtt },
+            events = if (scheduled || onMqtt) listOf("create") else WebhookConfig.EVENTS.filter { it in events },
             schedule = schedule.trim().takeIf { scheduled },
+            mqtt = mqttTopic.trim().takeIf { onMqtt },
         ),
-        condition = condition.trim().ifEmpty { null },
+        condition = condition.trim().ifEmpty { null }.takeIf { !onMqtt },
         actions = actions.toList(),
         enabled = enabled,
     )
@@ -225,42 +230,50 @@ private fun AutomationEditor(g: AppGraph, wizard: WizardViewModel, cfg: ServerCo
             }
 
             SectionCard(tr("Ne zaman?")) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(!scheduled, { scheduled = false }, label = { Text(tr("Kayıt olayında")) })
-                    FilterChip(scheduled, { scheduled = true }, label = { Text(tr("Belirli zamanlarda")) })
-                }
-                Text(if (scheduled) tr("Koleksiyon (isteğe bağlı: koşula uyan kayıtlar sayılır ve güncellenir)") else tr("Koleksiyon"), style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (scheduled) FilterChip(collection == null, { collection = null }, label = { Text(tr("Yok")) })
-                    collections.forEach { c -> FilterChip(collection == c, { collection = c }, label = { Text(c) }) }
+                    FilterChip(!scheduled && !onMqtt, { scheduled = false; onMqtt = false }, label = { Text(tr("Kayıt olayında")) })
+                    FilterChip(scheduled, { scheduled = true; onMqtt = false }, label = { Text(tr("Belirli zamanlarda")) })
+                    if (cfg.mqtt.enabled || onMqtt) FilterChip(onMqtt, { onMqtt = true; scheduled = false }, label = { Text(tr("MQTT mesajında")) })
                 }
-                if (collections.isEmpty()) ErrorText(tr("Önce sihirbazda bir koleksiyon ekleyin."))
-                if (scheduled) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SCHEDULES.forEach { (label, cron) -> FilterChip(schedule == cron, { schedule = cron }, label = { Text(label) }) }
-                    }
+                if (onMqtt) {
                     OutlinedTextField(
-                        schedule, { schedule = it }, label = { Text(tr("Cron ifadesi")) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                        supportingText = { Text(tr("dakika saat gün ay haftanın-günü (telefonun saatiyle)")) },
+                        mqttTopic, { mqttTopic = it.trim() }, label = { Text(tr("Konu süzgeci")) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        supportingText = { Text(tr("Cihazdan gelen mesaj kayda yazılmadan kuralı tetikler; + bir bölümü, # kalanını eşler. İçerik JSON ise alanları {alan}, ayrıca {topic} ve {payload}.")) },
                     )
                 } else {
+                    Text(if (scheduled) tr("Koleksiyon (isteğe bağlı: koşula uyan kayıtlar sayılır ve güncellenir)") else tr("Koleksiyon"), style = MaterialTheme.typography.labelLarge)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        WebhookConfig.EVENTS.forEach { e ->
-                            FilterChip(e in events, { events = if (e in events) events - e else events + e }, label = { Text(eventTitle(e)) })
+                        if (scheduled) FilterChip(collection == null, { collection = null }, label = { Text(tr("Yok")) })
+                        collections.forEach { c -> FilterChip(collection == c, { collection = c }, label = { Text(c) }) }
+                    }
+                    if (collections.isEmpty()) ErrorText(tr("Önce sihirbazda bir koleksiyon ekleyin."))
+                    if (scheduled) {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SCHEDULES.forEach { (label, cron) -> FilterChip(schedule == cron, { schedule = cron }, label = { Text(label) }) }
+                        }
+                        OutlinedTextField(
+                            schedule, { schedule = it }, label = { Text(tr("Cron ifadesi")) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                            supportingText = { Text(tr("dakika saat gün ay haftanın-günü (telefonun saatiyle)")) },
+                        )
+                    } else {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            WebhookConfig.EVENTS.forEach { e ->
+                                FilterChip(e in events, { events = if (e in events) events - e else events + e }, label = { Text(eventTitle(e)) })
+                            }
                         }
                     }
+                    OutlinedTextField(
+                        condition, { condition = it }, label = { Text(tr("Koşul (isteğe bağlı)")) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        enabled = collection != null,
+                        supportingText = { Text(tr("Liste filtresi gibi: status=new veya qty[gte]=10&paid=true")) },
+                    )
                 }
-                OutlinedTextField(
-                    condition, { condition = it }, label = { Text(tr("Koşul (isteğe bağlı)")) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                    enabled = collection != null,
-                    supportingText = { Text(tr("Liste filtresi gibi: status=new veya qty[gte]=10&paid=true")) },
-                )
             }
 
             SectionHeader(tr("Ne yapılsın?"))
             Text(tr("Metinlerde {alan} kaydın değeriyle dolar (örn. {title}, {email}); ayrıca {now}, {count}, {rule}, {collection}."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             actions.forEachIndexed { i, a ->
-                ActionCard(cfg, collection, scheduled, a, onChange = { actions[i] = it }, onRemove = { actions.removeAt(i); Unit }.takeIf { actions.size > 1 })
+                ActionCard(cfg, collection.takeIf { !onMqtt }, scheduled || onMqtt, a, onChange = { actions[i] = it }, onRemove = { actions.removeAt(i); Unit }.takeIf { actions.size > 1 })
             }
             OutlinedButton(onClick = { actions += AutomationAction(AutomationActionType.LOG, body = "") }, enabled = actions.size < 10) {
                 Icon(Icons.Default.Add, contentDescription = null); Text(tr("Eylem ekle"))
@@ -290,6 +303,7 @@ private fun ActionCard(cfg: ServerConfig, collection: String?, scheduled: Boolea
             AutomationActionType.PUSH -> (cfg.push.enabled && cfg.auth.users != null) || a.type == t
             AutomationActionType.WEBHOOK -> cfg.webhooks.isNotEmpty() || a.type == t
             AutomationActionType.UPDATE -> collection != null || a.type == t
+            AutomationActionType.MQTT -> cfg.mqtt.enabled || a.type == t
             else -> true
         }
     }
@@ -339,6 +353,14 @@ private fun ActionCard(cfg: ServerConfig, collection: String?, scheduled: Boolea
                     if (a.collection != null) ValuesEditor(cfg, a.collection, a.values) { onChange(a.copy(values = it)) }
                 }
                 AutomationActionType.LOG -> field(tr("Log metni"), a.body) { a.copy(body = it) }()
+                AutomationActionType.MQTT -> {
+                    field(tr("Konu"), a.topic, tr("Joker olmadan, örn. ev/salon/lamba veya ev/{oda}/lamba")) { a.copy(topic = it) }()
+                    field(tr("İçerik"), a.body, tr("Düz metin veya JSON; {alan} kayıttan dolar")) { a.copy(body = it) }()
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(tr("Tutulan mesaj (sonradan bağlanan cihaz da alır)"), Modifier.weight(1f))
+                        Switch(a.retain, { onChange(a.copy(retain = it)) })
+                    }
+                }
             }
         }
     }

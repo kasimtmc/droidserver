@@ -115,5 +115,17 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/status_widget" />
         </receiver>
+        <!-- Ana ekran widget'ı: MQTT sahneleri (ilk dördü düğme). -->
+        <receiver
+            android:name=".service.SceneWidget"
+            android:exported="false"
+            android:label="@string/scene_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/scene_widget" />
+        </receiver>
     </application>
 </manifest>

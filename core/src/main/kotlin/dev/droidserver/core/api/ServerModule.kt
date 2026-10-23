@@ -49,6 +49,7 @@ import dev.droidserver.core.push.WebPushSender
 import dev.droidserver.core.auth.OAuthEndpoints
 import dev.droidserver.core.auth.OAuthException
 import dev.droidserver.core.auth.OAuthService
+import dev.droidserver.core.auth.PasskeyService
 import dev.droidserver.core.config.OAuthProvider
 import dev.droidserver.core.auth.UserService
 import dev.droidserver.core.data.DataTransfer
@@ -121,6 +122,10 @@ import dev.droidserver.core.config.ServerConfig
 import dev.droidserver.core.config.SystemCollections
 import dev.droidserver.core.db.DatabaseUnavailableException
 import dev.droidserver.core.db.SqlDriver
+import dev.droidserver.core.mqtt.HomeAssistant
+import dev.droidserver.core.mqtt.runScene
+import dev.droidserver.core.net.AddressScope
+import dev.droidserver.core.sensors.Sensors
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
@@ -163,6 +168,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
 import java.security.MessageDigest
@@ -220,6 +226,8 @@ fun Application.droidServerModule(
     requestCounts: DailyCounter = DailyCounter(),
     /** Ağ sürücüsü klasörleri: `drive` ve `scripts` (site ve yüklenen dosyalar [www] ve [files]'tan). */
     davDirs: Map<String, File?> = emptyMap(),
+    /** MQTT tutulan mesajlarının dosyası (deploy'lar arasında kalır); null ise yalnızca bellekte. */
+    mqttRetained: File? = null,
     /** SMS girişi sınırları (deploy'lar arasında süren). */
     smsGuard: SmsGuard = SmsGuard(),
     /** Yönetici işlemlerinin kaydı (deploy'lar arasında süren; ServerEngine tutar). */
@@ -496,10 +504,17 @@ fun Application.droidServerModule(
     val mqtt = config.mqtt.takeIf { it.enabled }?.let { m ->
         MqttBroker(
             m.port, m.username, m.password, config.server.host, m.maxClients,
-            onPublish = { topic, payload, _ -> mqttIngest?.invoke(topic, payload) },
+            onPublish = { topic, payload, _ ->
+                // Önce MQTT tetikleyicili otomasyonlar (kuyruğa alınır), sonra koleksiyona yazma (hata sayılır).
+                automation?.onMqtt(topic, payload)
+                mqttIngest?.invoke(topic, payload)
+            },
             authFailed = { ip -> clientGuard.authFailed(ip).also { if (it) audit?.record(AuditLog.SYSTEM, "firewall.ban", ip, tr("MQTT: art arda hatalı giriş")) } },
             banned = { ip -> clientGuard.bans().any { it.client == ip } },
             log = log,
+            fromInternet = { a -> AddressScope.of(a) == AddressScope.PUBLIC && !LocalNetworks.contains(a) },
+            retainedFile = mqttRetained,
+            devices = m.devices.filter { it.enabled }.associate { it.name to it.password },
         )
     }?.takeIf { b ->
         runCatching { b.start() }
@@ -508,6 +523,7 @@ fun Application.droidServerModule(
             .isSuccess
     }
     if (mqtt != null) {
+        if (config.mqtt.homeAssistant.enabled) runCatching { HomeAssistant.announce(mqtt, config) }.onFailure { log("Home Assistant keşfi yayınlanamadı: ${it.message}") }
         mqttHost?.broker = mqtt
         monitor.subscribe(ApplicationStopping) {
             mqtt.stop()
@@ -515,9 +531,17 @@ fun Application.droidServerModule(
         }
     }
 
+    val sensorsOf = config.sensors.groupBy { it.collection }
     fun changedAt(collection: String, action: RecordEvent.Action, record: JsonObject, depth: Int) {
         if (mqtt != null && collection in config.mqtt.events) {
             mqtt.publish("${config.mqtt.eventPrefix}/$collection/${action.wire}", (names[collection]?.out(record) ?: record).toString().toByteArray())
+        }
+        // Sensörler: Home Assistant'a son değer (tutulan) ve eşik dışındaysa sağlık uyarısı.
+        if (action != RecordEvent.Action.DELETE) sensorsOf[collection]?.let { list ->
+            if (mqtt != null && config.mqtt.homeAssistant.enabled) {
+                mqtt.publish(HomeAssistant.stateTopic(config, collection), (names[collection]?.out(record) ?: record).toString().toByteArray(), retain = true)
+            }
+            list.forEach { s -> Sensors.outOfRange(s, record)?.let { msg -> runCatching { health?.event(AlertKind.SENSOR, msg, s.key) } } }
         }
         realtime?.publish(collection, action, record)
         webhooks?.publish(collection, action.wire, names[collection]?.out(record) ?: record)
@@ -618,6 +642,7 @@ fun Application.droidServerModule(
                 mail = mailer?.let { m -> { to, subject, text -> m.custom(to, subject, text, null) } },
                 push = push?.let { p -> { user, title, body, url -> p.sendToUser(user, p.message(title, body, url, null)) } },
                 webhook = webhooks?.let { w -> { name, event, collection, record -> w.send(name, event, collection, collection?.let { names[it]?.out(record) } ?: record) } },
+                mqtt = mqtt?.let { b -> { topic, payload, retain -> b.publish(topic, payload.toByteArray(), retain) } },
             ),
             ::changedAt, log,
         )
@@ -637,7 +662,12 @@ fun Application.droidServerModule(
                 resolve(header ?: if (allowQuery) c.request.queryParameters["token"] else null)
             }
         }
-        if (config.adminPanel.enabled && adminSessions != null) adminPanel(config, adminSessions, adminHost, audit) { call.caller() }
+        if (config.adminPanel.enabled && adminSessions != null) {
+            val panelPasskeys = config.auth.passkeys.takeIf { it.enabled }?.let {
+                PasskeyService(db, it, it.rpName?.takeIf(String::isNotBlank) ?: config.name, SystemCollections.PANEL_PASSKEYS, null)
+            }
+            adminPanel(config, adminSessions, adminHost, audit, panelPasskeys) { call.caller() }
+        }
         if (config.forms.isNotEmpty()) {
             formPages(config.name, config.forms, config.collections.associateBy { it.name }, services, writes, FormGuard(), ::changed)
         }
@@ -673,10 +703,13 @@ fun Application.droidServerModule(
                         put("received", JsonPrimitive(b.received.get()))
                         put("delivered", JsonPrimitive(b.delivered.get()))
                         put("failed", JsonPrimitive(b.failed.get()))
+                        put("retained", JsonPrimitive(b.retainedCount()))
+                        put("scenes", JsonArray(config.mqtt.scenes.map { JsonPrimitive(it.name) }))
                         put("clients", JsonArray(b.clients().map { cl ->
                             buildJsonObject {
                                 put("id", JsonPrimitive(cl.id))
                                 put("address", JsonPrimitive(cl.address))
+                                put("user", JsonPrimitive(cl.user))
                                 put("connectedAt", JsonPrimitive(cl.connectedAt.toString()))
                                 put("subscriptions", JsonArray(cl.subscriptions.map(::JsonPrimitive)))
                             }
@@ -704,9 +737,25 @@ fun Application.droidServerModule(
                     else -> p.toString().toByteArray()
                 }
                 if (payload.size > MqttBroker.MAX_PACKET) throw ApiException(413, tr("Mesaj çok büyük"))
-                val n = b.publish(topic, payload)
+                val retain = (body["retain"] as? JsonPrimitive)?.booleanOrNull == true
+                val n = b.publish(topic, payload, retain)
                 b.note(topic, payload.size, tr("sunucudan; {0} cihaza", n))
                 call.audit("mqtt.publish", topic)
+                call.respond(buildJsonObject { put("delivered", JsonPrimitive(n)) })
+            }
+
+            if (config.sensors.isNotEmpty()) endpoint(paths, Endpoint.SENSORS) {
+                requireAdmin(call.caller())
+                val hours = (call.request.queryParameters["hours"]?.toLongOrNull() ?: 24).coerceIn(1, 24 * 31)
+                val since = Instant.now().minusSeconds(hours * 3600)
+                call.respond(io { JsonArray(config.sensors.map { s -> Sensors.series(services.getValue(s.collection), s, since) }) })
+            }
+            endpoint(paths, Endpoint.MQTT_SCENE) {
+                requireAdmin(call.caller())
+                val b = mqtt ?: throw ApiException(404, tr("MQTT kapalı"))
+                val scene = config.mqtt.scenes.firstOrNull { it.name == call.parameters["name"] } ?: throw ApiException(404, tr("Sahne yok"))
+                val n = withContext(Dispatchers.IO) { b.runScene(scene) }
+                call.audit("mqtt.scene", scene.name)
                 call.respond(buildJsonObject { put("delivered", JsonPrimitive(n)) })
             }
 
@@ -1098,7 +1147,10 @@ fun Application.droidServerModule(
                 val oauth = config.auth.users.oauth.takeIf { it.enabled }?.let {
                     OAuthService(it, config.server.basePath, oauthEndpoints, callbackPath = paths.path(Endpoint.OAUTH_CALLBACK))
                 }
-                authRoutes(users, writes, mailer, config, oauth, paths, userNames, phone?.takeIf { config.phone.sms }, smsGuard) { call.caller() }
+                val passkeys = config.auth.passkeys.takeIf { it.enabled }?.let {
+                    PasskeyService(db, it, it.rpName?.takeIf(String::isNotBlank) ?: config.name, SystemCollections.PASSKEYS, "user")
+                }
+                authRoutes(users, writes, mailer, config, oauth, paths, userNames, phone?.takeIf { config.phone.sms }, smsGuard, passkeys) { call.caller() }
                 endpoint(paths, Endpoint.AUTH_USAGE) {
                     val id = requireUser(call.caller())
                     call.respond(io { quotas.usage(id) })
@@ -1464,12 +1516,16 @@ private fun Route.authRoutes(
     n: ApiNames,
     phone: PhoneService?,
     smsGuard: SmsGuard,
+    passkeys: PasskeyService?,
     caller: suspend RoutingContext.() -> Caller,
 ) {
     /** Gövde API adlarından özgün adlara; doğrulama hatalarındaki alan adları API adlarıyla. */
     suspend fun RoutingCall.body(): JsonObject = n.inBody(receive<JsonObject>())
-    fun UserService.LoginResult.out(): JsonObject = toJson().let { j ->
-        if (this is UserService.Tokens) JsonObject(j + ("user" to n.out(user))) else j
+    /** Yanıt (kullanıcı alanları API adlarıyla); token verildiyse oturumun cihazı ve adresi kaydedilir. */
+    fun UserService.LoginResult.out(call: RoutingCall): JsonObject = toJson().let { j ->
+        if (this !is UserService.Tokens) return@let j
+        users.noteSession(refreshToken, call.request.headers[HttpHeaders.UserAgent], origin(call.request).key)
+        JsonObject(j + ("user" to n.out(user)))
     }
     suspend fun <T> translated(block: suspend () -> T): T = try {
         block()
@@ -1503,7 +1559,7 @@ private fun Route.authRoutes(
                 io {
                     writes.write {
                         if (verifyFirst) buildJsonObject { put("user", n.out(users.register(body))); put("verificationRequired", JsonPrimitive(true)) }
-                        else users.signup(body).out()
+                        else users.signup(body).out(call)
                     }
                 }
             }
@@ -1536,13 +1592,13 @@ private fun Route.authRoutes(
         endpoint(paths, Endpoint.AUTH_LOGIN) {
             val body = call.body()
             val client = origin(call.request).key
-            call.respond(io { writes.write { users.login(client, body.text("email"), body.text("password")).out() } })
+            call.respond(io { writes.write { users.login(client, body.text("email"), body.text("password")).out(call) } })
         }
         // İki adımlı doğrulama: girişte doğrulayıcı kodu; kullanıcı kendi kurar, kapatır, yedek kod yeniler.
         endpoint(paths, Endpoint.AUTH_2FA_VERIFY) {
             val body = call.receive<JsonObject>()
             val client = origin(call.request).key
-            call.respond(io { writes.write { users.verifyTwoFactor(client, body.text("challenge"), body.text("code")).out() } })
+            call.respond(io { writes.write { users.verifyTwoFactor(client, body.text("challenge"), body.text("code")).out(call) } })
         }
         endpoint(paths, Endpoint.AUTH_2FA_STATUS) {
             val id = requireUser(caller())
@@ -1584,7 +1640,7 @@ private fun Route.authRoutes(
             endpoint(paths, Endpoint.AUTH_LOGIN_CODE) {
                 val body = call.body()
                 val client = origin(call.request).key
-                call.respond(io { writes.write { users.loginWithCode(client, body.text("email"), body.text("code")).out() } })
+                call.respond(io { writes.write { users.loginWithCode(client, body.text("email"), body.text("code")).out(call) } })
             }
         }
         // SMS ile kodla giriş: biçim ve sınırlar hemen denetlenir; hesap var olsa da olmasa da yanıt aynıdır.
@@ -1607,12 +1663,61 @@ private fun Route.authRoutes(
             endpoint(paths, Endpoint.AUTH_SMS_CODE) {
                 val body = call.body()
                 val client = origin(call.request).key
-                call.respond(io { writes.write { users.loginWithSms(client, body.text("phone"), body.text("code")).out() } })
+                call.respond(io { writes.write { users.loginWithSms(client, body.text("phone"), body.text("code")).out(call) } })
+            }
+        }
+        // Passkey: kayıt ve liste giriş yapmış kullanıcıya; giriş seçenekleri e-posta almaz (hesabın var olduğu sızmasın),
+        // tarayıcı cihazdaki passkey'i kendisi önerir.
+        if (passkeys != null) {
+            endpoint(paths, Endpoint.AUTH_PASSKEY_REGISTER_OPTIONS) {
+                val id = requireUser(caller())
+                val email = io { (users.me(id)["email"] as? JsonPrimitive)?.content } ?: "#$id"
+                call.respond(io { passkeys.registrationOptions(id, email, email) })
+            }
+            endpoint(paths, Endpoint.AUTH_PASSKEY_REGISTER) {
+                val id = requireUser(caller())
+                val body = call.receive<JsonObject>()
+                call.respond(HttpStatusCode.Created, io { writes.write { passkeys.register(id, body) } })
+            }
+            endpoint(paths, Endpoint.AUTH_PASSKEYS) {
+                val id = requireUser(caller())
+                call.respond(io { passkeys.list(id) })
+            }
+            endpoint(paths, Endpoint.AUTH_PASSKEY_DELETE) {
+                val id = requireUser(caller())
+                val key = call.parameters["id"]?.toLongOrNull() ?: throw ApiException(404, tr("Passkey bulunamadı"))
+                io { writes.write { passkeys.delete(id, key) } }
+                call.respond(HttpStatusCode.NoContent)
+            }
+            endpoint(paths, Endpoint.AUTH_PASSKEY_LOGIN_OPTIONS) {
+                call.respond(io { passkeys.loginOptions(null) })
+            }
+            endpoint(paths, Endpoint.AUTH_PASSKEY_LOGIN) {
+                val body = call.receive<JsonObject>()
+                call.respond(io { writes.write { users.loginWithPasskey(passkeys.login(body)).out(call) } })
             }
         }
         endpoint(paths, Endpoint.AUTH_REFRESH) {
             val body = call.receive<JsonObject>()
-            call.respond(io { writes.write { users.refresh(body.text("refreshToken")).out() } })
+            call.respond(io { writes.write { users.refresh(body.text("refreshToken")).out(call) } })
+        }
+        // Açık oturumlar: cihaz, adres, son kullanım; tek tek veya diğerlerinin hepsi kapatılır (erişim token'ı da hemen düşer).
+        endpoint(paths, Endpoint.AUTH_SESSIONS) {
+            val who = caller()
+            val id = requireUser(who)
+            call.respond(io { users.sessions(id, (who as? Caller.User)?.session) })
+        }
+        endpoint(paths, Endpoint.AUTH_SESSIONS_CLOSE) {
+            val who = caller()
+            val id = requireUser(who)
+            val closed = io { writes.write { users.closeSessions(id, except = (who as? Caller.User)?.session) } }
+            call.respond(buildJsonObject { put("closed", JsonPrimitive(closed)) })
+        }
+        endpoint(paths, Endpoint.AUTH_SESSION_CLOSE) {
+            val id = requireUser(caller())
+            val session = call.parameters["id"]?.toLongOrNull() ?: throw ApiException(404, tr("Oturum bulunamadı"))
+            io { writes.write { users.closeSession(id, session) } }
+            call.respond(HttpStatusCode.NoContent)
         }
         endpoint(paths, Endpoint.AUTH_LOGOUT) {
             val body = call.receive<JsonObject>()
@@ -1624,9 +1729,10 @@ private fun Route.authRoutes(
             call.respond(n.out(io { users.me(id) }))
         }
         endpoint(paths, Endpoint.AUTH_ME_UPDATE) {
-            val id = requireUser(caller())
+            val who = caller()
+            val id = requireUser(who)
             val body = call.body()
-            call.respond(n.out(translated { io { writes.write { users.updateMe(id, body) } } }))
+            call.respond(n.out(translated { io { writes.write { users.updateMe(id, body, (who as? Caller.User)?.session) } } }))
         }
         run {
             endpoint(paths, Endpoint.USERS_LIST) {
@@ -1656,6 +1762,19 @@ private fun Route.authRoutes(
                 val by = Access.actor(caller())
                 val ip = origin(call.request).key
                 io { writes.write { users.delete(id, by, ip) } }
+                call.respond(HttpStatusCode.NoContent)
+            }
+            endpoint(paths, Endpoint.USERS_SESSIONS) {
+                requireAdmin(caller())
+                val id = call.idParam()
+                call.respond(io { users.sessions(id) })
+            }
+            endpoint(paths, Endpoint.USERS_SESSIONS_CLOSE) {
+                requireAdmin(caller())
+                val id = call.idParam()
+                val by = Access.actor(caller())
+                val ip = origin(call.request).key
+                io { writes.write { users.closeAllSessions(id, by, ip) } }
                 call.respond(HttpStatusCode.NoContent)
             }
         }
