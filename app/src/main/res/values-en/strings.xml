@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="widget_description">Server status, address and an on/off button</string>
+    <string name="scene_widget_description">Run MQTT scenes with a single tap</string>
+    <string name="scene_widget_label">DroidServer scenes</string>
 </resources>

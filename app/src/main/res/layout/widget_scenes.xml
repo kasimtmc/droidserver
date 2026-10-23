@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sahne düğmeleri bilerek dolu (dokunma hedefi büyük, durum widget'ının düğmesiyle aynı): ButtonStyle uyarısı yok sayılır. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/scenes_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <TextView
+        android:id="@+id/scenes_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@color/widget_text"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/scenes_empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:textColor="@color/widget_muted"
+        android:textSize="12sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:orientation="horizontal"
+        tools:ignore="ButtonStyle">
+
+        <Button
+            android:id="@+id/scene_1"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:background="@drawable/widget_button"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAllCaps="false"
+            android:textColor="@color/widget_on_accent"
+            android:textSize="13sp"
+            android:layout_marginEnd="6dp" />
+
+        <Button
+            android:id="@+id/scene_2"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:background="@drawable/widget_button"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAllCaps="false"
+            android:textColor="@color/widget_on_accent"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:orientation="horizontal"
+        tools:ignore="ButtonStyle">
+
+        <Button
+            android:id="@+id/scene_3"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:background="@drawable/widget_button"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAllCaps="false"
+            android:textColor="@color/widget_on_accent"
+            android:textSize="13sp"
+            android:layout_marginEnd="6dp" />
+
+        <Button
+            android:id="@+id/scene_4"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:background="@drawable/widget_button"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAllCaps="false"
+            android:textColor="@color/widget_on_accent"
+            android:textSize="13sp" />
+    </LinearLayout>
+</LinearLayout>

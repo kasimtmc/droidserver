@@ -122,6 +122,7 @@ yer tutucu anahtar yerine yeni üretilmiş bir anahtarla). Sonrasında **Sunucu*
 | `static` | `enabled`, `path` (`/`), `spaFallback` (true): `files/www/` altındaki siteyi yayınlar (bkz. Dosyalar ve statik site) |
 | `backup` | `enabled`, `schedule` (cron, `0 4 * * *`), `keep` (7): zamanlanmış yedek (bkz. Yedekleme) |
 | `adminPanel` | `enabled`, `sessionHours` (12): tarayıcıdan `/_admin` paneli (bkz. Web yönetim paneli) |
+| `auth.passkeys` | `enabled`, `rpId` (alan adı, örn. `ev.duckdns.org`), `rpName`: passkey ile giriş (bkz. Passkey ile giriş) |
 | `scripts` | `enabled`, `timeoutMs` (2000), `cronTimeoutSec` (60), `allowedHosts` (`ctx.http` için), `env` (`ctx.env`'e ortak `env`'in üstüne eklenir; `secret:` referansı olabilir) — bkz. Script'ler |
 | `fields[].collection` | `relation` alanının hedef koleksiyonu (kendisi de olabilir: ağaç yapısı) |
 | `fields[].onDelete` | `relation`: hedef kayıt silinince `cascade` (bunlar da silinir), `set_null` (alan boşalır), `restrict` (silme 409 ile reddedilir). Boşsa zorunlu alanda `restrict`, değilse `set_null` |
@@ -149,7 +150,8 @@ yer tutucu anahtar yerine yeni üretilmiş bir anahtarla). Sonrasında **Sunucu*
 | `forms` | Herkese açık formlar: `name` (adres `/forms/<name>`), `collection`, `title`, `fields`, `successMessage`, `redirect` … (bkz. Formlar) |
 | `ai` | Yapay zekâ: `enabled`, `provider` (`claude`/`openai`/`gemini`), `url`, `apiKey` (`secret:`), `model`, `effort`, `access`, `dailyLimit`, `embeddings`, `semantic` (bkz. Yapay zekâ) |
 | `webdav` | Ağ sürücüsü: `enabled`, `path`, `username`, `password` (`secret:`), `readOnly`, `site`, `scripts`, `uploads`, `maxFileMb` (bkz. Ağ sürücüsü) |
-| `mqtt` | MQTT (IoT): `enabled`, `port` (1883), `username`, `password` (`secret:`), `routes` (`topic`, `collection`, `valueField`, `topicField`), `events`, `eventPrefix`, `maxClients` (bkz. MQTT) |
+| `mqtt` | MQTT (IoT): `enabled`, `port` (1883), `username`, `password` (`secret:`), `routes` (`topic`, `collection`, `valueField`, `topicField`), `events`, `eventPrefix`, `maxClients`, `devices` (cihaz başına kimlik), `scenes`, `homeAssistant` (bkz. MQTT) |
+| `sensors` | Sensör panosu: `collection`, `field`, `name`, `unit`, `deviceClass`, `min`, `max` (eşik uyarısı; bkz. MQTT → Ev otomasyonu) |
 | `replication` | Canlı kopya: `source`, `keepDays` (7), `replicaOf` (`url`, `key`, `intervalSec`), `failover` (`auto`, `afterSec` (120), `witness`, `failback`), `formerPrimary` (bkz. Canlı kopya) |
 
 Her tabloya otomatik `id`, `created_at`, `updated_at` eklenir. Migration veri silmez:
@@ -428,6 +430,43 @@ POST /api/auth/sms-code         {"phone":"+905551234567","code":"123456"}   # �
 **Web paneli:** Güvenlik adımında "Panelde doğrulayıcı kodu da iste" açılırsa panel girişi eşleştirme koduna ek olarak
 doğrulayıcı kodu ister; anahtar telefonda üretilir, şifreli depoda durur ("Doğrulayıcı uygulamaya ekle" veya kopyala).
 
+### Passkey ile giriş
+
+Sihirbaz → Güvenlik → **Passkey ile giriş** (`auth.passkeys`): parola yerine telefonun veya bilgisayarın kilidiyle
+(parmak izi, yüz, PIN) ya da bir güvenlik anahtarıyla giriş. Kullanıcılar hesaplarına, siz web paneline passkey eklersiniz.
+
+- **Alan adı gerekir:** WebAuthn bir alan adına (`rpId`) bağlıdır ve yalnızca HTTPS'te çalışır; **yerel IP ile çalışmaz.**
+  DuckDNS adı (doğrudan erişim + Let's Encrypt) veya adlandırılmış Cloudflare tüneli kullanın; sihirbaz varsa onu önerir.
+  Hızlı tünelin adresi her başlatmada değiştiği için uygun değildir. Ad değişirse eklenen passkey'ler çalışmaz.
+- Kullanıcı birden çok passkey ekleyebilir (en çok 10), listeler ve siler. Passkey girişi iki adımlı doğrulamanın ikinci
+  adımını istemez (cihaz + kilit ekranı zaten iki etkendir). Giriş e-posta sormaz: tarayıcı cihazdaki passkey'i önerir,
+  böylece bir e-postanın hesabı olup olmadığı yanıttan anlaşılamaz.
+- ES256 ve RS256 desteklenir (Android, iOS, Windows Hello, YubiKey). İmza sayacı gerilerse anahtar kopyalanmış
+  sayılır ve giriş reddedilir.
+- **Web paneli:** panele eşleştirme koduyla girip Konfigürasyon sekmesindeki **Panel passkey'leri**'nden bu tarayıcıyı ekleyin;
+  sonra giriş ekranında **Passkey ile giriş**. Panel passkey'leri kullanıcı hesaplarından ayrıdır.
+
+```bash
+POST /api/auth/passkeys/register-options        # (kullanıcı token'ı) → navigator.credentials.create seçenekleri
+POST /api/auth/passkeys {name, credential}      # tarayıcının yanıtı (ikili değerler base64url) → {id, name, createdAt}
+GET  /api/auth/passkeys    ·    DELETE /api/auth/passkeys/{id}
+POST /api/auth/passkeys/login-options            # → navigator.credentials.get seçenekleri
+POST /api/auth/passkeys/login {credential}       # → token çifti
+```
+
+Tarayıcıda SDK ile:
+
+```ts
+await ds.auth.login(email, parola);
+await ds.auth.registerPasskey("telefon");      // cihaz kilidi sorulur
+// sonraki girişlerde:
+await ds.auth.loginWithPasskey();
+```
+
+```json
+"auth": { "passkeys": { "enabled": true, "rpId": "ev.duckdns.org" } }
+```
+
 ### Kotalar
 
 `auth.users.quotas` ile (sihirbazda Kullanıcılar → Kotalar) her kullanıcıya üst sınır konur; boş bırakılan sınırsızdır,
@@ -537,8 +576,13 @@ curl -H "$H" "$BASE/auth/users?email=ali"                       # yönetici: lis
 - **Token'lar:** erişim token'ı HS256 JWT'dir; imza anahtarı veritabanında rastgele üretilir (yönetici JWT sırrından
   ayrı, kullanıcı token'ı yönetici yerine geçemez). Her istekte kullanıcı veritabanından okunur: silinen kullanıcının
   token'ı hemen geçersizleşir, rol değişikliği hemen geçerlidir. Yenileme token'ı rastgele 256 bittir, `_sessions`'ta
-  yalnızca SHA-256 özeti saklanır ve **tek kullanımlıktır** (her yenilemede yenisi verilir). Parola değişince veya
-  yönetici sıfırlayınca kullanıcının tüm oturumları kapanır.
+  yalnızca SHA-256 özeti saklanır ve **tek kullanımlıktır** (her yenilemede yenisi verilir; oturum aynı kalır). Kullanıcı
+  parolasını değiştirince diğer oturumları kapanır (değiştiren cihaz girişli kalır); yönetici sıfırlayınca tüm oturumları.
+- **Oturumlar:** `GET /api/auth/sessions` açık oturumları listeler (User-Agent'tan cihaz, adres, son kullanım, `current`);
+  `DELETE /api/auth/sessions/{id}` birini, `DELETE /api/auth/sessions` diğerlerinin hepsini kapatır. Kapatılan oturumun
+  erişim token'ı da süresini beklemeden hemen geçersizleşir. Yönetici `GET`/`DELETE /api/auth/users/{id}/sessions` ile,
+  uygulamada Kullanıcılar → **Oturumlar**'da ve panelin Kullanıcılar sekmesinde görür ve kapatır. SDK: `auth.sessions()`,
+  `auth.closeSession(id)`, `auth.closeOtherSessions()`.
 - **Giriş sınırı:** aynı istemciden aynı e-postaya 5, toplamda 20 hatalı denemeden sonra 15 dakika `429` (doğru parola da
   beklemelidir); ayrıca genel `authFailures` engeli geçerlidir.
 - E-posta doğrulama ve e-postayla parola sıfırlama yok (SMTP gerekir); yönetici uygulamadan sıfırlar.
@@ -1374,21 +1418,47 @@ node droidserver.mjs api GET /_jobs                              # herhangi bir 
 Sensörler, ESP32/Arduino ve Tasmota gibi cihazlar telefona MQTT ile bağlanır (Sunucu → **MQTT (IoT)**, `mqtt`).
 Telefonun kendi MQTT sunucusu vardır; ayrı bir broker gerekmez.
 
-- **Kimlik:** tüm cihazlar için ortak kullanıcı adı ve parola (parola boş bırakılırsa üretilir, şifreli depoda).
-  Hatalı denemeler güvenlik duvarına sayılır. Bağlantı düz TCP'dir (varsayılan 1883): yalnızca yerel ağda kullanın.
+- **Kimlik:** tüm cihazlar için ortak kullanıcı adı ve parola (parola boş bırakılırsa üretilir, şifreli depoda) ve/veya
+  **cihaz başına kimlik** (`mqtt.devices`): her cihazın adı kullanıcı adıdır, parolası ayrıdır; birini silmek diğerlerini
+  etkilemez. Cihaz listesi varken ortak giriş kapatılabilir (ortak parola boş). Durumda her bağlantının kimliği görünür.
+  Hatalı denemeler güvenlik duvarına sayılır. Bağlantı düz TCP'dir (varsayılan 1883) ve **yalnızca yerel ağda** çalışır:
+  internetten gelen bağlantılar reddedilir (ev ağı, telefonla aynı IPv6 ağı ve Tailscale kabul edilir).
 - **Mesajları kaydet:** konu süzgecine uyan mesaj koleksiyona kayıt olarak eklenir; otomasyonlar, webhook'lar ve canlı
   abonelik de tetiklenir. JSON nesnesinin alanları koleksiyonun alanlarına yazılır (bilinmeyenler atlanır); düz değer
   (`23.5`, `on`) değer alanına. Konu alanı süzgecin `+` bölümünü tutar (cihaz/oda adı).
 - **Kayıt olayları:** seçilen koleksiyonlardaki her değişiklik `droidserver/<koleksiyon>/<create|update|delete>`
   konusuna JSON olarak yayınlanır.
-- **Komut:** uygulamadan veya `POST /_mqtt/publish {"topic":"ev/salon/lamba","payload":"on"}` (yönetici) ile cihazlara
-  mesaj gönderin. Cihazlar birbirine de yayın yapabilir (`+`, `#` jokerleri).
-- QoS 0, 1 ve 2 ile gelen mesajlar alınır, abonelere QoS 0 ile iletilir; tutulan mesaj ve vasiyet yoktur.
+- **Komut:** uygulamadan veya `POST /_mqtt/publish {"topic":"ev/salon/lamba","payload":"on"}` (yönetici; `"retain": true`
+  ile tutulur) ile cihazlara mesaj gönderin. Cihazlar birbirine de yayın yapabilir (`+`, `#` jokerleri).
+- **Tutulan mesajlar (retain):** RETAIN bayraklı mesaj konunun son değeri olarak saklanır ve o konuya sonradan abone olan
+  cihaza hemen gönderilir (Home Assistant ve Tasmota durumları için); boş içerik saklananı siler. Deploy ve yeniden
+  başlatmalarda kalır; en çok 1000 konu ve toplam 4 MB.
+- QoS 0, 1 ve 2 ile gelen mesajlar alınır, abonelere QoS 0 ile iletilir; vasiyet (will) yoktur.
+
+**Ev otomasyonu:**
+
+- **Otomasyonda MQTT:** eylem **MQTT mesajı gönder** (konu ve içerikte `{alan}`, isteğe bağlı tutulan); tetikleyici
+  **MQTT mesajında** (konu süzgeci): cihaz mesajı kayda yazılmadan kuralı çalıştırır, içerik JSON ise alanları `{alan}`,
+  ayrıca `{topic}`, `{payload}`. Örnek: `ev/+/hareket` gelince `ev/salon/lamba = on`.
+- **Sahneler** (`mqtt.scenes`): adlı mesaj grupları (örn. "Akşam": lamba açık, perde kapalı). MQTT ekranından, ana
+  ekrandaki **DroidServer sahneler** widget'ından (ilk dördü), panelden veya `POST /api/_mqtt/scenes/<ad>` ile çalışır.
+- **Sensör panosu** (`sensors`; Sunucu → **Sensör panosu**, panelde Servisler): koleksiyondaki sayı veya evet/hayır alanı
+  için son 6 saat / 24 saat / 7 gün grafiği; `min`/`max` dışındaki yeni değer sağlık uyarısı verir (Telegram, e-posta,
+  bildirim). `GET /api/_sensors?hours=24`.
+- **Home Assistant** (`mqtt.homeAssistant.enabled`): Home Assistant'ın MQTT entegrasyonunu telefona bağlayın; sensörler
+  keşif mesajlarıyla (`homeassistant/sensor/…/config`, tutulan) kendiliğinden eklenir, değerler her yeni kayıtta
+  `droidserver/<koleksiyon>/state` konusuna gider. Listeden çıkarılan sensör Home Assistant'tan da kalkar.
+
+```json
+"sensors": [{ "collection": "readings", "field": "temp", "name": "Salon", "unit": "°C", "deviceClass": "temperature", "min": 15, "max": 28 }],
+"mqtt": { "homeAssistant": { "enabled": true },
+  "scenes": [{ "name": "Akşam", "messages": [{ "topic": "ev/salon/lamba", "payload": "on" }, { "topic": "ev/salon/perde", "payload": "kapali", "retain": true }] }] }
+```
 
 ```json
 "mqtt": { "enabled": true, "port": 1883, "username": "device", "password": "secret:mqtt_password_ab12cd34",
   "routes": [{ "topic": "sensors/+/temp", "collection": "readings", "valueField": "temp", "topicField": "device" }],
-  "events": ["readings"] }
+  "events": ["readings"], "devices": [{ "name": "esp-salon", "password": "secret:mqtt_device_9f3a1c2b" }] }
 ```
 
 ```bash
@@ -1428,7 +1498,8 @@ Bağlanma:
 Güvenlik:
 
 - Kimlik **Digest** ile doğrulanır; parola ağda açık gitmez, bu yüzden Windows düz HTTP'de de bağlanır. Basic yalnızca
-  HTTPS üzerinden (doğrudan erişim veya tünel) kabul edilir; internetten bağlanacaksanız HTTPS adresini kullanın.
+  HTTPS üzerinden (doğrudan erişim veya tünel) kabul edilir; internetten bağlanacaksanız HTTPS adresini kullanın. Ağ
+  sürücüsü ekranı bu adresi ayrıca gösterir (Linux'ta `davs://` GNOME, `webdavs://` KDE).
 - Hatalı parolalar güvenlik duvarının hatalı deneme sayacına girer (istemcilerin kimliksiz ilk isteği sayılmaz).
 - Yollar yalnızca paylaşılan klasörün içinde çözülür; `..`, sembolik bağlantılar ve klasör dışına çıkan yollar reddedilir.
 - Tek dosya en çok `maxFileMb` (varsayılan 2048 MB); yükleme geçici dosyaya yazılır, tamamlanınca yerine konur.
@@ -1962,3 +2033,9 @@ tools/          package-postgres.sh, package-cloudflared.sh (Termux derlemelerin
 - [x] **Takımlar:** kullanıcılar takım kurar ve üye ekler; `team` kuralıyla her takım yalnızca kendi kayıtlarını görür
 - [x] **Komut satırı (CLI):** bilgisayardan kayıtlar, dışa/içe aktarma, loglar, deploy ve yedek (tek dosya, Node.js)
 - [x] **MQTT (IoT):** telefonda MQTT sunucusu; cihaz mesajları koleksiyona, kayıt olayları cihazlara, uygulamadan komut
+- [x] **Sağlamlaştırma:** sorun gidericide "Kısıtlı" pil, alt süreç kısıtı ve sistemin servisi yeniden başlatması (nedeniyle); yeniden başlatma uyarısı
+- [x] **Web paneli eşitleme:** panelde Takımlar, Otomasyon (kurallar, formlar) ve Servisler (MQTT, ağ sürücüsü, canlı kopya ve devralma, YZ, uygulamalar, CLI)
+- [x] **Passkey ile giriş:** kullanıcılar ve web paneli için parolasız giriş (WebAuthn, alan adı ve HTTPS gerekir)
+- [x] **Oturum yönetimi:** açık oturumlar (cihaz, adres, son kullanım), tek tek veya hepsini kapatma; kapatılan oturumun token'ı hemen düşer
+- [x] **MQTT güvenliği:** yalnızca yerel ağ, cihaz başına kimlik, tutulan mesajlar
+- [x] **Ev otomasyonu:** otomasyonda MQTT eylemi ve tetikleyicisi, sahneler (widget dahil), sensör panosu ve eşik uyarısı, Home Assistant keşfi

@@ -18,6 +18,7 @@ import dev.droidserver.core.alerts.HealthMonitor
 import dev.droidserver.core.audit.AuditLog
 import dev.droidserver.core.jobs.JobQueue
 import dev.droidserver.core.alerts.AlertKind
+import dev.droidserver.core.api.RecordService
 import dev.droidserver.core.config.ReplicaSource
 import dev.droidserver.core.replication.Failover
 import dev.droidserver.core.replication.FailoverHost
@@ -52,12 +53,14 @@ import dev.droidserver.core.webhook.WebhookDispatcher
 import dev.droidserver.core.script.CronRunner
 import dev.droidserver.core.script.ScriptLoadException
 import dev.droidserver.core.script.ScriptRuntime
+import dev.droidserver.core.sensors.Sensors
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.json.JsonArray
 import java.io.File
 import java.time.Instant
 
@@ -363,7 +366,8 @@ class ServerEngine(
             }
             server = embeddedServer(CIO, port = config.server.port, host = config.server.host) {
                 droidServerModule(config, newDriver, startedAt, gate, fileStore, siteDir, resizer, scripts, metrics, adminSessions, adminHost, log = log, webhooks = webhooks, automationHost = automations, aiHost = ai, keyUsage = keyUsage, requestCounts = requestCounts, smsGuard = smsGuard, davDirs = mapOf("drive" to driveDir, "scripts" to scriptsDir), audit = audit, clientGuard = guard, health = health,
-                    phone = PhoneService(config.phone, phone, device, dataDir?.let { File(it, "phone-sms.json") }, audit), appsHost = appsHost, failover = failoverPort, mqttHost = mqtt)
+                    phone = PhoneService(config.phone, phone, device, dataDir?.let { File(it, "phone-sms.json") }, audit), appsHost = appsHost, failover = failoverPort, mqttHost = mqtt,
+                    mqttRetained = dataDir?.let { File(it, "mqtt-retained.json") })
             }.start(wait = false)
             cron = scripts?.let { CronRunner(it, log) { !gate.isPaused }.apply { start() } }
             config.replication.replicaOf?.let { src ->
@@ -460,6 +464,17 @@ class ServerEngine(
             }
         }
         return done.joinToString(", ").ifEmpty { tr("yapılacak bir şey yok") }
+    }
+
+    /** Sensör panosu (uygulamadaki "Sensörler" ekranı): son değerler ve son [hours] saatin grafiği; sensör yoksa null. Bloklayıcıdır. */
+    @Synchronized
+    fun sensors(hours: Long = 24): JsonArray? {
+        val cfg = running?.takeIf { it.sensors.isNotEmpty() } ?: return null
+        val db = driver ?: return null
+        val since = Instant.now().minusSeconds(hours * 3600)
+        return JsonArray(cfg.sensors.mapNotNull { s ->
+            cfg.collections.firstOrNull { it.name == s.collection }?.let { c -> Sensors.series(RecordService(db, c, collections = cfg.schemaCollections()), s, since) }
+        })
     }
 
     /** Kullanıcının kota kullanımı (uygulamadaki kullanıcı kartı); sunucu çalışmıyorsa veya hesaplar kapalıysa null. */

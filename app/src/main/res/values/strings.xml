@@ -2,4 +2,6 @@
 <resources>
     <string name="app_name" translatable="false">DroidServer</string>
     <string name="widget_description">Sunucunun durumu, adresi ve aç/kapat düğmesi</string>
+    <string name="scene_widget_description">MQTT sahnelerini tek dokunuşla çalıştırın</string>
+    <string name="scene_widget_label">DroidServer sahneler</string>
 </resources>

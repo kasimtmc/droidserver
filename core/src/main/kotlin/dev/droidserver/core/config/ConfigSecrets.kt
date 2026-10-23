@@ -73,7 +73,7 @@ object ConfigSecrets {
             ),
             env = config.env.mapValues { value(it.value) },
             webdav = config.webdav.copy(password = value(config.webdav.password)),
-            mqtt = config.mqtt.copy(password = value(config.mqtt.password)),
+            mqtt = config.mqtt.copy(password = value(config.mqtt.password), devices = config.mqtt.devices.map { it.copy(password = value(it.password)) }),
             ai = config.ai.copy(apiKey = value(config.ai.apiKey), embeddings = config.ai.embeddings?.let { it.copy(apiKey = value(it.apiKey)) }),
             apps = config.apps.map { a ->
                 a.copy(
@@ -185,7 +185,15 @@ object ConfigSecrets {
             dav["password"]?.stringOrNull()?.let { out["webdav"] = JsonObject(dav + ("password" to JsonPrimitive(transform("webdav_password", it)))) }
         }
         (json["mqtt"] as? JsonObject)?.let { mqtt ->
-            mqtt["password"]?.stringOrNull()?.let { out["mqtt"] = JsonObject(mqtt + ("password" to JsonPrimitive(transform("mqtt_password", it)))) }
+            val mapped = mqtt.toMutableMap()
+            mqtt["password"]?.stringOrNull()?.let { mapped["password"] = JsonPrimitive(transform("mqtt_password", it)) }
+            (mqtt["devices"] as? JsonArray)?.let { devices ->
+                mapped["devices"] = JsonArray(devices.map { d ->
+                    val o = d as? JsonObject ?: return@map d
+                    o["password"]?.stringOrNull()?.let { JsonObject(o + ("password" to JsonPrimitive(transform("mqtt_device", it)))) } ?: o
+                })
+            }
+            out["mqtt"] = JsonObject(mapped)
         }
         (json["ai"] as? JsonObject)?.let { ai ->
             val mapped = ai.toMutableMap()
