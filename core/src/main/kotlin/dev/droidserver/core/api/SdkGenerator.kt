@@ -300,7 +300,8 @@ object SdkGenerator {
         |   * Canlı abonelik (Server-Sent Events; yetki başlığıyla, fetch akışı üzerinden). Bağlantı koparsa kaldığı olaydan
         |   * devam eder. Dönen işlev aboneliği kapatır.
         |   */
-        |  subscribe(collections: string[], onEvent: (e: RealtimeEvent) => void, onError?: (e: unknown) => void): () => void {
+        |  /** [onReady]: abonelik sunucuda kurulunca (her yeniden bağlanmada); o andan sonraki olaylar kaçmaz. */
+        |  subscribe(collections: string[], onEvent: (e: RealtimeEvent) => void, onError?: (e: unknown) => void, onReady?: () => void): () => void {
         |    if (!this.realtimePath) throw new DroidServerError(404, "Canlı abonelik kapalı");
         |    const ctl = new AbortController();
         |    let lastId: string | undefined;
@@ -327,6 +328,7 @@ object SdkGenerator {
         |                else if (line.startsWith("data: ")) data += line.slice(6);
         |              }
         |              if (event === "message" && data) onEvent(JSON.parse(data));
+        |              else if (event === "ready") onReady?.();
         |            }
         |          }
         |        } catch (e) {
@@ -868,7 +870,8 @@ object SdkGenerator {
         |     * Canlı abonelik (Server-Sent Events) arka plan iş parçacığında; bağlantı koparsa kaldığı olaydan devam eder.
         |     * [Closeable.close] aboneliği kapatır.
         |     */
-        |    fun subscribe(collections: List<String>, onError: (Exception) -> Unit = {}, onEvent: (RealtimeEvent) -> Unit): Closeable {
+        |    /** [onReady]: abonelik sunucuda kurulunca (her yeniden bağlanmada); o andan sonraki olaylar kaçmaz. */
+        |    fun subscribe(collections: List<String>, onError: (Exception) -> Unit = {}, onReady: () -> Unit = {}, onEvent: (RealtimeEvent) -> Unit): Closeable {
         |        val path = realtimePath ?: throw DroidServerException(404, "Canlı abonelik kapalı")
         |        val open = AtomicBoolean(true)
         |        val conn = AtomicReference<HttpURLConnection?>()
@@ -892,6 +895,8 @@ object SdkGenerator {
         |                                    if (event == "message" && data.isNotEmpty()) {
         |                                        val o = DroidServerJson.parseToJsonElement(data.toString()).jsonObject
         |                                        onEvent(RealtimeEvent(o["action"]!!.jsonPrimitive.content, o["collection"]!!.jsonPrimitive.content, o["record"]!!.jsonObject))
+        |                                    } else if (event == "ready") {
+        |                                        onReady()
         |                                    }
         |                                    event = "message"
         |                                    data.setLength(0)

@@ -445,7 +445,8 @@ public class DroidServerBase: @unchecked Sendable {
 
     /// Canlı abonelik (Server-Sent Events): bağlantı koparsa kaldığı olaydan devam eder; hatalar `onError`'a gelir.
     /// Akışı dinlemeyi bırakmak (görevi iptal etmek) aboneliği kapatır.
-    public func subscribe(_ collections: [String], onError: (@Sendable (Error) -> Void)? = nil) -> AsyncStream<RealtimeEvent> {
+    /// `onReady`: abonelik sunucuda kurulunca (her yeniden bağlanmada); o andan sonraki olaylar kaçmaz.
+    public func subscribe(_ collections: [String], onError: (@Sendable (Error) -> Void)? = nil, onReady: (@Sendable () -> Void)? = nil) -> AsyncStream<RealtimeEvent> {
         AsyncStream { continuation in
             let task = Task { [self] in
                 guard let path = realtimePath else {
@@ -463,6 +464,7 @@ public class DroidServerBase: @unchecked Sendable {
                         if let id = lastId.value { r.setValue(id, forHTTPHeaderField: "Last-Event-ID") }
                         try await EventSource.run(r) { event, data, id in
                             if let id { lastId.value = id }
+                            if event == "ready" { onReady?(); return }
                             guard event == "message", !data.isEmpty,
                                   case .object(let o)? = try? droidServerDecoder.decode(JSONValue.self, from: Data(data.utf8)),
                                   let action = o["action"]?.string, let collection = o["collection"]?.string, case .object(let record)? = o["record"] else { return }
@@ -1059,7 +1061,9 @@ public actor OfflineCollection<T: Decodable & Sendable, I: Encodable & Sendable>
     public nonisolated func live(onError: (@Sendable (Error) -> Void)? = nil) -> Task<Void, Never> {
         Task {
             do { try await self.sync() } catch { onError?(error) }
-            for await _ in client.subscribe([name], onError: onError) {
+            // Abonelik kurulunca (ve her yeniden bağlanmada) bir kez daha: ilk eşitlemeyle bağlantı arasındaki değişiklik kaçmasın.
+            let ready: @Sendable () -> Void = { Task { do { try await self.sync() } catch { onError?(error) } } }
+            for await _ in client.subscribe([name], onError: onError, onReady: ready) {
                 do { try await self.sync() } catch { onError?(error) }
             }
         }
