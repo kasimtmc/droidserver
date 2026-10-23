@@ -13,7 +13,8 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
 /**
- * En küçük DER kodlayıcı: kendinden imzalı sertifika ve Let's Encrypt için sertifika isteği (CSR) üretmeye yetecek kadar.
+ * En küçük DER kodlayıcı: kendinden imzalı sertifika, yerel kök ve onun imzaladığı sunucu sertifikası (MQTT TLS), Let's
+ * Encrypt için sertifika isteği (CSR) üretmeye yetecek kadar.
  * Android'de BouncyCastle'ın tam sürümü olmadığı ve JDK'nın sertifika üreticisi dahili olduğu için elle yazıldı.
  */
 internal object Der {
@@ -21,6 +22,12 @@ internal object Der {
     const val COMMON_NAME = "2.5.4.3"
     const val SUBJECT_ALT_NAME = "2.5.29.17"
     const val EXTENSION_REQUEST = "1.2.840.113549.1.9.14"
+    const val BASIC_CONSTRAINTS = "2.5.29.19"
+    const val KEY_USAGE = "2.5.29.15"
+    const val EXT_KEY_USAGE = "2.5.29.37"
+    const val SERVER_AUTH = "1.3.6.1.5.5.7.3.1"
+    const val SUBJECT_KEY_ID = "2.5.29.14"
+    const val AUTHORITY_KEY_ID = "2.5.29.35"
 
     fun tlv(tag: Int, content: ByteArray): ByteArray {
         val out = ByteArrayOutputStream()
@@ -89,9 +96,12 @@ internal object Der {
         notBefore: ZonedDateTime,
         notAfter: ZonedDateTime,
         dnsName: String? = null,
+        /** Ek uzantılar ([extension] ile kurulmuş). */
+        extra: List<ByteArray> = emptyList(),
     ): X509Certificate {
         val algorithm = seq(oid(ECDSA_SHA256))
-        val extensions = dnsName?.let { explicit(3, seq(seq(oid(SUBJECT_ALT_NAME), octets(dnsNames(it))))) } ?: ByteArray(0)
+        val all = listOfNotNull(dnsName?.let { seq(oid(SUBJECT_ALT_NAME), octets(dnsNames(it))) }) + extra
+        val extensions = if (all.isEmpty()) ByteArray(0) else explicit(3, seq(*all.toTypedArray()))
         val tbs = seq(
             explicit(0, int(BigInteger.valueOf(2))), // v3
             int(BigInteger(64, SecureRandom()).add(BigInteger.ONE)),
@@ -105,6 +115,36 @@ internal object Der {
         val der = seq(tbs, algorithm, bits(sign(issuerKey, tbs)))
         return CertificateFactory.getInstance("X.509").generateCertificate(der.inputStream()) as X509Certificate
     }
+
+    /** Sertifika uzantısı: OID, kritik mi, değer (DER). */
+    fun extension(id: String, critical: Boolean, value: ByteArray): ByteArray =
+        if (critical) seq(oid(id), tlv(0x01, byteArrayOf(0xFF.toByte())), octets(value)) else seq(oid(id), octets(value))
+
+    /** basicConstraints: kök için `CA:TRUE`, sunucu için boş (CA değil). */
+    fun basicConstraints(ca: Boolean) = extension(BASIC_CONSTRAINTS, true, if (ca) seq(tlv(0x01, byteArrayOf(0xFF.toByte()))) else seq())
+
+    /** keyUsage: kök için digitalSignature + keyCertSign + cRLSign, sunucu için digitalSignature. */
+    fun keyUsage(ca: Boolean) = extension(KEY_USAGE, true, if (ca) tlv(0x03, byteArrayOf(1, 0x86.toByte())) else tlv(0x03, byteArrayOf(7, 0x80.toByte())))
+
+    /** extendedKeyUsage: TLS sunucusu. */
+    fun serverAuth() = extension(EXT_KEY_USAGE, false, seq(oid(SERVER_AUTH)))
+
+    /** Anahtar kimliği: açık anahtarın (BIT STRING içeriği) SHA-1 özeti (RFC 5280 4.2.1.2, yöntem 1). */
+    fun keyId(key: PublicKey): ByteArray {
+        val spki = key.encoded
+        // SubjectPublicKeyInfo'nun son öğesi BIT STRING; P-256'da içerik 65 baytlık nokta.
+        return java.security.MessageDigest.getInstance("SHA-1").digest(spki.copyOfRange(spki.size - 65, spki.size))
+    }
+
+    fun subjectKeyId(key: PublicKey) = extension(SUBJECT_KEY_ID, false, octets(keyId(key)))
+
+    fun authorityKeyId(issuer: PublicKey) = extension(AUTHORITY_KEY_ID, false, seq(tlv(0x80, keyId(issuer))))
+
+    /** subjectAltName: DNS adları (`[2]`) ve IP adresleri (`[7]`, 4 ya da 16 bayt). */
+    fun altNames(dns: List<String>, ips: List<java.net.InetAddress>) = extension(
+        SUBJECT_ALT_NAME, false,
+        seq(*(dns.map { tlv(0x82, it.toByteArray(Charsets.US_ASCII)) } + ips.map { tlv(0x87, it.address) }).toTypedArray()),
+    )
 
     /** PKCS#10 sertifika isteği: konu `CN=<host>`, subjectAltName `<host>`, anahtarın kendisiyle imzalı. */
     fun csr(host: String, publicKey: PublicKey, privateKey: PrivateKey): ByteArray {

@@ -19,6 +19,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.Base64
 import java.util.concurrent.atomic.AtomicLong
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocket
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -31,7 +33,9 @@ import kotlinx.serialization.json.jsonPrimitive
  * Her bağlantı kendi iş parçacığında. Gelen her yayın [onPublish]'e gider (koleksiyona yazma); [publish] sunucudan
  * abonelere gönderir (kayıt olayları, uygulamadan komut).
  *
- * Yalnızca yerel ağ: [fromInternet] true dönen adresten gelen bağlantı hemen kapatılır.
+ * Yalnızca yerel ağ: [fromInternet] true dönen adresten gelen bağlantı hemen kapatılır. [tls] verilirse [tlsPort]'ta
+ * TLS dinleyicisi de açılır (bağlam her bağlantıda istenir; sertifika yenilenince yeni bağlantılar yenisini alır);
+ * [plain] false ise düz port açılmaz.
  * Tutulan (retain) mesajlar: konu başına son mesaj saklanır, yeni aboneliğe RETAIN bayrağıyla gönderilir; boş içerik
  * siler. [retainedFile] verilirse deploy ve yeniden başlatmalar arasında kalır (en çok 5 sn'de bir yazılır).
  */
@@ -53,9 +57,14 @@ class MqttBroker(
     private val retainedFile: File? = null,
     /** Cihaz başına kimlik: kullanıcı adı → parola. [password] boşsa yalnızca bunlar bağlanabilir. */
     private val devices: Map<String, String> = emptyMap(),
+    /** Düz (şifresiz) [port] açılsın mı. */
+    private val plain: Boolean = true,
+    private val tlsPort: Int? = null,
+    /** TLS bağlamı (yerel kökle imzalı sertifika); null ise TLS dinleyicisi yok. */
+    private val tls: (() -> SSLContext)? = null,
 ) {
     /** Bağlı istemci (durum ekranı); [user] bağlandığı kullanıcı adı (ortak veya cihaz). */
-    data class ClientInfo(val id: String, val address: String, val connectedAt: Instant, val subscriptions: List<String>, val user: String? = null)
+    data class ClientInfo(val id: String, val address: String, val connectedAt: Instant, val subscriptions: List<String>, val user: String? = null, val tls: Boolean = false)
 
     /** Son mesajlar: zaman, konu, boyut, sonuç (kayıt kimliği veya hata). */
     data class Message(val at: Instant, val topic: String, val bytes: Int, val result: String)
@@ -66,13 +75,15 @@ class MqttBroker(
     private val recent = CopyOnWriteArrayList<Message>()
 
     private class Session(val socket: Socket, val id: String, val address: String, val connectedAt: Instant, val user: String?) {
+        val tls: Boolean get() = socket is SSLSocket
         val subs = CopyOnWriteArrayList<String>()
         val out: OutputStream = socket.getOutputStream()
         fun send(bytes: ByteArray) = synchronized(out) { out.write(bytes); out.flush() }
     }
 
     private val sessions = ConcurrentHashMap<String, Session>()
-    private var server: ServerSocket? = null
+    private val servers = CopyOnWriteArrayList<ServerSocket>()
+    private val lastHandshakeLog = AtomicLong()
     @Volatile private var running = false
     private val lastRejectLog = AtomicLong()
 
@@ -85,7 +96,7 @@ class MqttBroker(
 
     fun retainedTopics(): Set<String> = retained.keys.toSet()
 
-    fun clients(): List<ClientInfo> = sessions.values.map { ClientInfo(it.id, it.address, it.connectedAt, it.subs.toList(), it.user) }.sortedBy { it.connectedAt }
+    fun clients(): List<ClientInfo> = sessions.values.map { ClientInfo(it.id, it.address, it.connectedAt, it.subs.toList(), it.user, it.tls) }.sortedBy { it.connectedAt }
     fun recent(): List<Message> = recent.toList().asReversed()
 
     fun note(topic: String, bytes: Int, result: String) {
@@ -93,16 +104,39 @@ class MqttBroker(
         while (recent.size > 50) recent.removeAt(0)
     }
 
-    /** Dinlemeye başlar; port kullanılıyorsa IOException. */
+    /** Dinlemeye başlar; port kullanılıyorsa IOException (o zaman hiçbiri açık kalmaz). */
     fun start() {
         loadRetained()
-        val s = ServerSocket()
-        s.reuseAddress = true
-        s.bind(InetSocketAddress(InetAddress.getByName(host), port))
-        server = s
+        val listeners = listOfNotNull(port.takeIf { plain }?.let { it to null }, tls?.let { t -> (tlsPort ?: 8883) to t })
         running = true
+        for ((p, context) in listeners) {
+            val s = ServerSocket()
+            s.reuseAddress = true
+            try {
+                s.bind(InetSocketAddress(InetAddress.getByName(host), p))
+            } catch (e: IOException) {
+                runCatching { s.close() }
+                running = false
+                servers.forEach { runCatching { it.close() } }
+                servers.clear()
+                throw e
+            }
+            servers += s
+            accept(s, context)
+        }
+        if (retainedFile != null) {
+            Thread({
+                while (running) {
+                    try { Thread.sleep(5_000) } catch (_: InterruptedException) { break }
+                    saveRetained()
+                }
+            }, "ds-mqtt-retain").apply { isDaemon = true; start() }
+        }
+    }
+
+    private fun accept(s: ServerSocket, context: (() -> SSLContext)?) {
         Thread({
-            while (running) {
+            while (!s.isClosed) {
                 val socket = try {
                     s.accept()
                 } catch (_: IOException) {
@@ -119,23 +153,34 @@ class MqttBroker(
                     runCatching { socket.close() }
                     continue
                 }
-                Thread({ serve(socket, ip) }, "ds-mqtt-client").apply { isDaemon = true; start() }
+                Thread({
+                    val conn = if (context == null) socket else handshake(socket, ip, context)
+                    if (conn != null) serve(conn, ip)
+                }, "ds-mqtt-client").apply { isDaemon = true; start() }
             }
-        }, "ds-mqtt").apply { isDaemon = true; start() }
-        if (retainedFile != null) {
-            Thread({
-                while (running) {
-                    try { Thread.sleep(5_000) } catch (_: InterruptedException) { break }
-                    saveRetained()
-                }
-            }, "ds-mqtt-retain").apply { isDaemon = true; start() }
+        }, if (context == null) "ds-mqtt" else "ds-mqtt-tls").apply { isDaemon = true; start() }
+    }
+
+    /** TLS el sıkışması (10 sn); başarısızsa (cihaz köke güvenmiyor) bağlantı kapanır, dakikada bir loglanır. */
+    private fun handshake(socket: Socket, ip: String, context: () -> SSLContext): Socket? = try {
+        socket.tcpNoDelay = true
+        socket.soTimeout = 10_000
+        (context().socketFactory.createSocket(socket, ip, socket.port, true) as SSLSocket).apply {
+            useClientMode = false
+            startHandshake()
         }
+    } catch (e: Exception) {
+        val now = System.currentTimeMillis()
+        if (now - lastHandshakeLog.getAndSet(now) > 60_000) log(tr("MQTT TLS: {0} ile el sıkışma başarısız ({1}); cihaz yerel köke güveniyor mu?", ip, e.message ?: e.javaClass.simpleName))
+        runCatching { socket.close() }
+        null
     }
 
     fun stop() {
         running = false
         saveRetained()
-        runCatching { server?.close() }
+        servers.forEach { runCatching { it.close() } }
+        servers.clear()
         sessions.values.forEach { runCatching { it.socket.close() } }
         sessions.clear()
     }

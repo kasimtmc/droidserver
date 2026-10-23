@@ -12,6 +12,7 @@ import dev.droidserver.core.apps.GitFetcher
 import dev.droidserver.core.config.GitProvider
 import dev.droidserver.core.config.GitSource
 import dev.droidserver.core.packages.PackageFile
+import dev.droidserver.core.net.LocalCa
 import dev.droidserver.core.payments.PaymentGateway
 import dev.droidserver.core.payments.PaymentGateways
 import dev.droidserver.core.payments.PaymentHost
@@ -301,6 +302,8 @@ fun Application.droidServerModule(
     paymentGateways: Map<PaymentProvider, PaymentGateway>? = null,
     /** Uygulamanın ödemelere eriştiği yer (iade); sunucu durunca boşalır. */
     paymentHost: PaymentHost? = null,
+    /** MQTT TLS'in yerel kökü (uygulama); yoksa TLS dinleyicisi açılmaz. */
+    mqttCa: LocalCa? = null,
 ) {
     if (metrics != null) {
         install(MetricsPlugin) {
@@ -574,6 +577,8 @@ fun Application.droidServerModule(
 
     // MQTT (IoT): cihaz mesajları koleksiyona yazılır (aşağıda, kayıt ekleme tanımlandıktan sonra bağlanır).
     var mqttIngest: ((String, ByteArray) -> String)? = null
+    if (config.mqtt.enabled && config.mqtt.tls && mqttCa == null) log(tr("MQTT TLS açılamadı: yerel kök sertifika bu ortamda yok"))
+    val mqttTls = mqttCa?.takeIf { config.mqtt.enabled && config.mqtt.tls }
     val mqtt = config.mqtt.takeIf { it.enabled }?.let { m ->
         MqttBroker(
             m.port, m.username, m.password, config.server.host, m.maxClients,
@@ -588,11 +593,13 @@ fun Application.droidServerModule(
             fromInternet = { a -> AddressScope.of(a) == AddressScope.PUBLIC && !LocalNetworks.contains(a) },
             retainedFile = mqttRetained,
             devices = m.devices.filter { it.enabled }.associate { it.name to it.password },
+            plain = m.plain || mqttTls == null, tlsPort = m.tlsPort, tls = mqttTls?.let { ca -> { ca.sslContext() } },
         )
     }?.takeIf { b ->
+        val ports = listOfNotNull(config.mqtt.port.takeIf { config.mqtt.plain || mqttTls == null }?.toString(), mqttTls?.let { "${config.mqtt.tlsPort} (TLS)" }).joinToString()
         runCatching { b.start() }
-            .onSuccess { log("MQTT ${config.mqtt.port} portunda dinliyor") }
-            .onFailure { log("MQTT başlatılamadı (${config.mqtt.port}): ${it.message}") }
+            .onSuccess { log("MQTT $ports portunda dinliyor") }
+            .onFailure { log("MQTT başlatılamadı ($ports): ${it.message}") }
             .isSuccess
     }
     if (mqtt != null) {
@@ -917,11 +924,21 @@ fun Application.droidServerModule(
                 })
             }
 
+            endpoint(paths, Endpoint.MQTT_CA) {
+                requireAdmin(call.caller())
+                val ca = mqttCa ?: throw ApiException(404, tr("Yerel kök sertifika bu ortamda yok"))
+                call.response.headers.append(HttpHeaders.ContentDisposition, "attachment; filename=\"droidserver-ca.pem\"")
+                call.respondText(io { ca.rootPem }, ContentType.parse("application/x-pem-file"))
+            }
             endpoint(paths, Endpoint.MQTT) {
                 requireAdmin(call.caller())
                 call.respond(buildJsonObject {
                     put("enabled", JsonPrimitive(config.mqtt.enabled))
                     put("port", JsonPrimitive(config.mqtt.port))
+                    put("plain", JsonPrimitive(config.mqtt.plain || mqttTls == null))
+                    put("tls", JsonPrimitive(mqttTls != null))
+                    put("tlsPort", JsonPrimitive(config.mqtt.tlsPort))
+                    mqttTls?.let { put("caFingerprint", JsonPrimitive(it.root.fingerprint)) }
                     put("listening", JsonPrimitive(mqtt != null))
                     mqtt?.let { b ->
                         put("received", JsonPrimitive(b.received.get()))
@@ -934,6 +951,7 @@ fun Application.droidServerModule(
                                 put("id", JsonPrimitive(cl.id))
                                 put("address", JsonPrimitive(cl.address))
                                 put("user", JsonPrimitive(cl.user))
+                                put("tls", JsonPrimitive(cl.tls))
                                 put("connectedAt", JsonPrimitive(cl.connectedAt.toString()))
                                 put("subscriptions", JsonArray(cl.subscriptions.map(::JsonPrimitive)))
                             }

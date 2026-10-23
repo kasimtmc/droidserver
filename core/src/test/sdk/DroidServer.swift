@@ -1,4 +1,4 @@
-// DroidServer istemcisi: "SDK deneme" sunucusu için üretildi (konfigürasyon v21).
+// DroidServer istemcisi: "SDK deneme" sunucusu için üretildi (konfigürasyon v22).
 // Konfigürasyon değişince yeniden indirin: GET <API>/_sdk/{ts|kotlin|dart|swift} (yönetici) veya uygulama/panel.
 // Gerekenler: Swift 5.9+ (async/await); bağımlılık yok. Apple platformları ve Linux (FoundationNetworking).
 //

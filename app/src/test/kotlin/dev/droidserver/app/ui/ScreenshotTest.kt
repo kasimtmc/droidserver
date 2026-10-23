@@ -3,6 +3,7 @@ package dev.droidserver.app.ui
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -371,6 +372,17 @@ class ScreenshotTest {
         click("Sunucu")
         click("Ödemeler")
         shot("36-odemeler")
+    }
+
+    @Test
+    fun mqttTls() {
+        running { c -> c.copy(mqtt = MqttConfig(enabled = true, password = "cihaz-parolasi", tls = true)) }
+        render()
+        click("Sunucu")
+        click("MQTT (IoT)")
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Kökün SHA-256 parmak izi").fetchSemanticsNodes().isNotEmpty() }
+        click("Kökün SHA-256 parmak izi")
+        shot("37-mqtt-tls")
     }
 
     @Test
