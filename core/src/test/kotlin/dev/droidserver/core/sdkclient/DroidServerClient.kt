@@ -452,7 +452,13 @@ class Teams(
 }
 
 /** Abonelikler: planlar, ödeme sayfası (rol ödeme bildirimi gelince verilir) ve kullanıcının abonelikleri. Yanıtlar JSON. */
-class Payments(private val client: DroidServerBase, private val plans: String?, private val subscribe: String?, private val subscriptions: String?) {
+class Payments(
+    private val client: DroidServerBase,
+    private val plans: String?,
+    private val subscribe: String?,
+    private val subscriptions: String?,
+    private val cancel: String?,
+) {
     private fun at(p: String?, key: String) = p ?: throw DroidServerException(404, "Bu ödeme ucu kapalı: " + key)
 
     /** `{items: [{name, title, provider, role}]}` */
@@ -461,8 +467,11 @@ class Payments(private val client: DroidServerBase, private val plans: String?, 
     /** `{plan, url}`: kullanıcıyı ödeme sayfasına ([url]) yönlendirin. */
     fun subscribe(plan: String): JsonObject = client.request("POST", at(subscribe, "subscribe"), json = buildJsonObject { put("plan", JsonPrimitive(plan)) })!!.jsonObject
 
-    /** `{items: [{id, plan, provider, status, period_end, manage_url}]}` */
+    /** `{items: [{id, plan, provider, status, period_end, canceling}]}` */
     fun subscriptions(): JsonObject = client.request("GET", at(subscriptions, "subscriptions"))!!.jsonObject
+
+    /** Aboneliği dönem sonunda bitirir; rol dönem bitene kadar kalır. */
+    fun cancel(id: Long): JsonObject = client.request("POST", at(cancel, "cancel").replace("{id}", id.toString()))!!.jsonObject
 }
 
 class Auth(

@@ -1400,12 +1400,16 @@ olarak `<publicUrl>/payments/hook/<stripe|iyzico|paddle>` girilir (ekranda kopya
   Yeni kayıtta çalışır; güncellemede koşul `payment_url[null]=true` istemeli (bağlantı bir kez üretilir).
 - **Durum:** `pending`, `paid`, `failed`, `canceled`, `refunded`. Bağlı kayıtta `payment_status` alanı (`statusField`)
   varsa oraya yazılır ve otomasyonlar, canlı aboneler, webhook'lar duyar. Ödenmiş ödeme geri gitmez (sırasız olay);
-  aynı bildirim ikinci kez gelirse yok sayılır (`_payment_events`). iyzico'da sonuç her zaman iyzico'ya sorulur, iadeler
-  kendiliğinden gelmez.
+  aynı bildirim ikinci kez gelirse yok sayılır (`_payment_events`). iyzico'da sonuç her zaman iyzico'ya sorulur; iyzico
+  panelinden yapılan iadeler altı saatte bir raporlama servisinden bulunur (son 90 gün).
+- **İade:** Ödemeler ekranında veya panelde ödenmiş ödemenin yanında **İade et**, API'de `POST /api/_payments/<id>/refund`
+  (tam iade). Stripe ve iyzico hemen onaylar; Paddle'da çoğu iade onay bekler, durum onay bildirimiyle `refunded` olur.
 - **Abonelik** (Stripe, Paddle): planlar (`plans`: ad, başlık, sağlayıcıdaki fiyat kimliği, rol, isteğe bağlı kota).
   Kullanıcı `POST /api/payments/subscribe {"plan"}` ile ödeme sayfasına gider; abonelik sürdükçe planın rolünü alır,
   bitince önceki rolüne döner (yönetici rolü değişmez). Planın `quotas`'ı o roldeki kullanıcılara genel kota yerine
-  uygulanır. `GET /api/payments/plans`, `GET /api/payments/subscriptions`; SDK'larda `payments`.
+  uygulanır. `GET /api/payments/plans`, `GET /api/payments/subscriptions`; kullanıcı aboneliğini
+  `POST /api/payments/subscriptions/<id>/cancel` ile **dönem sonunda** bitirir (rol dönem bitene kadar kalır,
+  `canceling: true`). SDK'larda `payments` (`plans`, `subscribe`, `subscriptions`, `cancel`).
 - **Makbuz:** sağlayıcının belgesi varsa ona (Stripe makbuzu, Paddle faturası), yoksa sunucunun ürettiği basit PDF
   (satıcı `merchant`). Fatura yerine geçmez.
 - **Şablonlar:** ödemeler açıkken kurulan **Mağaza ve sipariş** ve **Randevu** şablonlarına ödeme eklenir. Randevuda

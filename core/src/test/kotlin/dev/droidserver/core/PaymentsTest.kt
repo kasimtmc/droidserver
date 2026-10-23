@@ -51,6 +51,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Before
+import org.junit.runner.RunWith
+import org.junit.runners.Parameterized
 import java.net.InetSocketAddress
 import java.net.URLDecoder
 import java.time.Instant
@@ -61,8 +63,15 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** Faz 18.9: ödemeler. Sağlayıcıların API'leri sahte sunucuda (gerçek ödeme yok); bildirimler gerçek imzayla. */
-class PaymentsTest {
+/** Faz 18.9: ödemeler. Sağlayıcıların API'leri sahte sunucuda (gerçek ödeme yok); bildirimler gerçek imzayla. SQLite ve PostgreSQL. */
+@RunWith(Parameterized::class)
+class PaymentsTest(private val dialect: Dialect) {
+    companion object {
+        @JvmStatic
+        @Parameterized.Parameters(name = "{0}")
+        fun dialects() = Dialect.entries.toList()
+    }
+
     private val key = "yonetici-anahtari-1234567890"
     private val orders = CollectionConfig(
         "orders",
@@ -105,10 +114,11 @@ class PaymentsTest {
     private val seen = CopyOnWriteArrayList<Seen>()
     private var iyzicoStatus = "SUCCESS"
     private var paddleStatus = "completed"
+    private var iyzicoRefund = "NOT_REFUNDED"
 
     @Before
     fun open() {
-        db = TestDb.create(Dialect.SQLITE).open()
+        db = TestDb.create(dialect).open()
         SchemaMigrator(db).migrate(config.schemaCollections())
         fake = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
             createContext("/") { ex ->
@@ -123,6 +133,12 @@ class PaymentsTest {
                     path.endsWith("/auth/ecom/detail") -> """{"status":"success","paymentStatus":"$iyzicoStatus","fraudStatus":1,"paymentId":"9001","token":"iyz-token"}"""
                     path == "/paddle/transactions" -> """{"data":{"id":"txn_1","status":"draft","checkout":{"url":"https://ornek.example.com/payments/paddle?_ptxn=txn_1"}}}"""
                     path == "/paddle/transactions/txn_1/invoice" -> """{"data":{"url":"https://paddle.test/invoice.pdf"}}"""
+                    path == "/stripe/v1/refunds" -> """{"id":"re_1","status":"succeeded","payment_intent":"pi_1"}"""
+                    path.startsWith("/stripe/v1/subscriptions/") -> """{"id":"sub_s","cancel_at_period_end":true}"""
+                    path.endsWith("/v2/payment/refund") -> """{"status":"success","paymentId":"9001","price":"50.0"}"""
+                    path.contains("/v2/reporting/payment/details") -> """{"status":"success","payments":[{"paymentId":"9001","paymentRefundStatus":"$iyzicoRefund"}]}"""
+                    path == "/paddle/adjustments" -> """{"data":{"id":"adj_1","status":"pending_approval","transaction_id":"txn_1"}}"""
+                    path == "/paddle/subscriptions/sub_1/cancel" -> """{"data":{"id":"sub_1","status":"active","scheduled_change":{"action":"cancel"}}}"""
                     path.startsWith("/paddle/transactions/") -> """{"data":{"id":"txn_1","status":"$paddleStatus"}}"""
                     else -> """{"error":{"message":"yok"}}"""
                 }
@@ -195,10 +211,15 @@ class PaymentsTest {
         val receipt = createClient { followRedirects = false }.get("/payments/$token/receipt")
         assertEquals("https://pay.stripe.test/receipts/ch_1", receipt.headers["Location"])
 
-        // Tam iade: ödeme niyetinden eşleşir; ödendi → iade.
-        val refund = """{"id":"evt_2","type":"charge.refunded","data":{"object":{"id":"ch_1","payment_intent":"pi_1","refunded":true,"receipt_url":"https://pay.stripe.test/receipts/ch_1"}}}"""
-        client.post("/payments/hook/stripe") { header("Stripe-Signature", stripeSig(refund)); setBody(refund) }
+        // Yöneticinin tam iadesi: ödeme niyetiyle; Stripe onaylayınca hemen iade.
+        val refunded = client.post("/api/_payments/${p.s("id")}/refund") { bearerAuth(key) }
+        assertEquals("refunded", json(refunded.bodyAsText()).s("status"), refunded.bodyAsText())
+        assertEquals("pi_1", form(seen.last { it.path == "/stripe/v1/refunds" }.body)["payment_intent"])
         assertEquals("refunded", json(client.get("/api/collections/orders/records/${order.s("id")}") { bearerAuth(key) }.bodyAsText()).s("payment_status"))
+        assertEquals(409, client.post("/api/_payments/${p.s("id")}/refund") { bearerAuth(key) }.status.value, "ikinci iade")
+        // Ardından gelen bildirim (ödeme niyetinden eşleşir) bir şey değiştirmez.
+        val refund = """{"id":"evt_2","type":"charge.refunded","data":{"object":{"id":"ch_1","payment_intent":"pi_1","refunded":true,"receipt_url":"https://pay.stripe.test/receipts/ch_1"}}}"""
+        assertEquals("1", json(client.post("/payments/hook/stripe") { header("Stripe-Signature", stripeSig(refund)); setBody(refund) }.bodyAsText()).s("received"))
         // Sırasız gelen eski olay ödenmişi geri almaz.
         val list = json(client.get("/api/_payments?status=refunded") { bearerAuth(key) }.bodyAsText())
         assertEquals(1, list.getValue("items").jsonArray.size)
@@ -238,6 +259,19 @@ class PaymentsTest {
         val sig = hmacHex("sandbox-gizli", "sandbox-gizli" + "CHECKOUT_FORM_AUTH" + "9001" + "iyz-token" + p.s("token") + "SUCCESS")
         assertEquals("1", json(client.post("/payments/hook/iyzico") { header("X-IYZ-SIGNATURE-V3", sig); setBody(hook) }.bodyAsText()).s("received"))
 
+        // Panelden yapılan iade raporlamadan bulunur (GET imzası yalnızca yolla).
+        val row = json(client.get("/api/_payments/${p.s("id")}") { bearerAuth(key) }.bodyAsText())
+        val iyz = gateways().getValue(PaymentProvider.IYZICO)
+        val stored = JsonObject(row + ("amount" to kotlinx.serialization.json.JsonPrimitive(5000)))
+        assertEquals(false, iyz.refunded(stored))
+        val report = seen.last()
+        assertEquals("/iyzico/v2/reporting/payment/details?paymentId=9001", report.path)
+        val rauth = Base64.getDecoder().decode(report.headers.getValue("authorization").removePrefix("IYZWSv2 ")).decodeToString()
+        val rrnd = rauth.substringAfter("&randomKey:").substringBefore("&")
+        assertTrue(rauth.endsWith(hmacHex("sandbox-gizli", rrnd + "/v2/reporting/payment/details")), rauth)
+        iyzicoRefund = "TOTALLY_REFUNDED"
+        assertEquals(true, iyz.refunded(stored))
+
         val pdf = client.get("/payments/${p.s("token")}/receipt")
         assertEquals("application/pdf", pdf.headers["Content-Type"])
         val bytes = pdf.bodyAsBytes()
@@ -245,6 +279,12 @@ class PaymentsTest {
         // Türkçe harfler ISO-8859-9 kodlarıyla (Ş = \336) ve glif eşlemesiyle.
         val text = bytes.toString(Charsets.ISO_8859_1)
         assertTrue("\\326rnek \\336irket" in text && "/Scedilla" in text && "50,00 TRY" in text, text.take(1500))
+
+        // Yöneticinin iadesi: ödeme kimliği ve tutarla (v2); iyzico onaylayınca hemen.
+        assertEquals("refunded", json(client.post("/api/_payments/${p.s("id")}/refund") { bearerAuth(key) }.bodyAsText()).s("status"))
+        val refund = json(seen.last().body)
+        assertEquals("9001", refund.s("paymentId"))
+        assertEquals("50.00", refund.s("price"))
     }
 
     @Test
@@ -262,17 +302,27 @@ class PaymentsTest {
         assertEquals(uid, sent.getValue("custom_data").jsonObject.s("ds_user"))
         assertEquals("Bearer pdl_sdbx_apikey_x", seen.last().headers["authorization"])
 
-        fun event(id: String, status: String) = """{"event_id":"$id","event_type":"subscription.${if (status == "active") "activated" else status}","occurred_at":"2026-10-23T10:00:00Z","data":{"id":"sub_1","status":"$status","custom_data":{"ds_user":"$uid"},"items":[{"price":{"id":"pri_pro"}}],"current_billing_period":{"ends_at":"2026-11-23T10:00:00Z"},"management_urls":{"cancel":"https://paddle.test/cancel"}}}"""
+        fun event(id: String, status: String) = """{"event_id":"$id","event_type":"subscription.${if (status == "active") "activated" else status}","occurred_at":"2026-10-23T10:00:00Z","data":{"id":"sub_1","status":"$status","custom_data":{"ds_user":"$uid"},"items":[{"price":{"id":"pri_pro"}}],"current_billing_period":{"ends_at":"2026-11-23T10:00:00Z"}}}"""
         val active = event("evt_a", "active")
         assertEquals(400, client.post("/payments/hook/paddle") { header("Paddle-Signature", "ts=1;h1=00"); setBody(active) }.status.value)
         client.post("/payments/hook/paddle") { header("Paddle-Signature", paddleSig(active)); setBody(active) }
         assertEquals("pro", json(client.get("/api/auth/me") { bearerAuth(user) }.bodyAsText()).s("role"))
         val mine = json(client.get("/api/payments/subscriptions") { bearerAuth(user) }.bodyAsText()).getValue("items").jsonArray
         assertEquals("active", mine[0].jsonObject.s("status"))
-        assertEquals("https://paddle.test/cancel", mine[0].jsonObject.s("manage_url"))
+        assertEquals("false", mine[0].jsonObject.s("canceling"))
         assertFalse("previous_role" in mine[0].jsonObject)
         // Plan kotası (günlük 1000 istek) uygulanır: kullanım özetinde görünür.
         assertEquals("1000", json(client.get("/api/auth/me/usage") { bearerAuth(user) }.bodyAsText()).getValue("requests").jsonObject.s("limit"))
+
+        // Kullanıcı aboneliği dönem sonunda bitirir: rol sürer, abonelik "bitecek" olarak işaretlenir.
+        val sid = mine[0].jsonObject.s("id")
+        val other = json(client.post("/api/auth/signup") { contentType(ContentType.Application.Json); setBody("""{"email":"baska@example.com","password":"parola-1234"}""") }.bodyAsText()).s("token")
+        assertEquals(404, client.post("/api/payments/subscriptions/$sid/cancel") { bearerAuth(other) }.status.value, "başkasının aboneliği")
+        val cancel = json(client.post("/api/payments/subscriptions/$sid/cancel") { bearerAuth(user) }.bodyAsText())
+        assertEquals("true", cancel.s("canceling"))
+        assertEquals("/paddle/subscriptions/sub_1/cancel", seen.last().path)
+        assertEquals("next_billing_period", json(seen.last().body).s("effective_from"))
+        assertEquals("pro", json(client.get("/api/auth/me") { bearerAuth(user) }.bodyAsText()).s("role"))
 
         val canceled = event("evt_c", "canceled")
         client.post("/payments/hook/paddle") { header("Paddle-Signature", paddleSig(canceled)); setBody(canceled) }
@@ -288,6 +338,15 @@ class PaymentsTest {
         assertEquals("/payments/${p.s("token")}", done.headers["Location"])
         assertTrue("Ödendi" in client.get("/payments/${p.s("token")}").bodyAsText(), "bildirim gecikse de durum Paddle'a sorulur")
         assertEquals("https://paddle.test/invoice.pdf", createClient { followRedirects = false }.get("/payments/${p.s("token")}/receipt").headers["Location"])
+
+        // İade Paddle'ın onayını bekler: durum ödenmiş kalır, onay bildirimiyle iade olur.
+        assertEquals("paid", json(client.post("/api/_payments/${p.s("id")}/refund") { bearerAuth(key) }.bodyAsText()).s("status"))
+        val adj = json(seen.last().body)
+        assertEquals("full", adj.s("type"))
+        assertEquals("txn_1", adj.s("transaction_id"))
+        val approved = """{"event_id":"evt_adj","event_type":"adjustment.updated","data":{"id":"adj_1","action":"refund","status":"approved","transaction_id":"txn_1"}}"""
+        client.post("/payments/hook/paddle") { header("Paddle-Signature", paddleSig(approved)); setBody(approved) }
+        assertEquals("refunded", json(client.get("/api/_payments/${p.s("id")}") { bearerAuth(key) }.bodyAsText()).s("status"))
     }
 
     @Test
@@ -320,7 +379,7 @@ class PaymentsTest {
         val plain = AppTemplate.SHOP.apply(base.copy(payments = PaymentsConfig()), site = false)
         assertTrue(plain.automations.isEmpty() && plain.collections.none { c -> c.fields.any { it.name == "payment_url" } }, "ödemeler kapalıysa eklenmez")
 
-        val tdb = TestDb.create(Dialect.SQLITE).open()
+        val tdb = TestDb.create(dialect).open()
         SchemaMigrator(tdb).migrate(applied.schemaCollections())
         application { droidServerModule(applied, tdb, paymentGateways = gateways(applied)) }
         val user = json(client.post("/api/auth/signup") { contentType(ContentType.Application.Json); setBody("""{"email":"mus@example.com","password":"parola-1234"}""") }.bodyAsText()).s("token")

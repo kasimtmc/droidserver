@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -95,6 +96,8 @@ fun PaymentsScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit, onA
     var check by remember { mutableStateOf<Boolean?>(null) }
     var tick by remember { mutableIntStateOf(0) }
     var recent by remember { mutableStateOf<List<JsonObject>?>(null) }
+    var refunding by remember { mutableStateOf<JsonObject?>(null) }
+    var refundError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(tick) { recent = withContext(Dispatchers.IO) { runCatching { g.engine.recentPayments() }.getOrNull() } }
     LaunchedEffect(Unit) { while (true) { delay(10_000); tick++ } }
@@ -121,6 +124,26 @@ fun PaymentsScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit, onA
             )
         }
         if (errors.isEmpty()) drafts.values.forEach { it.secretKey = ""; it.apiKey = ""; it.webhookSecret = "" }
+    }
+
+    refunding?.let { p ->
+        val amount = Money.format((p["amount"] as? JsonPrimitive)?.longOrNull ?: 0, (p["currency"] as? JsonPrimitive)?.contentOrNull ?: "TRY")
+        AlertDialog(
+            onDismissRequest = { refunding = null },
+            title = { Text(tr("İade edilsin mi?")) },
+            text = { Text(tr("{0} ({1}) alıcıya tam iade edilir. Bu geri alınamaz.", (p["description"] as? JsonPrimitive)?.contentOrNull.orEmpty(), amount)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val id = (p["id"] as JsonPrimitive).content.toLong()
+                    refunding = null
+                    scope.launch {
+                        refundError = withContext(Dispatchers.IO) { runCatching { g.engine.payments.refund(id) }.exceptionOrNull()?.message }
+                        tick++
+                    }
+                }) { Text(tr("İade et")) }
+            },
+            dismissButton = { TextButton(onClick = { refunding = null }) { Text(tr("Vazgeç")) } },
+        )
     }
 
     ScreenScaffold(tr("Ödemeler"), subtitle = initial.providers.filter { it.enabled }.joinToString { it.provider.title }.ifEmpty { tr("Kapalı") }, onBack = onBack) { modifier ->
@@ -193,7 +216,7 @@ fun PaymentsScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit, onA
                         Text(
                             when (p) {
                                 PaymentProvider.STRIPE -> tr("Stripe → Geliştiriciler → Webhook'lar: adresi ekleyin; olaylar checkout.session.*, charge.refunded ve (abonelikte) customer.subscription.*. İmza sırrı whsec_ ile başlar.")
-                                PaymentProvider.IYZICO -> tr("Ödemenin sonucu alıcı döndüğünde iyzico'ya sorulur. Üye işyeri panelinde bildirim adresini de ekleyebilirsiniz. İadeler kendiliğinden gelmez.")
+                                PaymentProvider.IYZICO -> tr("Ödemenin sonucu alıcı döndüğünde iyzico'ya sorulur. Üye işyeri panelinde bildirim adresini de ekleyebilirsiniz. Panelden yapılan iadeler altı saatte bir sorulur.")
                                 PaymentProvider.PADDLE -> tr("Paddle → Developer tools → Notifications: adresi ekleyin (transaction.*, adjustment.*, subscription.*). Checkout settings'te varsayılan ödeme bağlantısını yukarıdaki adres yapın.")
                             },
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -229,8 +252,13 @@ fun PaymentsScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit, onA
 
             recent?.let { list ->
                 SectionCard(tr("Son ödemeler")) {
+                    refundError?.let { ErrorText(it) }
                     if (list.isEmpty()) Text(tr("Henüz ödeme yok."), style = MaterialTheme.typography.bodySmall)
-                    list.forEach { PaymentRow(it) }
+                    list.forEach { p ->
+                        PaymentRow(p) {
+                            refunding = p
+                        }
+                    }
                 }
             }
         }
@@ -279,7 +307,7 @@ private fun PlanForm(roles: List<String>, onAdd: (PaymentPlan) -> Unit) {
 }
 
 @Composable
-private fun PaymentRow(p: JsonObject) {
+private fun PaymentRow(p: JsonObject, onRefund: () -> Unit) {
     fun s(k: String) = (p[k] as? JsonPrimitive)?.contentOrNull
     val amount = (p["amount"] as? JsonPrimitive)?.longOrNull ?: 0
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -292,6 +320,7 @@ private fun PaymentRow(p: JsonObject) {
             )
         }
         Pill(statusLabel(s("status")))
+        if (s("status") == "paid") TextButton(onClick = onRefund) { Text(tr("İade et")) }
     }
 }
 

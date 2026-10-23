@@ -1724,7 +1724,14 @@ function paymentsCard() {
       el("tbody", {}, r.items.map((p) => el("tr", {},
         el("td", {}, new Date(p.created_at).toLocaleString()), el("td", {}, p.description || ""), el("td", {}, p.amount + " " + p.currency),
         el("td", {}, p.provider), el("td", {}, label[p.status] || p.status),
-        el("td", {}, el("a", { href: p.page, target: "_blank", rel: "noopener" }, T("Sayfa")))))))));
+        el("td", {}, el("a", { href: p.page, target: "_blank", rel: "noopener" }, T("Sayfa")),
+          p.status === "paid" ? el("button", { class: "ghost danger", onclick: () => guard(out, async () => {
+            if (!confirm(T("Ödeme alıcıya tam iade edilsin mi? Bu geri alınamaz."))) return;
+            clear(out);
+            const r = await api(gp("payments.refund", { id: p.id }, "/_payments/{id}/refund"), { method: "POST" });
+            out.append(el("p", { class: "ok" }, r.status === "refunded" ? T("İade edildi") : T("İade istendi; sağlayıcı onaylayınca durum güncellenir.")));
+            load();
+          }) }, T("İade et")) : null)))))));
   };
   const amount = el("input", { size: "8", placeholder: "149.90" });
   const currency = el("input", { size: "4", value: "TRY" });
