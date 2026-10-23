@@ -186,6 +186,7 @@ fun StatusScreen(
                 }
                 activeConfig?.let { AccessStatusCard(g, it) }
                 activeConfig?.let { ReplicaCard(g, it) }
+                activeConfig?.let { PrimaryReplicasCard(g, it) }
                 activeConfig?.takeIf { it.adminPanel.enabled }?.let { AdminPanelCard(g, it) }
             }
             activeConfig?.let { StorageCard(g, it) }

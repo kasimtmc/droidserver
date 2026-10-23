@@ -42,6 +42,7 @@ enum class Endpoint(val key: String, val method: String, val path: String, val t
     REPLICATION_CONFIG("replication.config", "GET", "/_replication/config", tr("Kopya: konfigürasyon"), EndpointGroup.ADMIN),
     REPLICATION_CHANGES("replication.changes", "GET", "/_replication/changes", tr("Kopya: değişiklikler"), EndpointGroup.ADMIN),
     REPLICATION_SNAPSHOT("replication.snapshot", "GET", "/_replication/snapshot", tr("Kopya: tablo içeriği"), EndpointGroup.ADMIN),
+    REPLICATION_REPLICAS("replication.replicas", "GET", "/_replication/replicas", tr("Kopyalar: gecikme ve son temas"), EndpointGroup.ADMIN),
     REPLICATION_ROLE("replication.role", "GET", "/_replication/role", tr("Kopya: sunucunun rolü"), EndpointGroup.ADMIN),
     REPLICATION_FENCE("replication.fence", "POST", "/_replication/fence", tr("Kopya: devredildin (kopyaya dön)"), EndpointGroup.ADMIN),
     REPLICATION_STEP_DOWN("replication.stepDown", "POST", "/_replication/step-down", tr("Kopya: ana rolü devretmek için yazmayı durdur"), EndpointGroup.ADMIN),
@@ -152,6 +153,8 @@ enum class CollectionEndpoint(val key: String, val method: String, val path: Str
     TRASH("trash", "GET", "/collections/{c}/trash", tr("Çöp kutusu")),
     RESTORE("restore", "POST", "/collections/{c}/trash/{id}/restore", tr("Geri yükle")),
     PURGE("purge", "DELETE", "/collections/{c}/trash/{id}", tr("Kalıcı sil")),
+    SYNC("sync", "GET", "/sync/{c}", tr("Eşitleme: değişiklikler")),
+    SYNC_PUSH("sync.push", "POST", "/sync/{c}", tr("Eşitleme: gönder")),
     ;
 
     fun defaultPath(collection: String) = path.replace("{c}", collection)
@@ -160,6 +163,7 @@ enum class CollectionEndpoint(val key: String, val method: String, val path: Str
     fun available(c: CollectionConfig): Boolean = when (this) {
         HISTORY, REVERT -> c.history != null
         TRASH, RESTORE, PURGE -> c.trash != null
+        SYNC, SYNC_PUSH -> c.sync != null
         else -> true
     }
 

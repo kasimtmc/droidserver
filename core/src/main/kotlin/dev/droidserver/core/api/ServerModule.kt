@@ -19,6 +19,9 @@ import dev.droidserver.core.ai.HttpEmbedder
 import dev.droidserver.core.ai.SemanticIndex
 import dev.droidserver.core.auth.SmsGuard
 import dev.droidserver.core.auth.TeamService
+import dev.droidserver.core.sync.SyncLog
+import dev.droidserver.core.sync.SyncService
+import dev.droidserver.core.sync.SyncWriter
 import dev.droidserver.core.webdav.DavRoot
 import dev.droidserver.core.webdav.WebDav
 import dev.droidserver.core.automation.AutomationEngine
@@ -33,6 +36,7 @@ import dev.droidserver.core.jobs.Job
 import dev.droidserver.core.phone.PhoneService
 import dev.droidserver.core.realtime.ChannelHub
 import dev.droidserver.core.replication.ChangeLog
+import dev.droidserver.core.replication.WriteForwarding
 import dev.droidserver.core.replication.FailoverPort
 import dev.droidserver.core.mqtt.MqttBroker
 import dev.droidserver.core.mqtt.MqttHost
@@ -59,6 +63,7 @@ import dev.droidserver.core.data.TransferFormat
 import dev.droidserver.core.config.AuthMode
 import dev.droidserver.core.config.CollectionConfig
 import dev.droidserver.core.config.ConfigJson
+import dev.droidserver.core.config.ConfigMigrations
 import dev.droidserver.core.config.Rules
 import dev.droidserver.core.config.Rule
 import dev.droidserver.core.script.HookEvent
@@ -281,6 +286,19 @@ fun Application.droidServerModule(
         // Uygulamalar ve ağ sürücüsü gövdeyi akış halinde işler (kendi sınırlarıyla).
         appPaths = config.apps.filter { it.enabled }.map { it.publicPath } + listOfNotNull(config.webdav.path.takeIf { config.webdav.enabled })
     }
+    // PATCH/DELETE yapamayan istemciler (JVM'nin HttpURLConnection'ı) için POST + X-HTTP-Method-Override.
+    install(XHttpMethodOverride)
+    // Kopya: veri yazmaları ana sunucuya iletilir. Ana sunucu: kendi API anahtarıyla gelen kopyanın ilettiği istemci adresine güvenir.
+    if (config.replication.replicaOf != null) {
+        install(WriteForwarding) {
+            this.config = config
+            clientAddress = { call -> origin(call.request).key.takeIf { it != ClientGuard.LOCAL } }
+        }
+    }
+    if (config.replication.source) {
+        val keys = config.auth.apiKeys.map { it.toByteArray() }
+        attributes.put(ReplicaTrust) { token -> keys.any { MessageDigest.isEqual(it, token.toByteArray()) } }
+    }
     install(ContentNegotiation) { json(ConfigJson) }
     val channelHub = config.realtime.channels.takeIf { config.realtime.enabled && it.isNotEmpty() }
         ?.let { ChannelHub(it, config.realtime.maxConnections) }
@@ -296,8 +314,6 @@ fun Application.droidServerModule(
     val proxyClient = if (liveApps.isEmpty()) null else AppProxy.client(appClient ?: HttpClient(io.ktor.client.engine.cio.CIO).also { c ->
         monitor.subscribe(ApplicationStopped) { c.close() }
     })
-    // PATCH/DELETE yapamayan istemciler (JVM'nin HttpURLConnection'ı) için POST + X-HTTP-Method-Override.
-    install(XHttpMethodOverride)
     // GET yanıtlarına içerik özeti (ETag); istemci If-None-Match gönderirse değişmemiş yanıt gövdesiz 304 döner.
     install(ConditionalHeaders) {
         version { call, content ->
@@ -608,6 +624,31 @@ fun Application.droidServerModule(
         writes.write { svc.delete(id, scope) }
         if (current != null) changed(c.name, RecordEvent.Action.DELETE, current)
         if (hooked != null && current != null) hooked.after(HookEvent.AFTER_DELETE, c.name, current, caller)
+    }
+
+    // Çevrimdışı eşitleme: ana sunucuda tetikleyicilerle iz (kopyada kurulmaz; istemciler ana sunucuyla eşitlenir).
+    // Süresi dolan silme izleri saatte bir silinir.
+    val syncCollections = config.collections.filter { it.sync != null }
+    val syncService = if (syncCollections.isNotEmpty() && config.replication.replicaOf == null) {
+        SyncLog.install(db, syncCollections)
+        val sweeper = launch(Dispatchers.IO) {
+            while (true) {
+                if (!writes.isPaused) syncCollections.forEach { c ->
+                    runCatching { writes.write { SyncLog.purge(db, c.name, c.sync!!.keepDays) } }
+                        .onFailure { log("Eşitleme izi temizlenemedi (${c.name}): ${it.message}") }
+                }
+                delay(3_600_000)
+            }
+        }
+        monitor.subscribe(ApplicationStopping) { sweeper.cancel() }
+        SyncService(db, services, names::getValue, ::outRecord, object : SyncWriter {
+            override fun create(c: CollectionConfig, caller: Caller, body: JsonObject) = createRecord(c, caller, body)
+            override fun update(c: CollectionConfig, caller: Caller, id: Long, body: JsonObject) = updateRecord(c, caller, id, body)
+            override fun delete(c: CollectionConfig, caller: Caller, id: Long) = deleteRecord(c, caller, id)
+        }, writes)
+    } else {
+        if (syncCollections.isEmpty()) runCatching { SyncLog.uninstall(db) }
+        null
     }
 
     // Canlı kopya kaynağı: kopyalanan tablolara tetikleyiciler; günlük saatte bir kısaltılır. Kaynak değilse kaldırılır.
@@ -1059,14 +1100,38 @@ fun Application.droidServerModule(
             endpoint(paths, Endpoint.REPLICATION_CHANGES) {
                 requireAdmin(call.caller())
                 if (!config.replication.source) throw ApiException(404, tr("Bu sunucu kopyalanabilir değil"))
-                failover?.let { f ->
-                    call.response.headers.append("X-Instance-Id", f.instanceId)
-                    peerUrl(call)?.let(f.replicaSeen)
-                }
                 val q = call.request.queryParameters
                 val after = q["after"]?.toLongOrNull() ?: 0
+                failover?.let { f ->
+                    call.response.headers.append("X-Instance-Id", f.instanceId)
+                    peerUrl(call)?.let { url ->
+                        val registry = f.registry
+                        if (registry == null) f.replicaSeen(url)
+                        else registry.report(url, after, io { ChangeLog.latest(db) }, call.request.headers["X-Replica-Version"]?.toIntOrNull())
+                    }
+                }
                 call.response.headers.append("X-Config-Hash", ChangeLog.hash(config))
                 call.respond(io { ChangeLog.changes(db, config, after, q["limit"]?.toIntOrNull() ?: 500) })
+            }
+            // Ana sunucudaki kopya tablosu: adres, son temas, geride kalan değişiklik, konfigürasyon sürümü.
+            endpoint(paths, Endpoint.REPLICATION_REPLICAS) {
+                requireAdmin(call.caller())
+                val now = Instant.now()
+                val latest = if (config.replication.source) io { ChangeLog.latest(db) } else null
+                call.respond(buildJsonObject {
+                    put("latestSeq", latest?.let(::JsonPrimitive) ?: JsonNull)
+                    put("version", JsonPrimitive(ConfigMigrations.CURRENT))
+                    put("items", JsonArray(failover?.registry?.reports().orEmpty().map { r ->
+                        buildJsonObject {
+                            put("url", JsonPrimitive(r.url))
+                            put("lastSeen", JsonPrimitive(r.lastSeen.toString()))
+                            put("online", JsonPrimitive(java.time.Duration.between(r.lastSeen, now).seconds < 120))
+                            put("appliedSeq", r.appliedSeq?.let(::JsonPrimitive) ?: JsonNull)
+                            put("behind", r.appliedSeq?.let { a -> latest?.let { JsonPrimitive((it - a).coerceAtLeast(0)) } } ?: JsonNull)
+                            put("version", r.version?.let(::JsonPrimitive) ?: JsonNull)
+                        }
+                    }))
+                })
             }
             endpoint(paths, Endpoint.REPLICATION_SNAPSHOT) {
                 requireAdmin(call.caller())
@@ -1504,6 +1569,21 @@ fun Application.droidServerModule(
                     }
                     val status = if (result.errors.isNotEmpty()) HttpStatusCode.BadRequest else HttpStatusCode.OK
                     call.respond(status, result.toJson())
+                }
+                if (syncService != null && collection.sync != null) {
+                    // Çevrimdışı eşitleme: değişiklikleri çek (liste kuralıyla) ve bekleyen yazmaları gönder.
+                    endpoint(paths, collection, CollectionEndpoint.SYNC) {
+                        val q = call.request.queryParameters
+                        val since = q["since"]?.let { it.toLongOrNull() ?: throw ApiException(400, tr("since sayı olmalı")) } ?: 0
+                        val limit = q["limit"]?.toIntOrNull() ?: 200
+                        val caller = call.caller()
+                        call.respond(io { syncService.pull(collection, caller, since, limit, q["epoch"]) })
+                    }
+                    endpoint(paths, collection, CollectionEndpoint.SYNC_PUSH) {
+                        val caller = call.caller()
+                        val body = call.receive<JsonObject>()
+                        call.respond(io { syncService.push(collection, caller, body) })
+                    }
                 }
                 endpoint(paths, collection, CollectionEndpoint.AGGREGATE) {
                     val scope = Access.scope(collection, Rules.Op.LIST, call.caller())

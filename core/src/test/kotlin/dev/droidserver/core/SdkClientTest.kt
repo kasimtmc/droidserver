@@ -17,6 +17,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import java.io.File
 import java.nio.file.Files
@@ -145,10 +147,13 @@ class SdkClientTest {
         org.junit.Assume.assumeTrue("Node 22+ yok", major >= 22)
         File(dir, "droidserver.ts").writeText(SdkGenerator.generate(SdkConfig.config, SdkGenerator.Lang.TS))
         File(dir, "deneme.mts").writeText(TS_SCRIPT)
-        val p = ProcessBuilder("node", "--experimental-strip-types", "--no-warnings", "deneme.mts", base).directory(dir).redirectErrorStream(true).start()
-        val out = p.inputStream.readBytes().decodeToString()
-        assertTrue(p.waitFor(60, TimeUnit.SECONDS))
-        assertEquals(0, p.exitValue(), out)
+        val (exit, out) = withReader { reader ->
+            val p = ProcessBuilder("node", "--experimental-strip-types", "--no-warnings", "deneme.mts", base, reader).directory(dir).redirectErrorStream(true).start()
+            val text = p.inputStream.readBytes().decodeToString()
+            assertTrue(p.waitFor(60, TimeUnit.SECONDS))
+            p.exitValue() to text
+        }
+        assertEquals(0, exit, out)
         assertTrue("TAMAM" in out, out)
 
         val tsc = listOf("/opt/node-tools/node_modules/typescript/bin/tsc", "node_modules/typescript/bin/tsc").map(::File).firstOrNull { it.isFile }
@@ -159,6 +164,88 @@ class SdkClientTest {
             assertTrue(check.waitFor(120, TimeUnit.SECONDS))
             assertEquals(0, check.exitValue(), msg)
         }
+    }
+
+    /** Faz 18.2: okumalar kopyaya, yazmadan hemen sonraki okumalar ana sunucuya; kopyaya ulaşılamazsa ana sunucu. */
+    @Test
+    fun `okuma adresleri ve kendi yazdigini oku`() {
+        val reader = embeddedServer(CIO, port = 0) { droidServerModule(SdkConfig.config.copy(name = "Okuma"), db) }.start(wait = false)
+        try {
+            val readBase = "http://127.0.0.1:${runBlocking { reader.engine.resolvedConnectors().first().port }}/api"
+            fun name(c: DroidServerClient) = c.request("GET", "/health")!!.jsonObject["name"]!!.jsonPrimitive.content
+            val ds = DroidServerClient(base, apiKey = SdkConfig.KEY, readUrls = listOf(readBase), readYourWritesMs = 300)
+            assertEquals("Okuma", name(ds))
+            ds.todoItems.create(TodoItemsInput(title = "yazma"))
+            assertEquals("SDK deneme", name(ds), "yazmadan hemen sonra ana sunucu")
+            Thread.sleep(400)
+            assertEquals("Okuma", name(ds))
+            assertEquals("SDK deneme", name(DroidServerClient(base, apiKey = SdkConfig.KEY, readUrls = listOf(dead))), "kopyaya ulaşılamazsa ana")
+        } finally {
+            reader.stop(100, 1000)
+        }
+    }
+
+    /** Faz 18.1: üretilen Kotlin istemcisinin çevrimdışı kopyası gerçek sunucuya karşı. */
+    @Test
+    fun `cevrimdisi esitleme`() {
+        val ds = DroidServerClient(base)
+        ds.auth.signup(buildJsonObject { put("email", JsonPrimitive("off@example.com")); put("password", JsonPrimitive("parola-1234")) })
+        val other = DroidServerClient(base, token = ds.token, refreshToken = ds.refreshToken)
+        val storeDir = File(dir, "offline")
+        val off = ds.todoItems.offline(dev.droidserver.core.sdkclient.FileOfflineStore(storeDir))
+        val conflicts = mutableListOf<dev.droidserver.core.sdkclient.SyncConflictInfo>()
+        off.onConflict = { conflicts += it }
+        off.sync()
+        assertEquals(0, off.all().size)
+
+        // Çevrimdışı yazılan iki kayıt: geçici (negatif) kimlik, eşitleyince sunucudaki kimlik.
+        val a = off.create(TodoItemsInput(title = "Süt", qty = 1))
+        val b = off.create(TodoItemsInput(title = "Ekmek"))
+        assertTrue(a.id < 0 && b.id < 0)
+        off.update(a.id, TodoItemsInput(qty = 2)) // bekleyen oluşturmaya katılır
+        assertEquals(2, off.pendingCount)
+        off.sync()
+        assertEquals(0, off.pendingCount)
+        val local = off.all().associateBy { it.title }
+        assertTrue(local.values.all { it.id > 0 }, local.toString())
+        assertEquals(2L, local.getValue("Süt").qty)
+        assertEquals(2L, other.todoItems.list().totalItems)
+        val sut = local.getValue("Süt").id
+
+        // Başka cihazdaki değişiklik çekilir.
+        other.todoItems.update(sut, TodoItemsInput(title = "Süt (2 L)"))
+        off.sync()
+        assertEquals("Süt (2 L)", off.get(sut)?.title)
+
+        // Aynı alanı çevrimdışıyken iki taraf değiştirdi: sonra yazan (sunucu) kazanır; diğer alan uygulanır.
+        off.update(sut, TodoItemsInput(title = "yerel", price = 3.5))
+        Thread.sleep(20)
+        other.todoItems.update(sut, TodoItemsInput(title = "sunucu"))
+        off.sync()
+        assertEquals("sunucu", off.get(sut)?.title)
+        assertEquals(3.5, off.get(sut)?.price)
+        assertEquals(listOf("merged"), conflicts.map { it.status })
+
+        // Yerel silme sunucuya gider; depodan yeniden açılan kopya aynı durumda.
+        off.delete(local.getValue("Ekmek").id)
+        off.sync()
+        assertEquals(1L, other.todoItems.list().totalItems)
+        val reopened = ds.todoItems.offline(dev.droidserver.core.sdkclient.FileOfflineStore(storeDir))
+        assertEquals(listOf("sunucu"), reopened.all().map { it.title })
+
+        // Ağ yokken: değişiklik bekler, hata fırlatılır.
+        val offline = DroidServerClient(dead, token = ds.token).todoItems.offline(dev.droidserver.core.sdkclient.MemoryOfflineStore())
+        offline.create(TodoItemsInput(title = "bekliyor"))
+        assertFailsWith<java.io.IOException> { offline.sync() }
+        assertEquals(1, offline.pendingCount)
+
+        // Canlı: sunucuya eklenen kayıt kısa sürede yerelde.
+        val live = reopened.live()
+        other.todoItems.create(TodoItemsInput(title = "canlı"))
+        val deadline = System.currentTimeMillis() + 5_000
+        while (reopened.all().none { it.title == "canlı" } && System.currentTimeMillis() < deadline) Thread.sleep(100)
+        live.close()
+        assertTrue(reopened.all().any { it.title == "canlı" }, reopened.all().toString())
     }
 
     /** Komut çıktısı ve çıkış kodu; araç yoksa null. */
@@ -178,6 +265,16 @@ class SdkClientTest {
 
     private val dead get() = "http://127.0.0.1:${java.net.ServerSocket(0).use { it.localPort }}/api"
 
+    /** Aynı veritabanını okuyan, adı farklı ikinci sunucu (okuma kopyası yerine). */
+    private fun <R> withReader(block: (String) -> R): R {
+        val reader = embeddedServer(CIO, port = 0) { droidServerModule(SdkConfig.config.copy(name = "Okuma"), db) }.start(wait = false)
+        try {
+            return block("http://127.0.0.1:${runBlocking { reader.engine.resolvedConnectors().first().port }}/api")
+        } finally {
+            reader.stop(100, 1000)
+        }
+    }
+
     /** Dart istemcisi (altın dosyayla aynı çıktı) gerçek sunucuya karşı; `dart analyze` temiz olmalı. Dart yoksa atlanır. */
     @Test
     fun `dart istemcisi calisir`() {
@@ -186,7 +283,7 @@ class SdkClientTest {
         File("src/test/sdk/deneme.dart").copyTo(File(dir, "deneme.dart"))
         val (analyzed, issues) = run(dir, 120, "dart", "analyze", "--fatal-infos", "droidserver.dart", "deneme.dart")!!
         assertEquals(0, analyzed, issues)
-        val (code, out) = run(dir, 120, "dart", "run", "deneme.dart", base, SdkConfig.KEY, dead)!!
+        val (code, out) = withReader { reader -> run(dir, 120, "dart", "run", "deneme.dart", base, SdkConfig.KEY, dead, reader)!! }
         assertEquals(0, code, out)
         assertTrue("TAMAM" in out, out)
     }
@@ -199,7 +296,7 @@ class SdkClientTest {
         File("src/test/sdk/deneme.swift").copyTo(File(dir, "deneme.swift"))
         val (built, log) = run(dir, 600, "swiftc", "-swift-version", "6", "-warnings-as-errors", "-parse-as-library", "DroidServer.swift", "deneme.swift", "-o", "deneme")!!
         assertEquals(0, built, log)
-        val (code, out) = run(dir, 120, File(dir, "deneme").path, base, SdkConfig.KEY, dead)!!
+        val (code, out) = withReader { reader -> run(dir, 120, File(dir, "deneme").path, base, SdkConfig.KEY, dead, reader)!! }
         assertEquals(0, code, out)
         assertTrue("TAMAM" in out, out)
     }
@@ -223,7 +320,7 @@ class SdkClientTest {
 
     private companion object {
         val TS_SCRIPT = """
-            import { DroidServer, DroidServerError, parseLink, type RealtimeEvent } from "./droidserver.ts";
+            import { DroidServer, DroidServerError, MemoryStore, parseLink, type RealtimeEvent } from "./droidserver.ts";
             declare const process: { argv: string[] };
 
             const l = parseLink("droidserver://connect?url=" + encodeURIComponent("http://x/api") + "&name=Evim&token=a.b.c&exp=1800000000");
@@ -273,7 +370,42 @@ class SdkClientTest {
             ds.token = "bozuk";
             const again = await ds.todoItems.list();
             if (again.totalItems !== 3 || ds.token === "bozuk") throw new Error("yenileme çalışmadı");
+
+            // Çevrimdışı kopya (Node: bellek deposu): yerel yazma, eşitleme, başka istemcinin değişikliği, çakışma.
+            const store = new MemoryStore();
+            const off = ds.todoItems.offline(store);
+            const conflicts: string[] = [];
+            off.onConflict = (c) => { conflicts.push(c.status); };
+            await off.sync();
+            const local = await off.create({ title: "Çevrimdışı", qty: 1 });
+            if (local.id >= 0 || (await off.pendingCount()) !== 1) throw new Error("geçici kimlik");
+            await off.update(local.id, { qty: 2 });
+            await off.sync();
+            const synced = (await off.all()).find((r) => r.title === "Çevrimdışı");
+            if (!synced || synced.id <= 0 || synced.qty !== 2 || (await off.pendingCount()) !== 0) throw new Error("eşitleme " + JSON.stringify(synced));
+            await ds.todoItems.update(synced.id, { title: "sunucuda" });
+            await off.sync();
+            if ((await off.get(synced.id))?.title !== "sunucuda") throw new Error("çekme");
+            await off.update(synced.id, { title: "yerel", price: 9 });
+            await new Promise((r) => setTimeout(r, 20));
+            await ds.todoItems.update(synced.id, { title: "sunucu" });
+            await off.sync();
+            const merged = await off.get(synced.id);
+            if (merged?.title !== "sunucu" || merged.price !== 9 || conflicts.join() !== "merged") throw new Error("çakışma " + JSON.stringify(merged) + conflicts);
+            await off.delete(synced.id);
+            await off.sync();
+            const reopened = ds.todoItems.offline(store);
+            if ((await reopened.get(synced.id)) !== undefined) throw new Error("silme");
             await ds.auth.logout();
+
+            // Okuma kopyaya; yazmadan hemen sonra ana sunucuya.
+            const rd = new DroidServer(process.argv[2], { readUrls: [process.argv[3]], readYourWritesMs: 300 });
+            const health = async () => (await rd.request<{ name: string }>("GET", "/health")).name;
+            if ((await health()) !== "Okuma") throw new Error("okuma kopyaya gitmedi");
+            await rd.request("POST", "/auth/login", { json: { email: "yok@example.com", password: "x" } }).catch(() => undefined);
+            if ((await health()) !== "SDK deneme") throw new Error("kendi yazdığını oku");
+            await new Promise((r) => setTimeout(r, 400));
+            if ((await health()) !== "Okuma") throw new Error("süre bitince yine kopya");
             console.log("TAMAM");
         """.trimIndent()
     }

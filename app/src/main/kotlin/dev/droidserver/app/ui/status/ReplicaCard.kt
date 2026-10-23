@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -19,13 +20,18 @@ import dev.droidserver.app.service.ServerService
 import dev.droidserver.app.ui.common.SectionCard
 import dev.droidserver.app.ui.common.WarningText
 import dev.droidserver.core.audit.AuditLog
+import dev.droidserver.core.config.ConfigMigrations
 import dev.droidserver.core.config.ServerConfig
 import dev.droidserver.core.i18n.tr
 import dev.droidserver.core.replication.Failover
+import dev.droidserver.core.replication.ReplicaRegistry
 import dev.droidserver.core.replication.ReplicaStatus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.Duration
+import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -111,3 +117,37 @@ internal fun ReplicaCard(g: AppGraph, config: ServerConfig) {
         )
     }
 }
+
+/** Ana sunucuda: bağlanan kopyalar, gecikmeleri ve konfigürasyon sürümleri (yarım dakikada bir yenilenir). */
+@Composable
+internal fun PrimaryReplicasCard(g: AppGraph, config: ServerConfig) {
+    if (!config.replication.source || config.replication.replicaOf != null) return
+    var table by remember { mutableStateOf<Pair<Long?, List<ReplicaRegistry.Report>>?>(null) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            table = withContext(Dispatchers.IO) { runCatching { g.engine.replicaTable() }.getOrNull() }
+            delay(30_000)
+        }
+    }
+    val (latest, reports) = table ?: return
+    if (reports.isEmpty()) return
+    val time = remember { DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault()) }
+    SectionCard(tr("Kopyalar")) {
+        reports.forEach { r ->
+            val online = Duration.between(r.lastSeen, Instant.now()).seconds < 120
+            val behind = r.appliedSeq?.let { a -> latest?.let { (it - a).coerceAtLeast(0) } }
+            Text(r.url, style = MaterialTheme.typography.titleSmall)
+            Text(
+                listOfNotNull(
+                    if (online) tr("bağlı") else tr("bağlı değil"),
+                    behind?.let { if (it == 0L) tr("güncel") else tr("{0} değişiklik geride", it) },
+                    r.version?.let { v -> if (v == ConfigMigrations.CURRENT) "v$v" else tr("v{0} (bu sunucu v{1}; uygulamayı güncelleyin)", v, ConfigMigrations.CURRENT) },
+                    tr("son temas {0}", time.format(r.lastSeen)),
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (online && (r.version == null || r.version == ConfigMigrations.CURRENT)) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+            )
+        }
+    }
+}
+
