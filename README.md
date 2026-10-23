@@ -1202,7 +1202,10 @@ for await e in ds.subscribe(["todos"]) { print(e.action, e.record) }
 
 Dört istemci de aynı yüzeyi sunar: CRUD ve filtre, dosya yükleme ve adresi, giriş (iki adımlı, e-posta ve SMS koduyla),
 token'ı 401'de bir kez yenileme, takımlar, yedek adresler (`fallbackUrls`), QR bağlantı metni (`fromLink`) ve canlı
-abonelik (koparsa kaldığı olaydan sürer). Dart ve Swift istemcileri testlerde gerçek sunucuya karşı derlenip çalıştırılır.
+abonelik (koparsa kaldığı olaydan sürer). Abonelik sunucuda kurulunca (her yeniden bağlanmada da) isteğe bağlı `onReady`
+çağrılır (TypeScript'te dördüncü argüman, Kotlin, Dart ve Swift'te `onReady`): o andan sonraki hiçbir olay kaçmaz; ilk
+veriyi o anda çekmek, bağlantıyla veri arasındaki boşlukta değişiklik kaybını önler. Dart ve Swift istemcileri testlerde
+gerçek sunucuya karşı derlenip çalıştırılır.
 
 ### E-posta: doğrulama ve parola sıfırlama
 
