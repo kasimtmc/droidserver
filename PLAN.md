@@ -374,7 +374,8 @@ kurallarla sınırlansın. Mevcut API anahtarı/JWT modu "yönetici erişimi" ol
   `POST /api/auth/logout`, `GET/PATCH /api/auth/me` (parola değişikliği mevcut parolayla; tüm oturumlar kapanır),
   yönetici için `/api/auth/users` (liste, ekle, rol/parola/doğrulandı, sil).
 - [x] Giriş denemelerine IP + e-posta bazlı hız sınırı (bellekte; 5 / istemci başına 20 hatalı deneme → 15 dk `429`).
-- [ ] E-posta doğrulama/parola sıfırlama: SMTP gerekir; şimdilik yönetici uygulamadan sıfırlar (Sunucu → Kullanıcılar). (İsteğe bağlı alt faz.)
+- [x] E-posta doğrulama/parola sıfırlama: SMTP gerekir; şimdilik yönetici uygulamadan sıfırlar (Sunucu → Kullanıcılar). (İsteğe bağlı alt faz.)
+  *Durum:* Faz 10.3'te yapıldı (SMTP ile doğrulama ve parola sıfırlama; şablonlar Faz 17'de).
 
 ### 5.2 Kurallar
 PocketBase tarzı serbest ifade dili yerine önce güvenli ve basit bir model:
@@ -931,6 +932,10 @@ oturtmasın), sonra panelin eksiklerini kapatma, sonra güvenlik, en son yeni ö
   *Durum:* sürüm notu şablonu (`.github/release-notes/TEMPLATE.md`) ve `0.9.0.md` hazır; `release.yml` `<sürüm>.md`'yi
   notun başına koyar. Kalan (kullanıcıda): imza anahtarı ve dört secret (şu an tanımlı değil), `v0.9.0` etiketi, ardından
   `v0.9.1` ile uygulama içi güncellemenin gerçek sürümle denenmesi (cihaz testi g2'nin imzalı yolu).
+  *Durum (24 Ekim 2026):* `0.9.0.md`'nin "Deneysel" listesi Faz 17-18 ve MQTT TLS ile güncellendi; README'de `gh` ile
+  secret ekleme ve iş akışını elle çalıştırma (`gh workflow run release.yml -f version=…`), mağaza açıklamaları,
+  gizlilik politikası (harita karoları, yerel YZ indirmesi, ödeme sağlayıcıları) ve F-Droid açık konuları (model
+  lisansları, özgür olmayan ağ hizmetleri) güncel.
 
 **17.4 Web panelini eşitleme**
 - [x] Panelde yalnızca uygulamada olan ekranlar: Takımlar, MQTT (durum, yönlendirmeler, komut), Canlı kopya ve devralma
