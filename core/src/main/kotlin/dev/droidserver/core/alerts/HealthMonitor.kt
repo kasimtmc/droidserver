@@ -27,6 +27,7 @@ enum class AlertKind(val title: String, val critical: Boolean = false, val event
     CRASH(tr("Uygulama beklenmedik şekilde kapandı"), critical = true, event = true),
     RESTART(tr("Sistem sunucuyu yeniden başlattı"), event = true),
     SENSOR(tr("Sensör eşik dışında"), event = true),
+    LOCAL_AI(tr("Yerel YZ çalıştırılamadı (bellek veya ısı)"), event = true),
     TEST(tr("Deneme uyarısı"), critical = true, event = true),
 }
 

@@ -295,6 +295,66 @@ class ScreenshotTest {
     }
 
     @Test
+    fun sayfalarVePanolar() {
+        val cfg = running { c ->
+            val posts = CollectionConfig("posts", listOf(FieldConfig("title", FieldType.TEXT), FieldConfig("status", FieldType.SELECT, options = listOf("taslak", "yayında")), FieldConfig("score", FieldType.INTEGER)))
+            c.copy(
+                collections = c.collections + posts,
+                views = listOf(
+                    dev.droidserver.core.config.ViewConfig("durum", "posts", report = dev.droidserver.core.config.ReportConfig(groupBy = "status", sum = listOf("score"))),
+                    dev.droidserver.core.config.ViewConfig("toplam", "posts", report = dev.droidserver.core.config.ReportConfig(sum = listOf("score"))),
+                    dev.droidserver.core.config.ViewConfig("son", "posts", columns = listOf("title", "score"), sort = "-score"),
+                ),
+                pages = listOf(dev.droidserver.core.config.PageConfig("blog", "posts", "Blog", filter = "status=yayında")),
+                dashboards = listOf(dev.droidserver.core.config.DashboardConfig("ozet", "Özet", listOf(
+                    dev.droidserver.core.config.WidgetConfig(dev.droidserver.core.config.WidgetType.NUMBER, "toplam", title = "Toplam puan", metric = "sum_score"),
+                    dev.droidserver.core.config.WidgetConfig(dev.droidserver.core.config.WidgetType.CHART, "durum"),
+                    dev.droidserver.core.config.WidgetConfig(dev.droidserver.core.config.WidgetType.TABLE, "son", limit = 3),
+                ), shareToken = "paylasim-anahtari-123456")),
+            )
+        }
+        for ((t, st, sc) in listOf(Triple("Elma", "yayında", 5), Triple("Armut", "taslak", 3), Triple("Kiraz", "yayında", 8))) {
+            val c = java.net.URI("http://127.0.0.1:18080/api/collections/posts/records").toURL().openConnection() as java.net.HttpURLConnection
+            c.requestMethod = "POST"
+            c.doOutput = true
+            c.setRequestProperty("Authorization", "Bearer " + cfg.auth.apiKeys.first())
+            c.setRequestProperty("Content-Type", "application/json")
+            c.outputStream.use { it.write("""{"title":"$t","status":"$st","score":$sc}""".toByteArray()) }
+            check(c.responseCode == 201) { c.responseCode }
+        }
+        render()
+        click("Sunucu")
+        click("Panolar (1)")
+        click("Özet")
+        compose.waitUntil(10_000) { compose.onAllNodes(hasText("Toplam puan")).fetchSemanticsNodes().isNotEmpty() }
+        shot("32-pano")
+        click("Geri")
+        click("Geri")
+        click("Sayfalar (1)")
+        shot("33-sayfalar")
+    }
+
+    @Test
+    fun paketler() {
+        running { c ->
+            c.copy(
+                collections = c.collections + CollectionConfig("entries", listOf(FieldConfig("text", FieldType.TEXT))),
+                packages = listOf(dev.droidserver.core.packages.InstalledPackage("defter", "1.2.0", "Defter", "Örnek Ltd", "ab:cd:ef:01:23:45:67:89:ab:cd:ef:01:23:45:67:89", collections = listOf("entries"))),
+            )
+        }
+        render()
+        click("Sunucu")
+        click("Paketler (1)")
+        shot("34-paketler")
+    }
+
+    @Test
+    fun yerelModeller() {
+        compose.setContent { DroidServerTheme { dev.droidserver.app.ui.config.LocalModelsScreen(app.graph, onBack = {}) } }
+        shot("35-yerel-modeller")
+    }
+
+    @Test
     fun sahneWidgeti() {
         running { c ->
             c.copy(mqtt = MqttConfig(enabled = true, password = "cihaz-parolasi", scenes = listOf(

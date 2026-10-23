@@ -58,6 +58,7 @@ enum class AutomationActionType(val title: String) {
     @SerialName("create") CREATE(tr("Kayıt oluştur")),
     @SerialName("log") LOG(tr("Loga yaz")),
     @SerialName("mqtt") MQTT(tr("MQTT mesajı gönder")),
+    @SerialName("ai") AI(tr("YZ ile alan doldur")),
 }
 
 /**
@@ -69,6 +70,8 @@ enum class AutomationActionType(val title: String) {
  *  - `create`: [collection] ve [values].
  *  - `log`: [body].
  *  - `mqtt`: [topic] (joker olmadan; `{alan}` kullanılabilir), [body] içerik, [retain] tutulan mesaj.
+ *  - `ai`: [body] istem (`{alan}` kayıttan dolar), [field] tetikleyen kaydın yazılacak alanı (özet, sınıflandırma, çeviri);
+ *    seçim alanında yanıt seçeneklerden biri olmalı. Ayarlı YZ sağlayıcısıyla (telefondaki yerel model dahil).
  */
 @Serializable
 data class AutomationAction(
@@ -82,6 +85,7 @@ data class AutomationAction(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val values: Map<String, String> = emptyMap(),
     @EncodeDefault(EncodeDefault.Mode.NEVER) val topic: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val retain: Boolean = false,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val field: String? = null,
 ) {
     companion object {
         /** `push` eyleminde kaydın sahibi. */

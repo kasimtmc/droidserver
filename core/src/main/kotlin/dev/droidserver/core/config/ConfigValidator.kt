@@ -790,6 +790,8 @@ object ConfigValidator {
         apps(config, ::error)
         automations(config, ::error)
         forms(config, ::error)
+        pages(config, ::error)
+        dashboards(config, ::error)
         ai(config, ::error)
         webdav(config, ::error)
         mqtt(config, ::error)
@@ -898,12 +900,13 @@ object ConfigValidator {
     private fun ai(config: ServerConfig, error: (String, String) -> Unit) {
         val ai = config.ai
         if (!ai.enabled) return
-        if (ai.apiKey.isBlank() && !ai.customUrl) error("ai.apiKey", tr("{0} API anahtarı girin ({1})", ai.provider.title, ai.provider.keyUrl.substringAfter("://").substringBefore('/')))
+        if (ai.apiKey.isBlank() && !ai.customUrl && ai.provider != AiProvider.LOCAL) error("ai.apiKey", tr("{0} API anahtarı girin ({1})", ai.provider.title, ai.provider.keyUrl.substringAfter("://").substringBefore('/')))
         val model = ai.effectiveModel
         when (ai.provider) {
             AiProvider.CLAUDE -> if (!Regex("^claude-[a-z0-9.-]{1,60}$").matches(model)) error("ai.model", tr("Model kimliği {0} ile başlamalı, örn. {1}", "claude-", ai.provider.defaultModel))
             AiProvider.GEMINI -> if (!Regex("^gemini-[a-z0-9.-]{1,60}$").matches(model)) error("ai.model", tr("Model kimliği {0} ile başlamalı, örn. {1}", "gemini-", ai.provider.defaultModel))
             AiProvider.OPENAI -> if (!Regex("^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$").matches(model)) error("ai.model", tr("Model kimliği geçersiz: {0}", model))
+            AiProvider.LOCAL -> if (!LOCAL_MODEL.matches(model)) error("ai.model", tr("Telefonda kullanılacak modeli seçin (Yapay zekâ → Yerel modeller)"))
         }
         if (ai.url.isNotBlank()) {
             if (ai.provider != AiProvider.OPENAI) error("ai.url", tr("Uç adresi yalnızca OpenAI uyumlu sağlayıcıda kullanılır"))
@@ -915,6 +918,7 @@ object ConfigValidator {
         ai.embeddings?.let { e ->
             if (e.url.isNotBlank() && !Regex("^https?://[^\\s/?#]+(/\\S*)?$").matches(e.url)) error("ai.embeddings.url", tr("Adres http:// veya https:// ile başlamalı"))
             if (e.provider == EmbeddingProvider.VOYAGE && e.apiKey.isBlank()) error("ai.embeddings.apiKey", tr("Voyage AI anahtarı girin"))
+            if (e.provider == EmbeddingProvider.LOCAL && !LOCAL_MODEL.matches(e.model)) error("ai.embeddings.model", tr("Telefonda kullanılacak gömme modelini seçin (Yapay zekâ → Yerel modeller)"))
         }
         if (ai.semantic.isNotEmpty() && ai.embeddings == null) error("ai.embeddings", tr("Anlamsal arama için gömme servisini seçin"))
         if (ai.semantic.size > 10) error("ai.semantic", tr("En çok 10 koleksiyonda anlamsal arama olabilir"))
@@ -979,6 +983,75 @@ object ConfigValidator {
             if (inForm.isEmpty()) error("$at.fields", tr("{0}: formda en az bir alan olmalı", f.name))
             c.fields.filter { it.required && it.default == null && it.computed == null && it.name !in inForm && it.name != c.ownerField }.forEach {
                 error("$at.fields", tr("{0}: zorunlu '{1}' alanı formda yok; gönderimler kaydedilemez", f.name, it.name))
+            }
+        }
+    }
+
+    private fun pages(config: ServerConfig, error: (String, String) -> Unit) {
+        if (config.pages.size > 30) error("pages", tr("En çok 30 sayfa olabilir"))
+        val base = config.server.basePath.trimEnd('/')
+        if (config.pages.isNotEmpty() && (base == PageConfig.PATH || base.startsWith(PageConfig.PATH + "/"))) {
+            error("server.basePath", tr("API yolu {0} olamaz (sayfalar orada yayınlanır)", PageConfig.PATH))
+        }
+        val names = mutableSetOf<String>()
+        val byName = config.collections.associateBy { it.name }
+        config.pages.forEachIndexed { i, p ->
+            val at = "pages[$i]"
+            if (!PageConfig.NAME.matches(p.name) || p.name == "_login" || p.name == "_logout") error("$at.name", tr("Sayfa adı küçük harf, rakam ve - olmalı (en çok 40): '{0}'", p.name))
+            else if (!names.add(p.name)) error("$at.name", tr("'{0}' adı iki kez kullanılmış", p.name))
+            if (p.title.isBlank()) error("$at.title", tr("{0}: sayfa başlığı boş", p.name))
+            if (p.perPage !in 1..100) error("$at.perPage", tr("{0}: sayfa başına kayıt 1-100 olmalı", p.name))
+            p.accent?.let { if (!PageConfig.COLOR.matches(it)) error("$at.accent", tr("{0}: renk #RRGGBB biçiminde olmalı", p.name)) }
+            if (p.login && !config.auth.users.enabled) error("$at.login", tr("{0}: girişli sayfa için kullanıcı hesaplarını açın", p.name))
+            val c = byName[p.collection]
+            if (c == null) {
+                error("$at.collection", tr("{0}: '{1}' koleksiyonu yok", p.name, p.collection))
+                return@forEachIndexed
+            }
+            val known = c.fields.map { it.name }.toSet() + setOf("id", "created_at", "updated_at")
+            (p.fields + p.detailFields).distinct().filter { it !in known }.forEach { error("$at.fields", tr("{0}: '{1}' koleksiyonunda '{2}' alanı yok", p.name, c.name, it)) }
+            p.filter?.takeIf { it.isNotBlank() }?.let { f ->
+                runCatching { RuleConditions.parse(c, f, null) }.onFailure { error("$at.filter", tr("{0}: süzgeç hatalı: {1}", p.name, it.message)) }
+            }
+        }
+    }
+
+    private fun dashboards(config: ServerConfig, error: (String, String) -> Unit) {
+        if (config.dashboards.size > 20) error("dashboards", tr("En çok 20 pano olabilir"))
+        val names = mutableSetOf<String>()
+        val views = config.views.associateBy { it.name }
+        config.dashboards.forEachIndexed { i, d ->
+            val at = "dashboards[$i]"
+            if (!PageConfig.NAME.matches(d.name)) error("$at.name", tr("Pano adı küçük harf, rakam ve - olmalı (en çok 40): '{0}'", d.name))
+            else if (!names.add(d.name)) error("$at.name", tr("'{0}' adı iki kez kullanılmış", d.name))
+            if (d.title.isBlank()) error("$at.title", tr("{0}: pano başlığı boş", d.name))
+            if (d.widgets.size > 24) error("$at.widgets", tr("{0}: en çok 24 kutu olabilir", d.name))
+            d.shareToken?.let { t -> if (t.length < 16 || !t.all { it.isLetterOrDigit() || it == '-' || it == '_' }) error("$at.shareToken", tr("{0}: paylaşım anahtarı en az 16 harf/rakam olmalı", d.name)) }
+            d.widgets.forEachIndexed { wi, w ->
+                val wp = "$at.widgets[$wi]"
+                val v = views[w.view]
+                if (v == null) { error("$wp.view", tr("{0}: '{1}' görünümü yok", d.name, w.view)); return@forEachIndexed }
+                if (w.width !in 1..3) error("$wp.width", tr("{0}: kutu genişliği 1-3 olmalı", d.name))
+                if (w.limit !in 1..100) error("$wp.limit", tr("{0}: satır sayısı 1-100 olmalı", d.name))
+                when (w.type) {
+                    WidgetType.NUMBER, WidgetType.CHART -> {
+                        val r = v.report
+                        if (r == null) error("$wp.view", tr("{0}: sayı ve grafik kutusu özetli (rapor) bir görünüm ister: '{1}'", d.name, v.name))
+                        else {
+                            if (w.type == WidgetType.CHART && r.groupBy == null) error("$wp.view", tr("{0}: grafik kutusu gruplu bir rapor ister: '{1}'", d.name, v.name))
+                            val metrics = setOf("count") + r.sum.map { "sum_$it" } + r.avg.map { "avg_$it" } + r.min.map { "min_$it" } + r.max.map { "max_$it" }
+                            if (w.metric !in metrics) error("$wp.metric", tr("{0}: '{1}' değeri raporda yok (olanlar: {2})", d.name, w.metric, metrics.joinToString()))
+                        }
+                    }
+                    WidgetType.TABLE -> if (v.report != null) error("$wp.view", tr("{0}: tablo kutusu raporsuz bir görünüm ister: '{1}'", d.name, v.name))
+                    WidgetType.MAP -> {
+                        val c = config.collections.firstOrNull { it.name == v.collection }
+                        val columns = v.columns.ifEmpty { ViewService.defaultColumns(config, v) }
+                        if (v.report != null || w.field !in columns || c?.fields?.any { it.name == w.field && it.type == FieldType.GEO } != true) {
+                            error("$wp.field", tr("{0}: harita kutusu raporsuz görünüm ve görünümün sütunlarında bir konum alanı ister", d.name))
+                        }
+                    }
+                }
             }
         }
     }
@@ -1066,6 +1139,17 @@ object ConfigValidator {
                         else writable(target, act.values, ap, a.name)
                     }
                     AutomationActionType.LOG -> if (act.body.isNullOrBlank()) error("$ap.body", tr("{0}: log metni boş", a.name))
+                    AutomationActionType.AI -> {
+                        if (!config.ai.enabled) error(ap, tr("{0}: YZ eylemi için Yapay zekâ'yı açın", a.name))
+                        if (act.body.isNullOrBlank()) error("$ap.body", tr("{0}: YZ istemi boş", a.name))
+                        val f = collection?.fields?.firstOrNull { it.name == act.field }
+                        when {
+                            t.scheduled || t.onMqtt || collection == null -> error(ap, tr("{0}: YZ eylemi yalnızca kayıt olayında çalışır", a.name))
+                            t.events == listOf("delete") -> error(ap, tr("{0}: silinen kayda yazılamaz", a.name))
+                            f == null || f.computed != null || f.type !in setOf(FieldType.TEXT, FieldType.SELECT, FieldType.MULTISELECT, FieldType.INTEGER, FieldType.REAL, FieldType.BOOLEAN) ->
+                                error("$ap.field", tr("{0}: YZ yanıtının yazılacağı metin, seçim veya sayı alanını seçin", a.name))
+                        }
+                    }
                 }
             }
         }
@@ -1082,6 +1166,9 @@ object ConfigValidator {
     private val APP_PATH = Regex("^(/[A-Za-z0-9._~-]+)+$")
     private val GIT_BRANCH = Regex("^[A-Za-z0-9._/-]{1,100}$")
     private val GIT_REPO = Regex("^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+){1,4}$")
+    /** Yerel modelin kimliği (indirilen dosyanın adı, uzantısız). */
+    val LOCAL_MODEL = Regex("^[a-z0-9][a-z0-9._-]{0,79}$")
+
     private val SAFE_SUBDIR = Regex("^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$")
 
     private fun apps(config: ServerConfig, error: (String, String) -> Unit) {
@@ -1093,6 +1180,8 @@ object ConfigValidator {
             add("/_admin" to tr("web paneli"))
             add("/_auth" to tr("hesap sayfaları"))
             if (config.forms.isNotEmpty()) add(FormConfig.PATH to tr("formlar"))
+            if (config.pages.isNotEmpty()) add(PageConfig.PATH to tr("sayfalar"))
+            if (config.dashboards.any { it.shareToken != null }) add(DashboardConfig.PATH to tr("panolar"))
         }
         config.apps.forEachIndexed { i, app ->
             val at = "apps[$i]"

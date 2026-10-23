@@ -14,6 +14,7 @@ import dev.droidserver.core.mqtt.MqttBroker
 import dev.droidserver.core.realtime.RecordEvent
 import dev.droidserver.core.script.CronSchedule
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -69,6 +70,8 @@ class AutomationOutputs(
     val webhook: ((name: String, event: String, collection: String?, record: JsonObject) -> Unit)? = null,
     /** MQTT yayını (konu, içerik, tutulsun mu); kaç cihaza gittiği. */
     val mqtt: ((topic: String, payload: String, retain: Boolean) -> Int)? = null,
+    /** YZ (sistem talimatı, istem) → yanıt metni. */
+    val ai: ((system: String, prompt: String) -> String)? = null,
 )
 
 /**
@@ -274,6 +277,29 @@ class AutomationEngine(
                 if (topic.isEmpty() || '+' in topic || '#' in topic) error(tr("MQTT konusu geçersiz: '{0}'", topic))
                 val n = send(topic, fill(a.body), a.retain)
                 tr("MQTT: {0} ({1} cihaz)", topic, n)
+            }
+            AutomationActionType.AI -> {
+                val ask = outputs.ai ?: error(tr("Yapay zekâ kapalı"))
+                val c = byCollection[collection] ?: error(tr("Koleksiyon yok"))
+                val f = c.fields.firstOrNull { it.name == a.field } ?: error(tr("Alan yok: {0}", a.field))
+                val id = (rec["id"] as? JsonPrimitive)?.longOrNull ?: error(tr("Kaydın kimliği yok"))
+                val options = f.options.orEmpty()
+                val system = when (f.type) {
+                    FieldType.SELECT -> tr("Yalnızca şu seçeneklerden birini aynen yaz, başka hiçbir şey yazma: {0}", options.joinToString(", "))
+                    FieldType.MULTISELECT -> tr("Yalnızca şu seçeneklerden uyanları virgülle ayırarak aynen yaz, başka hiçbir şey yazma: {0}", options.joinToString(", "))
+                    else -> tr("Yalnızca istenen metni yaz; giriş, açıklama veya tırnak ekleme.")
+                }
+                val answer = ask(system, fill(a.body)).trim().trim('"', '\'', '.', ' ')
+                val value: JsonElement = when (f.type) {
+                    FieldType.SELECT -> JsonPrimitive(options.firstOrNull { it.equals(answer, ignoreCase = true) } ?: options.firstOrNull { answer.contains(it, ignoreCase = true) }
+                        ?: error(tr("YZ yanıtı seçeneklerden biri değil: {0}", answer.take(80))))
+                    FieldType.MULTISELECT -> JsonArray(options.filter { answer.contains(it, ignoreCase = true) }.map(::JsonPrimitive))
+                    FieldType.TEXT -> JsonPrimitive(f.maxLength?.let { answer.take(it) } ?: answer)
+                    else -> typed(f.type, answer)
+                }
+                val updated = writes.write { services.getValue(collection!!).update(id, JsonObject(mapOf(f.name to value))) }
+                changed(collection!!, RecordEvent.Action.UPDATE, updated, depth + 1)
+                tr("YZ: '{0}' alanı yazıldı", f.name)
             }
             AutomationActionType.UPDATE -> error("UPDATE")
         }

@@ -32,6 +32,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Yerel YZ: llama.cpp alt modülü (app/src/main/cpp/llama.cpp).
+          submodules: true
 
       - name: Sürüm
         id: v
@@ -65,8 +68,10 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Android SDK lisansları
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      - name: Android SDK lisansları, NDK ve CMake
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;29.0.14206865" "cmake;4.1.2" > /dev/null
 
       - name: Test ve derleme
         env:

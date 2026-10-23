@@ -29,6 +29,8 @@ import kotlinx.serialization.json.intOrNull
  *  v5 -> v6: koleksiyonların `publicRead` / `readOnly` bayrakları `rules`'a dönüşür (davranış aynı kalır):
  *            `publicRead` → list/view `public`, değilse `admin`; `readOnly` → create/update/delete `nobody`, değilse
  *            `admin`. İsteğe bağlı yeni alanlar: `auth.users`, `collections[].ownerField`.
+ *  v19 -> v20: Faz 18 Grup 3: `pages` (kodsuz sayfalar), `dashboards` (panolar), yerel YZ sağlayıcısı ve paketler
+ *            (`packages`); mevcut alanlar değişmez.
  *  v18 -> v19: Faz 18 Grup 2: `geo` alan tipi, `collections[].calendar` (takvim, `.ics`, CalDAV) ve `contacts` (CardDAV;
  *            `_ds_dav` tablosu), dosya alanlarında medya ayarları; mevcut alanlar değişmez.
  *  v17 -> v18: Faz 18: çevrimdışı eşitleme (`collections[].sync`; `_sync`, `_sync_fields` tabloları); mevcut alanlar
@@ -58,7 +60,7 @@ import kotlinx.serialization.json.intOrNull
  *            mevcut alanlar değişmez.
  */
 object ConfigMigrations {
-    const val CURRENT = 19
+    const val CURRENT = 20
 
     private val steps: Map<Int, (JsonObject, SecretSink?) -> JsonObject> = mapOf(
         1 to ::v1ToV2,
@@ -79,6 +81,7 @@ object ConfigMigrations {
         16 to { json: JsonObject, _: SecretSink? -> json }, // yalnızca isteğe bağlı alanlar eklendi
         17 to { json: JsonObject, _: SecretSink? -> json }, // yalnızca isteğe bağlı alanlar eklendi
         18 to { json: JsonObject, _: SecretSink? -> json }, // yalnızca isteğe bağlı alanlar ve yeni alan tipi eklendi
+        19 to { json: JsonObject, _: SecretSink? -> json }, // yalnızca isteğe bağlı alanlar eklendi
     )
 
     /** Kullanıcıya gösterilen değişiklikler: adım (vN -> vN+1) başına bir satır. */
@@ -112,6 +115,7 @@ object ConfigMigrations {
         16 to tr("Passkey ile parolasız giriş (kullanıcılar ve web paneli), MQTT'de cihaz başına kimlik, ev otomasyonu, Telegram'dan yönetim ve hesap e-postası şablonları eklenir. Mevcut ayarlar değişmez."),
         17 to tr("Uygulamaların bağlantı yokken de çalışabilmesi için koleksiyon başına çevrimdışı eşitleme eklenir. Mevcut ayarlar değişmez."),
         18 to tr("Konum alanı, takvim (çakışma kuralı, takvim aboneliği, telefon takvimiyle eşitleme), kişiler ve görsel/video ayarları eklenir. Mevcut ayarlar değişmez."),
+        19 to tr("Kodsuz sayfalar, panolar, telefonda çalışan yerel yapay zekâ ve paketler eklenir. Mevcut ayarlar değişmez."),
     )
 
     /** [from] sürümünden güncel sürüme yükseltirken neler değişir; güncelse boş. */
