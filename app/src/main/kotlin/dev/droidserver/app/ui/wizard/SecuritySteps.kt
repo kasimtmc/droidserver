@@ -132,6 +132,7 @@ internal fun SecurityStep(vm: WizardViewModel, draft: ServerConfig) {
             Switch(checked = draft.adminPanel.enabled, onCheckedChange = { on -> vm.updateAdminPanel { it.copy(enabled = on) } })
         }
         if (draft.adminPanel.enabled) PanelTotpSection(vm, draft)
+        if (draft.adminPanel.enabled || draft.auth.users.enabled) PasskeySection(vm, draft)
 
         HorizontalDivider()
         Text(tr("CORS (tarayıcıdan erişim)"), style = MaterialTheme.typography.titleMedium)

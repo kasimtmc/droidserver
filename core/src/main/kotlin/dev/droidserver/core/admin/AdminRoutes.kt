@@ -3,6 +3,7 @@ package dev.droidserver.core.admin
 import dev.droidserver.core.api.ApiException
 import dev.droidserver.core.api.origin
 import dev.droidserver.core.audit.AuditLog
+import dev.droidserver.core.auth.PasskeyService
 import dev.droidserver.core.auth.Totp
 import dev.droidserver.core.api.ApiNames
 import dev.droidserver.core.api.ApiPaths
@@ -27,6 +28,7 @@ import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RoutingContext
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
@@ -56,6 +58,8 @@ import kotlinx.serialization.json.buildJsonObject
  *   GET  /_admin/api/logs?after=N            → {next, lines}
  *   GET  /_admin/api/logs/stream             → text/event-stream (canlı)
  *   GET  /_admin/api/backups                 → liste;  POST: yeni yedek;  GET /{ad}: indir
+ *   POST /_admin/api/passkeys/login-options  → giriş seçenekleri;  POST /_admin/api/passkeys/login → {token, expiresInSec}
+ *   GET|POST /_admin/api/passkeys, POST /_admin/api/passkeys/register-options, DELETE /_admin/api/passkeys/{id}
  *   GET  /_admin/api/replica                 → canlı kopya rolü, devralma ayarları ve eşitleme durumu
  *   POST /_admin/api/replica/takeover        → 202 (kopya ana sunucu olur; sonuç loglarda)
  */
@@ -64,6 +68,8 @@ internal fun Route.adminPanel(
     sessions: AdminSessions,
     host: AdminHost?,
     audit: AuditLog?,
+    /** Panel girişi için passkey'ler (`auth.passkeys` açıksa). */
+    passkeys: PasskeyService?,
     caller: suspend RoutingContext.() -> Caller,
 ) {
     fun RoutingContext.ip() = origin(call.request).key
@@ -80,7 +86,52 @@ internal fun Route.adminPanel(
         get { call.respondRedirect("/_admin/") }
         route("/api") {
             // Girişten önce: panel doğrulayıcı kodu da istiyor mu.
-            get("/login") { call.respond(buildJsonObject { put("totp", JsonPrimitive(totpSecret != null)) }) }
+            get("/login") {
+                val passkey = passkeys != null && withContext(Dispatchers.IO) { passkeys.any(null) }
+                call.respond(buildJsonObject { put("totp", JsonPrimitive(totpSecret != null)); put("passkey", JsonPrimitive(passkey)) })
+            }
+            if (passkeys != null) {
+                // Passkey ile giriş eşleştirme kodunun ve doğrulayıcı kodunun yerine geçer (cihaz + kilit ekranı).
+                post("/passkeys/login-options") { call.respond(withContext(Dispatchers.IO) { passkeys.loginOptions(null) }) }
+                post("/passkeys/login") {
+                    val body = call.receive<JsonObject>()
+                    try {
+                        withContext(Dispatchers.IO) { passkeys.login(body) }
+                    } catch (e: ApiException) {
+                        audit?.record("panel", "panel.login.failed", detail = "passkey", ip = ip())
+                        throw e
+                    }
+                    audit?.record("panel", "panel.login", detail = "passkey", ip = ip())
+                    call.respond(buildJsonObject {
+                        put("token", JsonPrimitive(sessions.open(config.adminPanel.sessionHours)))
+                        put("expiresInSec", JsonPrimitive(config.adminPanel.sessionHours * 3600))
+                    })
+                }
+                route("/passkeys") {
+                    get {
+                        admin()
+                        call.respond(withContext(Dispatchers.IO) { passkeys.list(null) })
+                    }
+                    post("/register-options") {
+                        admin()
+                        call.respond(withContext(Dispatchers.IO) { passkeys.registrationOptions(null, "admin", tr("{0} yöneticisi", config.name)) })
+                    }
+                    post {
+                        admin()
+                        val body = call.receive<JsonObject>()
+                        val key = withContext(Dispatchers.IO) { passkeys.register(null, body) }
+                        audit?.record("panel", "panel.passkey.add", key["name"]?.toString()?.trim('"'), ip = ip())
+                        call.respond(HttpStatusCode.Created, key)
+                    }
+                    delete("/{id}") {
+                        admin()
+                        val id = call.parameters["id"]?.toLongOrNull() ?: throw ApiException(404, tr("Passkey bulunamadı"))
+                        withContext(Dispatchers.IO) { passkeys.delete(null, id) }
+                        audit?.record("panel", "panel.passkey.delete", id.toString(), ip = ip())
+                        call.respond(HttpStatusCode.NoContent)
+                    }
+                }
+            }
             post("/pair") {
                 val body = call.receive<JsonObject>()
                 val code = (body["code"] as? JsonPrimitive)?.content.orEmpty()
@@ -122,7 +173,8 @@ internal fun Route.adminPanel(
                     put("paths", buildJsonObject {
                         for (e in listOf(
                             Endpoint.SCHEMA, Endpoint.METRICS, Endpoint.OPENAPI, Endpoint.REALTIME, Endpoint.USERS_LIST, Endpoint.USERS_UPDATE, Endpoint.USERS_DELETE, Endpoint.VIEWS, Endpoint.VIEW,
-                            Endpoint.CLI, Endpoint.MQTT, Endpoint.MQTT_PUBLISH, Endpoint.AI_STATUS, Endpoint.AI_REINDEX, Endpoint.APPS, Endpoint.APP_DEPLOY,
+                            Endpoint.USERS_SESSIONS, Endpoint.USERS_SESSIONS_CLOSE,
+                            Endpoint.CLI, Endpoint.MQTT, Endpoint.MQTT_PUBLISH, Endpoint.MQTT_SCENE, Endpoint.SENSORS, Endpoint.AI_STATUS, Endpoint.AI_REINDEX, Endpoint.APPS, Endpoint.APP_DEPLOY,
                             Endpoint.AUTOMATIONS, Endpoint.AUTOMATION_RUN, Endpoint.TEAMS, Endpoint.TEAMS_CREATE, Endpoint.TEAM, Endpoint.TEAM_DELETE,
                             Endpoint.TEAM_ADD_MEMBER, Endpoint.TEAM_UPDATE_MEMBER, Endpoint.TEAM_REMOVE_MEMBER,
                         )) {

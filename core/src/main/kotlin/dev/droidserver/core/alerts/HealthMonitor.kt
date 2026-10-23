@@ -26,6 +26,7 @@ enum class AlertKind(val title: String, val critical: Boolean = false, val event
     FAILOVER(tr("Sunucu rolü değişti (devralma)"), critical = true, event = true),
     CRASH(tr("Uygulama beklenmedik şekilde kapandı"), critical = true, event = true),
     RESTART(tr("Sistem sunucuyu yeniden başlattı"), event = true),
+    SENSOR(tr("Sensör eşik dışında"), event = true),
     TEST(tr("Deneme uyarısı"), critical = true, event = true),
 }
 

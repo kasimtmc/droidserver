@@ -4,6 +4,7 @@ import dev.droidserver.core.i18n.tr
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.EOFException
+import java.io.File
 import java.io.IOException
 import java.io.OutputStream
 import java.net.InetAddress
@@ -16,13 +17,23 @@ import java.security.MessageDigest
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.Base64
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Küçük bir MQTT 3.1.1 sunucusu (3.1 istemcileri de): kullanıcı adı ve parola zorunlu; yayın QoS 0, 1, 2 alınır,
- * abonelere QoS 0 ile iletilir; `+` ve `#` jokerleri; tutulan (retain) mesaj, oturum saklama ve vasiyet yoktur.
+ * abonelere QoS 0 ile iletilir; `+` ve `#` jokerleri; oturum saklama ve vasiyet yoktur.
  * Her bağlantı kendi iş parçacığında. Gelen her yayın [onPublish]'e gider (koleksiyona yazma); [publish] sunucudan
  * abonelere gönderir (kayıt olayları, uygulamadan komut).
+ *
+ * Yalnızca yerel ağ: [fromInternet] true dönen adresten gelen bağlantı hemen kapatılır.
+ * Tutulan (retain) mesajlar: konu başına son mesaj saklanır, yeni aboneliğe RETAIN bayrağıyla gönderilir; boş içerik
+ * siler. [retainedFile] verilirse deploy ve yeniden başlatmalar arasında kalır (en çok 5 sn'de bir yazılır).
  */
 class MqttBroker(
     private val port: Int,
@@ -37,9 +48,14 @@ class MqttBroker(
     /** Engellenmiş adres mi (bağlantı hemen kapanır). */
     private val banned: (ip: String) -> Boolean = { false },
     private val log: (String) -> Unit = {},
+    /** İnternetten gelen bağlantı mı (MQTT yalnızca yerel ağda; Tailscale ve aynı IPv6 ağı yerel sayılır). */
+    private val fromInternet: (InetAddress) -> Boolean = { false },
+    private val retainedFile: File? = null,
+    /** Cihaz başına kimlik: kullanıcı adı → parola. [password] boşsa yalnızca bunlar bağlanabilir. */
+    private val devices: Map<String, String> = emptyMap(),
 ) {
-    /** Bağlı istemci (durum ekranı). */
-    data class ClientInfo(val id: String, val address: String, val connectedAt: Instant, val subscriptions: List<String>)
+    /** Bağlı istemci (durum ekranı); [user] bağlandığı kullanıcı adı (ortak veya cihaz). */
+    data class ClientInfo(val id: String, val address: String, val connectedAt: Instant, val subscriptions: List<String>, val user: String? = null)
 
     /** Son mesajlar: zaman, konu, boyut, sonuç (kayıt kimliği veya hata). */
     data class Message(val at: Instant, val topic: String, val bytes: Int, val result: String)
@@ -49,7 +65,7 @@ class MqttBroker(
     val failed = AtomicLong()
     private val recent = CopyOnWriteArrayList<Message>()
 
-    private class Session(val socket: Socket, val id: String, val address: String, val connectedAt: Instant) {
+    private class Session(val socket: Socket, val id: String, val address: String, val connectedAt: Instant, val user: String?) {
         val subs = CopyOnWriteArrayList<String>()
         val out: OutputStream = socket.getOutputStream()
         fun send(bytes: ByteArray) = synchronized(out) { out.write(bytes); out.flush() }
@@ -58,8 +74,18 @@ class MqttBroker(
     private val sessions = ConcurrentHashMap<String, Session>()
     private var server: ServerSocket? = null
     @Volatile private var running = false
+    private val lastRejectLog = AtomicLong()
 
-    fun clients(): List<ClientInfo> = sessions.values.map { ClientInfo(it.id, it.address, it.connectedAt, it.subs.toList()) }.sortedBy { it.connectedAt }
+    private val retained = ConcurrentHashMap<String, ByteArray>()
+    @Volatile private var retainedDirty = false
+    @Volatile private var retainedFullLogged = false
+
+    /** Tutulan mesaj sayısı. */
+    fun retainedCount(): Int = retained.size
+
+    fun retainedTopics(): Set<String> = retained.keys.toSet()
+
+    fun clients(): List<ClientInfo> = sessions.values.map { ClientInfo(it.id, it.address, it.connectedAt, it.subs.toList(), it.user) }.sortedBy { it.connectedAt }
     fun recent(): List<Message> = recent.toList().asReversed()
 
     fun note(topic: String, bytes: Int, result: String) {
@@ -69,6 +95,7 @@ class MqttBroker(
 
     /** Dinlemeye başlar; port kullanılıyorsa IOException. */
     fun start() {
+        loadRetained()
         val s = ServerSocket()
         s.reuseAddress = true
         s.bind(InetSocketAddress(InetAddress.getByName(host), port))
@@ -82,6 +109,12 @@ class MqttBroker(
                     break
                 }
                 val ip = socket.inetAddress.hostAddress.substringBefore('%')
+                if (fromInternet(socket.inetAddress)) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastRejectLog.getAndSet(now) > 60_000) log(tr("MQTT: internetten gelen bağlantı reddedildi ({0}); MQTT yalnızca yerel ağda çalışır", ip))
+                    runCatching { socket.close() }
+                    continue
+                }
                 if (banned(ip) || sessions.size >= maxClients) {
                     runCatching { socket.close() }
                     continue
@@ -89,17 +122,30 @@ class MqttBroker(
                 Thread({ serve(socket, ip) }, "ds-mqtt-client").apply { isDaemon = true; start() }
             }
         }, "ds-mqtt").apply { isDaemon = true; start() }
+        if (retainedFile != null) {
+            Thread({
+                while (running) {
+                    try { Thread.sleep(5_000) } catch (_: InterruptedException) { break }
+                    saveRetained()
+                }
+            }, "ds-mqtt-retain").apply { isDaemon = true; start() }
+        }
     }
 
     fun stop() {
         running = false
+        saveRetained()
         runCatching { server?.close() }
         sessions.values.forEach { runCatching { it.socket.close() } }
         sessions.clear()
     }
 
-    /** Sunucudan yayın: konuya uyan abonelere QoS 0. Kaç istemciye gittiği. */
-    fun publish(topic: String, payload: ByteArray): Int {
+    /**
+     * Sunucudan yayın: konuya uyan abonelere QoS 0. Kaç istemciye gittiği. [retain]: konunun son mesajı olarak saklanır
+     * (boş içerik saklananı siler); var olan abonelere yine RETAIN bayraksız gider (MQTT 3.1.1).
+     */
+    fun publish(topic: String, payload: ByteArray, retain: Boolean = false): Int {
+        if (retain) retain(topic, payload)
         val packet = packet(0x30, encodeString(topic) + payload)
         var n = 0
         for (s in sessions.values) {
@@ -124,7 +170,9 @@ class MqttBroker(
                 socket.getOutputStream().write(byteArrayOf(0x20, 2, 0, 1)) // desteklenmeyen sürüm
                 return
             }
-            if (!sameSecret(connect.username, username) || !sameSecret(connect.password, password)) {
+            val shared = password.isNotEmpty() && sameSecret(connect.username, username) && sameSecret(connect.password, password)
+            val device = connect.username?.let(devices::get)?.let { sameSecret(connect.password, it) } == true
+            if (!shared && !device) {
                 socket.getOutputStream().write(byteArrayOf(0x20, 2, 0, 4)) // hatalı kullanıcı/parola
                 if (authFailed(ip)) log(tr("MQTT: {0} engellendi (art arda hatalı giriş)", ip))
                 return
@@ -133,7 +181,7 @@ class MqttBroker(
             val id = connect.clientId.ifEmpty { "anon-" + System.nanoTime().toString(36) }
             // Aynı kimlikle yeni bağlantı eskisini kapatır (MQTT kuralı).
             sessions.remove(id)?.let { runCatching { it.socket.close() } }
-            val s = Session(socket, id, ip, Instant.now())
+            val s = Session(socket, id, ip, Instant.now(), connect.username)
             session = s
             sessions[id] = s
             socket.soTimeout = if (connect.keepAlive > 0) connect.keepAlive * 1500 else 0
@@ -152,18 +200,24 @@ class MqttBroker(
                         val pid = u16(b, 0)
                         var i = 2
                         val granted = ByteArrayOutputStream()
+                        val added = mutableListOf<String>()
                         while (i < b.size) {
                             val len = u16(b, i)
                             val filter = String(b, i + 2, len, Charsets.UTF_8)
                             i += 2 + len + 1
                             if (validFilter(filter) && s.subs.size < MAX_SUBSCRIPTIONS) {
                                 if (filter !in s.subs) s.subs += filter
+                                added += filter
                                 granted.write(0)
                             } else {
                                 granted.write(0x80)
                             }
                         }
                         s.send(packet(0x90, byteArrayOf((pid shr 8).toByte(), pid.toByte()) + granted.toByteArray()))
+                        // Yeni aboneliğe uyan tutulan mesajlar RETAIN bayrağıyla.
+                        for ((topic, payload) in retained) {
+                            if (added.any { matches(it, topic) }) s.send(packet(0x31, encodeString(topic) + payload))
+                        }
                     }
                     UNSUBSCRIBE -> {
                         val pid = u16(b, 0)
@@ -193,6 +247,7 @@ class MqttBroker(
 
     private fun handlePublish(s: Session, flags: Int, b: ByteArray, pendingQos2: MutableSet<Int>) {
         val qos = (flags shr 1) and 3
+        val retain = flags and 1 != 0
         val len = u16(b, 0)
         val topic = String(b, 2, len, Charsets.UTF_8)
         var i = 2 + len
@@ -210,7 +265,7 @@ class MqttBroker(
             failed.incrementAndGet()
             note(topic, payload.size, tr("hata: {0}", e.message ?: e.javaClass.simpleName))
         }
-        publish(topic, payload)
+        publish(topic, payload, retain)
         when (qos) {
             1 -> s.send(byteArrayOf(0x40, 2, (pid shr 8).toByte(), pid.toByte()))
             2 -> {
@@ -218,6 +273,41 @@ class MqttBroker(
                 s.send(byteArrayOf(0x50, 2, (pid shr 8).toByte(), pid.toByte()))
             }
         }
+    }
+
+    private fun retain(topic: String, payload: ByteArray) {
+        if (payload.isEmpty()) {
+            if (retained.remove(topic) != null) retainedDirty = true
+            return
+        }
+        val total = retained.values.sumOf { it.size } - (retained[topic]?.size ?: 0) + payload.size
+        if ((!retained.containsKey(topic) && retained.size >= MAX_RETAINED) || total > MAX_RETAINED_BYTES) {
+            if (!retainedFullLogged) log(tr("MQTT: tutulan mesaj sınırı doldu ({0} konu); yeni konular saklanmıyor", MAX_RETAINED))
+            retainedFullLogged = true
+            return
+        }
+        retained[topic] = payload
+        retainedDirty = true
+    }
+
+    private fun loadRetained() {
+        val f = retainedFile?.takeIf { it.isFile } ?: return
+        runCatching {
+            Json.parseToJsonElement(f.readText()).jsonObject.forEach { (topic, v) -> retained[topic] = Base64.getDecoder().decode(v.jsonPrimitive.content) }
+        }.onFailure { log(tr("MQTT: tutulan mesajlar okunamadı: {0}", it.message)) }
+    }
+
+    @Synchronized
+    private fun saveRetained() {
+        val f = retainedFile ?: return
+        if (!retainedDirty) return
+        retainedDirty = false
+        runCatching {
+            val text = JsonObject(retained.mapValues { JsonPrimitive(Base64.getEncoder().encodeToString(it.value)) }).toString()
+            val tmp = File(f.parentFile, f.name + ".tmp")
+            tmp.writeText(text)
+            if (!tmp.renameTo(f)) { f.delete(); tmp.renameTo(f) }
+        }.onFailure { retainedDirty = true; log(tr("MQTT: tutulan mesajlar yazılamadı: {0}", it.message)) }
     }
 
     private data class Connect(val clientId: String, val username: String?, val password: String?, val keepAlive: Int)
@@ -267,6 +357,8 @@ class MqttBroker(
         private const val PINGREQ = 12
         private const val DISCONNECT = 14
         const val MAX_PACKET = 256 * 1024
+        const val MAX_RETAINED = 1000
+        private const val MAX_RETAINED_BYTES = 4 * 1024 * 1024
         private const val MAX_SUBSCRIPTIONS = 100
 
         private fun u16(b: ByteArray, i: Int) = ((b[i].toInt() and 0xFF) shl 8) or (b[i + 1].toInt() and 0xFF)

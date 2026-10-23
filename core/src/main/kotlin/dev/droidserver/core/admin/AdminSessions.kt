@@ -52,6 +52,11 @@ class AdminSessions(private val clock: () -> Long = System::currentTimeMillis) {
             return null
         }
         code = null
+        return open(sessionHours)
+    }
+
+    /** Kimliği başka yoldan doğrulanmış (passkey) yönetici için oturum token'ı. */
+    fun open(sessionHours: Int): String {
         val token = ByteArray(32).also(random::nextBytes).let { Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
         sessions[hash(token)] = clock() + sessionHours * 3_600_000L
         return token

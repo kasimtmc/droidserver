@@ -35,6 +35,9 @@ object SystemCollections {
             FieldConfig("token_hash", FieldType.TEXT, required = true, unique = true),
             FieldConfig("user", FieldType.RELATION, required = true, collection = USERS, onDelete = OnDelete.CASCADE),
             FieldConfig("expires_at", FieldType.DATETIME, required = true),
+            FieldConfig("device", FieldType.TEXT),
+            FieldConfig("ip", FieldType.TEXT),
+            FieldConfig("last_used_at", FieldType.DATETIME),
         ),
     )
 
@@ -151,6 +154,27 @@ object SystemCollections {
             FieldConfig("last_step", FieldType.INTEGER),
         ),
     )
+
+    const val PASSKEYS = "_passkeys"
+    const val PANEL_PASSKEYS = "_panel_passkeys"
+
+    private fun passkeyFields() = listOf(
+        FieldConfig("credential_id", FieldType.TEXT, required = true, unique = true),
+        FieldConfig("public_key", FieldType.TEXT, required = true),
+        FieldConfig("algorithm", FieldType.INTEGER, required = true),
+        FieldConfig("sign_count", FieldType.INTEGER, default = JsonPrimitive(0)),
+        FieldConfig("name", FieldType.TEXT),
+        FieldConfig("last_used_at", FieldType.DATETIME),
+    )
+
+    /** Kullanıcıların passkey'leri: kimlik (base64url), açık anahtar (X.509, base64url), algoritma, imza sayacı. */
+    val passkeys = CollectionConfig(
+        name = PASSKEYS,
+        fields = listOf(FieldConfig("user", FieldType.RELATION, required = true, collection = USERS, onDelete = OnDelete.CASCADE)) + passkeyFields(),
+    )
+
+    /** Web paneli girişi için passkey'ler (yönetici; kullanıcı hesabına bağlı değil). */
+    val panelPasskeys = CollectionConfig(name = PANEL_PASSKEYS, fields = passkeyFields())
 
     const val TEAMS = "_teams"
     const val TEAM_MEMBERS = "_team_members"

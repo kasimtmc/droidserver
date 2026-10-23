@@ -46,14 +46,13 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import dev.droidserver.app.AppGraph
 import dev.droidserver.app.data.NetUtil
+import dev.droidserver.app.data.publicUrl
 import dev.droidserver.app.data.ServiceRestart
 import dev.droidserver.app.service.ServerService
 import dev.droidserver.app.ui.common.ScreenScaffold
 import dev.droidserver.core.config.AccessMode
-import dev.droidserver.core.config.CloudflareTunnel
 import dev.droidserver.core.config.ConfigSecrets
 import dev.droidserver.core.config.ConfigValidator
-import dev.droidserver.core.config.QuickTunnel
 import dev.droidserver.core.diagnostics.DiagnosticInput
 import dev.droidserver.core.diagnostics.Diagnostics
 import dev.droidserver.core.diagnostics.Finding
@@ -158,13 +157,7 @@ private fun collect(ctx: Context, g: AppGraph): DiagnosticInput {
     val running = state is EngineState.Running
     val access = active?.access?.mode ?: AccessMode.LOCAL
     val direct = g.direct.status.value
-    val publicUrl = when (access) {
-        AccessMode.CLOUDFLARE -> if (active?.access?.cloudflare?.tunnel == CloudflareTunnel.QUICK) {
-            QuickTunnel.urlIn(g.supervisor.logs(AccessMode.CLOUDFLARE.componentId!!))
-        } else active?.access?.cloudflare?.hostname?.let { "https://$it" }
-        AccessMode.DIRECT -> direct.ddnsHost?.let { "https://$it:${direct.httpsPort}" } ?: direct.addresses.firstOrNull()?.let { "https://$it:${direct.httpsPort}" }
-        else -> null
-    }
+    val publicUrl = publicUrl(g, active)
     val cm = ctx.getSystemService(ConnectivityManager::class.java)
     val caps = cm?.getNetworkCapabilities(cm.activeNetwork)
     return DiagnosticInput(

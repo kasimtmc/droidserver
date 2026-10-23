@@ -3,6 +3,7 @@ package dev.droidserver.core.mqtt
 import dev.droidserver.core.config.CollectionConfig
 import dev.droidserver.core.config.FieldType
 import dev.droidserver.core.config.MqttRoute
+import dev.droidserver.core.config.MqttScene
 import dev.droidserver.core.i18n.tr
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -13,6 +14,12 @@ import kotlinx.serialization.json.JsonPrimitive
 class MqttHost {
     @Volatile
     var broker: MqttBroker? = null
+}
+
+/** Sahnenin mesajlarını sırayla yayınlar; toplam kaç cihaza gittiği (son mesajlarda "sahne: <ad>" görünür). */
+fun MqttBroker.runScene(scene: MqttScene): Int = scene.messages.sumOf { m ->
+    val payload = m.payload.toByteArray()
+    publish(m.topic, payload, m.retain).also { note(m.topic, payload.size, tr("sahne: {0}; {1} cihaza", scene.name, it)) }
 }
 
 /** MQTT mesajını kayıt gövdesine çevirir (bkz. [MqttRoute]). */

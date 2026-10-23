@@ -13,6 +13,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -55,8 +56,13 @@ import dev.droidserver.core.config.CollectionConfig
 import dev.droidserver.core.config.ConfigSecrets
 import dev.droidserver.core.config.FieldType
 import dev.droidserver.core.config.MqttConfig
+import dev.droidserver.core.config.MqttDevice
+import dev.droidserver.core.config.MqttMessage
 import dev.droidserver.core.config.MqttRoute
+import dev.droidserver.core.config.MqttScene
 import dev.droidserver.core.i18n.tr
+import dev.droidserver.core.mqtt.runScene
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.ZoneId
@@ -77,6 +83,12 @@ fun MqttScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit) {
     var password by remember { mutableStateOf("") }
     var routes by remember(initial) { mutableStateOf(initial.routes) }
     var events by remember(initial) { mutableStateOf(initial.events) }
+    var devices by remember(initial) { mutableStateOf(initial.devices) }
+    var scenes by remember(initial) { mutableStateOf(initial.scenes) }
+    var editingScene by remember { mutableStateOf<MqttScene?>(null) }
+    var sceneResult by remember { mutableStateOf<String?>(null) }
+    var sharedLogin by remember(initial) { mutableStateOf(initial.devices.isEmpty() || initial.password.isNotEmpty()) }
+    var newDevice by remember { mutableStateOf("") }
     var errors by remember { mutableStateOf<List<String>>(emptyList()) }
     var testTopic by remember { mutableStateOf("ev/salon/lamba") }
     var testPayload by remember { mutableStateOf("on") }
@@ -88,10 +100,14 @@ fun MqttScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit) {
 
     fun savedPassword(): String? = initial.password.takeIf { it.isNotEmpty() }?.let { if (ConfigSecrets.isRef(it)) g.secrets.get(it.removePrefix(ConfigSecrets.PREFIX)) else it }
 
+    /** Kayıtlı cihazın parolası şifreli depodan; yeni eklenen (henüz kaydedilmemiş) düz metin. */
+    fun devicePassword(d: MqttDevice): String? = if (ConfigSecrets.isRef(d.password)) g.secrets.get(d.password.removePrefix(ConfigSecrets.PREFIX)) else d.password
+
     fun save() = scope.launch {
-        val pw = password.ifEmpty { initial.password.ifEmpty { if (enabled) strongPassword() else "" } }
+        // Cihaz listesi varken ortak giriş kapatılabilir (parola boş); yoksa ortak parola gerekir.
+        val pw = if (devices.isNotEmpty() && !sharedLogin) "" else password.ifEmpty { initial.password.ifEmpty { if (enabled) strongPassword() else "" } }
         errors = saveConfigChange(ctx, g, wizard, deploy = true, scope = listOf("mqtt")) { c ->
-            c.copy(mqtt = initial.copy(enabled = enabled, port = port.toIntOrNull() ?: 0, username = username.trim(), password = pw, routes = routes, events = events))
+            c.copy(mqtt = initial.copy(enabled = enabled, port = port.toIntOrNull() ?: 0, username = username.trim(), password = pw, routes = routes, events = events, devices = devices, scenes = scenes))
         }
         if (errors.isEmpty()) password = ""
     }
@@ -123,9 +139,52 @@ fun MqttScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit) {
                     },
                 )
                 Text(
-                    tr("Bağlantı şifresizdir (düz TCP): yalnızca yerel ağda kullanın, modemde bu portu internete açmayın. Hatalı parola denemeleri güvenlik duvarına sayılır."),
+                    tr("Bağlantı şifresizdir (düz TCP) ve yalnızca yerel ağda çalışır: internetten gelen bağlantılar reddedilir (Tailscale kabul edilir). Hatalı parola denemeleri güvenlik duvarına sayılır."),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+            SectionCard(tr("Cihazlar")) {
+                Text(
+                    tr("Her cihaza ayrı kullanıcı adı (cihaz adı) ve parola verin: birini silmek diğerlerini etkilemez. Parola kaydedince şifreli depoya taşınır."),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                devices.forEach { d ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(d.name, Modifier.weight(1f), fontFamily = FontFamily.Monospace)
+                        devicePassword(d)?.let { pw -> TextButton(onClick = { copySecret(ctx, tr("{0} parolası", d.name), pw) }) { Text(tr("Parolayı kopyala")) } }
+                        TextButton(onClick = { devices = devices - d }) { Text(tr("Sil"), color = MaterialTheme.colorScheme.error) }
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(newDevice, { newDevice = it.trim() }, singleLine = true, label = { Text(tr("Cihaz adı")) }, modifier = Modifier.weight(1f))
+                    TextButton(enabled = newDevice.isNotEmpty() && devices.none { it.name == newDevice }, onClick = {
+                        devices = devices + MqttDevice(newDevice, strongPassword())
+                        newDevice = ""
+                    }) { Text(tr("Ekle")) }
+                }
+                if (devices.isNotEmpty()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(tr("Ortak kullanıcı adı ve parolayla girişe de izin ver"), Modifier.weight(1f))
+                        Switch(sharedLogin, { sharedLogin = it })
+                    }
+                }
+            }
+            SectionCard(tr("Sahneler")) {
+                Text(
+                    tr("Tek dokunuşla gönderilen mesaj grupları (örn. \"Akşam\": salon lambası açık, perde kapalı). Buradan, ana ekrandaki Sahneler widget'ından, panelden veya POST /_mqtt/scenes/<ad> ile çalışır."),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                scenes.forEach { sc ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(tr("{0} ({1} mesaj)", sc.name, sc.messages.size), Modifier.weight(1f))
+                        if (broker != null && sc in initial.scenes) TextButton(onClick = {
+                            scope.launch(Dispatchers.IO) { sceneResult = tr("{0}: {1} cihaza gitti", sc.name, broker.runScene(sc)); tick++ }
+                        }) { Text(tr("Çalıştır")) }
+                        TextButton(onClick = { editingScene = sc }) { Text(tr("Düzenle")) }
+                    }
+                }
+                sceneResult?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                TextButton(onClick = { editingScene = MqttScene("", emptyList()) }) { Text(tr("Sahne ekle")) }
             }
             SectionCard(tr("Mesajları kaydet")) {
                 Text(
@@ -155,7 +214,7 @@ fun MqttScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit) {
                     Text(tr("{0} mesaj alındı · {1} iletildi · {2} hata", broker.received.get(), broker.delivered.get(), broker.failed.get()), style = MaterialTheme.typography.bodyMedium)
                     val clients = broker.clients()
                     Text(tr("Bağlı cihazlar ({0})", clients.size), style = MaterialTheme.typography.labelLarge)
-                    clients.forEach { c -> Text("${c.id} · ${c.address}" + if (c.subscriptions.isEmpty()) "" else " · " + c.subscriptions.joinToString(), style = MaterialTheme.typography.bodySmall) }
+                    clients.forEach { c -> Text("${c.id} · ${c.address}" + (c.user?.let { " · $it" } ?: "") + if (c.subscriptions.isEmpty()) "" else " · " + c.subscriptions.joinToString(), style = MaterialTheme.typography.bodySmall) }
                     Text(tr("Son mesajlar"), style = MaterialTheme.typography.labelLarge)
                     broker.recent().take(10).forEach { m ->
                         Text("${time.format(m.at)} ${m.topic} (${m.bytes} B) → ${m.result}", style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
@@ -165,13 +224,50 @@ fun MqttScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit) {
                     OutlinedTextField(testTopic, { testTopic = it.trim() }, singleLine = true, label = { Text(tr("Konu")) }, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(testPayload, { testPayload = it }, singleLine = true, label = { Text(tr("İçerik")) }, modifier = Modifier.fillMaxWidth())
                     OutlinedButton(enabled = testTopic.isNotBlank() && '+' !in testTopic && '#' !in testTopic, onClick = {
-                        val n = broker.publish(testTopic, testPayload.toByteArray())
-                        broker.note(testTopic, testPayload.length, tr("uygulamadan; {0} cihaza", n))
-                        tick++
+                        val topic = testTopic
+                        val payload = testPayload
+                        // Soket yazımı ana iş parçacığında yapılamaz (Android engeller).
+                        scope.launch(Dispatchers.IO) {
+                            val n = broker.publish(topic, payload.toByteArray())
+                            broker.note(topic, payload.length, tr("uygulamadan; {0} cihaza", n))
+                            tick++
+                        }
                     }) { Text(tr("Gönder")) }
                 }
             }
         }
+    }
+    editingScene?.let { sc ->
+        var name by remember(sc) { mutableStateOf(sc.name) }
+        var lines by remember(sc) { mutableStateOf(sc.messages.joinToString("\n") { "${it.topic} = ${it.payload}" }) }
+        AlertDialog(
+            onDismissRequest = { editingScene = null },
+            title = { Text(if (sc.name.isEmpty()) tr("Yeni sahne") else sc.name) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(name, { name = it }, singleLine = true, label = { Text(tr("Ad")) }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        lines, { lines = it }, label = { Text(tr("Mesajlar")) }, minLines = 3, modifier = Modifier.fillMaxWidth(),
+                        supportingText = { Text(tr("Satır başına bir mesaj: konu = içerik (örn. ev/salon/lamba = on)")) },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val messages = lines.lines().map { it.trim() }.filter { it.isNotEmpty() }
+                        .map { MqttMessage(it.substringBefore('=').trim(), it.substringAfter('=', "").trim()) }
+                    val updated = MqttScene(name.trim(), messages)
+                    scenes = if (sc.name.isEmpty()) scenes + updated else scenes.map { if (it == sc) updated else it }
+                    editingScene = null
+                }) { Text(tr("Tamam")) }
+            },
+            dismissButton = {
+                Row {
+                    if (sc.name.isNotEmpty()) TextButton(onClick = { scenes = scenes - sc; editingScene = null }) { Text(tr("Sil"), color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = { editingScene = null }) { Text(tr("Vazgeç")) }
+                }
+            },
+        )
     }
 }
 

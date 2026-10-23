@@ -7,9 +7,13 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
+import android.view.View
 import android.widget.RemoteViews
+import android.widget.Toast
 import dev.droidserver.app.DroidServerApp
 import dev.droidserver.app.R
 import dev.droidserver.app.data.AndroidDeviceStats
@@ -17,6 +21,7 @@ import dev.droidserver.app.data.NetUtil
 import dev.droidserver.app.graph
 import dev.droidserver.app.ui.MainActivity
 import dev.droidserver.core.i18n.tr
+import dev.droidserver.core.mqtt.runScene
 import dev.droidserver.core.server.EngineState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +49,7 @@ object QuickControls {
     /** Kutucuk ve widget'lar yeni durumu göstersin. */
     fun refresh(ctx: Context) {
         StatusWidget.refresh(ctx)
+        SceneWidget.refresh(ctx)
         runCatching { TileService.requestListeningState(ctx, ComponentName(ctx, ServerTileService::class.java)) }
     }
 
@@ -147,6 +153,70 @@ class StatusWidget : AppWidgetProvider() {
                 setOnClickPendingIntent(R.id.widget_toggle, toggle)
                 setOnClickPendingIntent(R.id.widget_root, QuickControls.openApp(ctx))
                 setInt(R.id.widget_dot, "setBackgroundResource", if (running) R.drawable.widget_dot_on else R.drawable.widget_dot_off)
+            }
+        }
+    }
+}
+
+/** Ana ekran widget'ı: MQTT sahneleri; ilk dördü düğme olur, dokununca sahne arka planda yayınlanır. */
+class SceneWidget : AppWidgetProvider() {
+    override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
+        manager.updateAppWidget(ids, views(context))
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == ACTION_SCENE) {
+            val name = intent.getStringExtra(EXTRA_NAME) ?: return
+            val app = context.applicationContext
+            val pending = goAsync()
+            // Soket yazımı ana iş parçacığında yapılamaz.
+            Thread({
+                try {
+                    val g = app.graph
+                    val scene = runCatching { g.configRepo.loadActiveOrNull()?.mqtt?.scenes }.getOrNull()?.firstOrNull { it.name == name }
+                    val broker = g.engine.mqtt.broker
+                    val message = when {
+                        scene == null -> tr("Sahne yok: {0}", name)
+                        broker == null -> tr("MQTT çalışmıyor; sunucuyu başlatın")
+                        else -> tr("{0}: {1} cihaza gitti", name, broker.runScene(scene))
+                    }
+                    Handler(Looper.getMainLooper()).post { Toast.makeText(app, message, Toast.LENGTH_SHORT).show() }
+                } finally {
+                    pending.finish()
+                }
+            }, "ds-scene").start()
+            return
+        }
+        super.onReceive(context, intent)
+    }
+
+    companion object {
+        private const val ACTION_SCENE = "dev.droidserver.WIDGET_SCENE"
+        private const val EXTRA_NAME = "name"
+        private val BUTTONS = intArrayOf(R.id.scene_1, R.id.scene_2, R.id.scene_3, R.id.scene_4)
+
+        fun refresh(ctx: Context) {
+            val manager = AppWidgetManager.getInstance(ctx)
+            val ids = manager.getAppWidgetIds(ComponentName(ctx, SceneWidget::class.java))
+            if (ids.isNotEmpty()) runCatching { manager.updateAppWidget(ids, views(ctx)) }
+        }
+
+        internal fun views(ctx: Context): RemoteViews {
+            val scenes = runCatching { ctx.graph.configRepo.loadActiveOrNull()?.mqtt?.scenes }.getOrNull().orEmpty().take(BUTTONS.size)
+            return RemoteViews(ctx.packageName, R.layout.widget_scenes).apply {
+                setTextViewText(R.id.scenes_title, tr("Sahneler"))
+                setTextViewText(R.id.scenes_empty, tr("Uygulamada MQTT → Sahneler'den ekleyin."))
+                setViewVisibility(R.id.scenes_empty, if (scenes.isEmpty()) View.VISIBLE else View.GONE)
+                BUTTONS.forEachIndexed { i, id ->
+                    val scene = scenes.getOrNull(i)
+                    setViewVisibility(id, if (scene == null) View.INVISIBLE else View.VISIBLE)
+                    if (scene != null) {
+                        setTextViewText(id, scene.name)
+                        val run = Intent(ctx, SceneWidget::class.java).setAction(ACTION_SCENE).putExtra(EXTRA_NAME, scene.name)
+                        setOnClickPendingIntent(id, PendingIntent.getBroadcast(ctx, 100 + i, run, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+                    }
+                }
+                setOnClickPendingIntent(R.id.scenes_root, QuickControls.openApp(ctx))
             }
         }
     }
