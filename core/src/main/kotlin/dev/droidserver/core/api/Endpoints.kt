@@ -71,6 +71,7 @@ enum class Endpoint(val key: String, val method: String, val path: String, val t
     SENSORS("sensors", "GET", "/_sensors", tr("Sensör panosu: son değerler ve grafik"), EndpointGroup.ADMIN),
     SQL("sql", "POST", "/_sql", tr("Salt okunur SQL sorgusu"), EndpointGroup.ADMIN),
     SAMPLE("sample", "POST", "/_sample/{collection}", tr("Örnek veri üret"), EndpointGroup.ADMIN),
+    BROADCAST("broadcast", "POST", "/_broadcast", tr("Toplu e-posta / web push"), EndpointGroup.ADMIN),
     APP_DEPLOY("apps.deploy", "POST", "/_apps/{name}/deploy", tr("Uygulamayı çek ve deploy et"), EndpointGroup.ADMIN),
     APP_HOOK("apps.hook", "POST", "/_apps/{name}/hook", tr("Uygulama: Git push webhook'u"), EndpointGroup.SERVER),
 

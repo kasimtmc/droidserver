@@ -28,10 +28,13 @@ import dev.droidserver.app.ui.MainActivity
 import dev.droidserver.core.alerts.AlertChannels
 import dev.droidserver.core.alerts.AlertKind
 import dev.droidserver.core.alerts.HealthInput
+import dev.droidserver.core.alerts.TelegramActions
+import dev.droidserver.core.alerts.TelegramBot
 import dev.droidserver.core.backup.BackupKind
 import dev.droidserver.core.backup.BackupSchedule
 import dev.droidserver.core.config.ConfigSecrets
 import dev.droidserver.core.config.ServerConfig
+import dev.droidserver.core.config.TelegramConfig
 import dev.droidserver.core.i18n.tr
 import dev.droidserver.core.process.ProcessSupervisor
 import dev.droidserver.core.server.DeployException
@@ -45,6 +48,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.withLock
 import java.time.Duration
 import java.time.Instant
@@ -84,6 +88,13 @@ class ServerService : Service() {
     private var retryJob: Job? = null
     private var maintenanceJob: Job? = null
 
+    /** Telegram yönetim botu ve başladığı ayar; ayar değişince yeniden başlar. */
+    private var bot: Pair<TelegramConfig, Job>? = null
+
+    /** Sunucu Telegram'dan durduruldu; servis yalnızca komutları dinlemek için açık. */
+    @Volatile
+    private var standby = false
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -92,6 +103,7 @@ class ServerService : Service() {
             return START_NOT_STICKY
         }
         goForeground(tr("Başlatılıyor…"))
+        standby = false
         if (intent == null) owner.logs.add(ServiceRestart.record(this))
         acquireLocks()
         watchNetwork()
@@ -149,8 +161,7 @@ class ServerService : Service() {
         g.orchestrator.stopAll()
         g.discovery.stop()
         g.logs.add("Sunucu durduruldu")
-        wakeLock?.takeIf { it.isHeld }?.release()
-        wifiLock?.takeIf { it.isHeld }?.release()
+        releaseLocks()
         scope.cancel()
         super.onDestroy()
     }
@@ -209,6 +220,7 @@ class ServerService : Service() {
                         alertsFor = active
                         val resolved = runCatching { ConfigSecrets.resolve(active, g.secrets::get) }.getOrDefault(active)
                         g.engine.health.configure(resolved.alerts, AlertChannels.from(resolved, notifier), resolved.name)
+                        syncBot(resolved)
                     }
                     if (!crashChecked) {
                         crashChecked = true
@@ -239,6 +251,67 @@ class ServerService : Service() {
                 StatusWidget.refresh(this@ServerService)
                 delay(30_000)
             }
+        }
+    }
+
+    // ---- Telegram ile yönetim ----
+
+    /** Yönetici sohbeti ayarlıysa botu başlatır; ayar değiştiyse eskisini durdurur. */
+    private fun syncBot(config: ServerConfig) {
+        val t = config.alerts.telegram?.takeIf { it.adminChatId != null && it.botToken.isNotBlank() && !it.botToken.startsWith("secret:") }
+        if (bot?.first == t) return
+        bot?.second?.cancel()
+        bot = t?.let { it to scope.launch { TelegramBot(it.botToken, it.adminChatId!!, telegramActions, owner.logs::add).run() } }
+    }
+
+    private val telegramActions = object : TelegramActions {
+        override fun status(): String = buildString {
+            val g = owner
+            when (val s = g.engine.state.value) {
+                is EngineState.Running -> {
+                    val minutes = Duration.between(s.since, Instant.now()).toMinutes()
+                    appendLine(tr("✅ Çalışıyor ({0} sa {1} dk)", minutes / 60, minutes % 60))
+                    NetUtil.localIpv4().forEach { appendLine("http://$it:${s.port}") }
+                }
+                EngineState.Stopped -> appendLine(if (standby) tr("⏸ Durduruldu; /baslat ile başlatın") else tr("⏸ Durduruldu"))
+                is EngineState.Failed -> appendLine(tr("❌ Çalışmıyor: {0}", s.reason))
+            }
+            val series = g.engine.metrics.series()
+            appendLine(tr("Son bir saat: {0} istek, {1} hata", series.sumOf { it.requests }, series.sumOf { it.errors }))
+            runCatching { AndroidDeviceStats(this@ServerService).snapshot() }.getOrNull()?.let { d ->
+                d.batteryPercent?.let { appendLine(tr("Pil: %{0}", it) + if (d.charging == true) tr(" (şarjda)") else "") }
+                d.freeStorageBytes?.let { appendLine(tr("Boş alan: {0} GB", "%.1f".format(it / 1e9))) }
+            }
+            g.supervisor.statuses.value.values.filter { it.phase == ProcessSupervisor.Phase.FAILED }.takeIf { it.isNotEmpty() }
+                ?.let { appendLine(tr("Sorunlu bileşenler: {0}", it.joinToString { c -> c.id })) }
+        }.trimEnd()
+
+        override fun backup(): String {
+            if (owner.engine.state.value !is EngineState.Running) return tr("Sunucu çalışmıyor; yedek alınamaz.")
+            val info = owner.backups.backup(BackupKind.MANUAL, actor = "telegram")
+            return tr("Yedek alındı: {0} ({1} MB)", info.name, "%.1f".format(info.size / 1e6))
+        }
+
+        override fun logs(count: Int): List<String> = owner.logs.lines.value.takeLast(count)
+
+        override fun start(): String {
+            if (owner.engine.state.value is EngineState.Running) return tr("Sunucu zaten çalışıyor.")
+            start(this@ServerService)
+            return tr("Başlatılıyor; birkaç saniye sonra /durum yazın.")
+        }
+
+        override fun stop(): String {
+            if (standby) return tr("Sunucu zaten durdurulmuş.")
+            standby = true
+            retryJob?.cancel()
+            val g = owner
+            runBlocking { g.deployLock.withLock { g.orchestrator.stopAll() } }
+            g.discovery.stop()
+            g.logs.add("Sunucu Telegram'dan durduruldu; komutlar dinleniyor")
+            // Uzun yoklama için kilit gerekmez (gelen yanıt cihazı uyandırır): pil tasarrufu.
+            releaseLocks()
+            updateNotification(tr("Durduruldu; Telegram'dan /baslat ile başlatılabilir"))
+            return tr("Sunucu durduruldu. Uygulama Telegram komutlarını dinlemeye devam ediyor; /baslat ile başlatın.")
         }
     }
 
@@ -287,6 +360,13 @@ class ServerService : Service() {
      * süresiz: sunucu çalıştığı sürece gerekli, onDestroy'da bırakılır, süreç ölünce sistem bırakır. Süreli kilit uzun
      * yedekte veya bakım döngüsü durursa sunucuyu uyutur (WakelockTimeout gözden geçirildi, Faz 17.2).
      */
+    private fun releaseLocks() {
+        wakeLock?.takeIf { it.isHeld }?.release()
+        wakeLock = null
+        wifiLock?.takeIf { it.isHeld }?.release()
+        wifiLock = null
+    }
+
     @Suppress("DEPRECATION")
     @SuppressLint("WakelockTimeout")
     private fun acquireLocks() {

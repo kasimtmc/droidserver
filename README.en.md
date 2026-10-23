@@ -132,7 +132,7 @@ with **Advanced (JSON)**; both share the same draft, and the draft is saved to `
 | `fullText` | Full-text index: `?q=` by word prefix, from the index and ordered by relevance (see Search) |
 | `realtime` | `enabled`, `maxConnections` (100): realtime subscriptions (see Realtime subscriptions) |
 | `webhooks` | `[{name, url, collections, events, secret, enabled}]`: signed POST on record events (see Webhooks) |
-| `email` | `enabled`, `host`, `port` (587), `security` (`starttls`, `ssl`, `none`), `username`, `password` (in the encrypted store), `from`, `fromName`, `publicUrl` (prefix of links in e-mails) — see E-mail |
+| `email` | `enabled`, `host`, `port` (587), `security` (`starttls`, `ssl`, `none`), `username`, `password` (in the encrypted store), `from`, `fromName`, `publicUrl` (prefix of links in e-mails), `templates` (account e-mail templates) — see E-mail |
 | `auth.users.sendVerification`, `requireVerified` | Verification e-mail on sign-up (true); no sign-in until verified (false; e-mail must be enabled) |
 | `ownerField` | Relation field linked to `_users` that holds the record's owner; required for the `owner` rule (see Users and rules) |
 | `teamField` | Relation field to `_teams` holding the record's team; required for the `team` rule (see Teams) |
@@ -228,6 +228,11 @@ When adding to an existing configuration, a collection is not added if one with 
 added only to empty collections; if the site is selected, `files/www/index.html` is written (with a warning if a site already exists).
 
 ## Wizard and management screens
+
+On first launch (with no configuration) a short **guide** introduces the app in three pages and asks how to start: a
+ready-made sample project (Blog, Shop, Appointments, Task tracking; the collections, rules, sample records and site are set
+up after the deploy) or an empty wizard. **Help** (the ? icon on the Status screen) shows the sections of this README,
+offline and searchable (it is built into the app; Turkish or English depending on the UI language).
 
 The wizard has seven steps; if a step is not valid, **Next** is disabled and the error appears under the relevant field
 (`ConfigValidator.validateDetailed()` returns errors with field paths like `collections[0].fields[1].name`).
@@ -968,6 +973,20 @@ tap **Find chat**; test right away with **Send test**.
 Ongoing problems and recent alerts: Server → **Health alerts** (test alerts are sent from here too), the top of the
 **Metrics** tab in the panel, and `GET /api/_alerts` and `POST /api/_alerts/test` (admin) in the API.
 
+**Management from Telegram:** the same bot accepts commands from the `alerts.telegram.adminChatId` chat (**Admin chat**
+in the wizard; alerts can go to, say, a family group while management stays private to you). Commands: `/durum` (status:
+server, address, battery, free space, the last hour's requests, failing components), `/yedek` (backup), `/loglar [n]`
+(logs: last 20, at most 100 lines), `/baslat` (start), `/durdur` (stop, with a confirmation button valid for 2 minutes),
+`/yardim` (help). The bot uses long polling, so no inbound connection to the phone is needed. Commands from other chats
+get no reply (they show up once in the log); commands older than 2 minutes that piled up while the bot was off are not
+run. `/durdur` stops the server but the app's service stays up to listen to Telegram ("Stopped" in the notification; the
+wake lock is released), and `/baslat` starts it again. **Stop** on the phone or in the notification shuts everything
+down; `/baslat` doesn't work after that.
+
+```json
+"telegram": { "botToken": "secret:telegram_token_1", "chatId": "-1001234567890", "adminChatId": "987654321" }
+```
+
 ### Firewall
 
 Wizard → Security → **Firewall**:
@@ -1120,6 +1139,37 @@ pages: `/_auth/verify` verifies the account, `/_auth/reset` shows the new passwo
 without writing a client app). Otherwise the e-mail contains a code, and the client app passes it to the `confirm-*`
 endpoints. With `requireVerified` on, unverified users cannot sign in (`403`) and sign-up does not create a session.
 Scripts can send e-mail with `ctx.mail.send(to, subject, text[, html])` (same limits; 429 when exceeded).
+
+**Templates:** the subject, text and optional HTML of the verification, password reset and login code e-mails can be
+changed (Wizard → Users → E-mail → **Account e-mail templates**, with a preview using sample values). The placeholders are
+`{app}` (sender name), `{email}`, `{code}` and `{link}` (`{link}` gives the code when there is no `publicUrl`); values
+written into HTML are escaped. A template with `lang` only goes to clients asking for that language (the first language
+of `Accept-Language`), one without `lang` to everyone else; e-mails without a template use the built-in text.
+
+```json
+"templates": [
+  { "kind": "verify", "subject": "{app}: hesabınızı doğrulayın", "text": "Merhaba,\n\nDoğrulamak için: {link}" },
+  { "kind": "verify", "lang": "en", "subject": "{app}: verify your account", "text": "Hi,\n\nVerify: {link}", "html": "<a href=\"{link}\">Verify</a>" }
+]
+```
+
+**Bulk notifications:** `POST /api/_broadcast` (admin; in the panel Users → **Bulk notification…**) sends e-mail
+(`channel: "email"`) or web push (`"push"`) to users. Recipient filter: `role`, `team`, `verifiedOnly` (on by default for
+e-mail) and a list filter on `_users` fields (`where`, e.g. `created_at[gt]=2026-01-01`; filtering by the password hash
+isn't allowed). `dryRun: true` returns the number of recipients; the actual send is a job in the persistent job queue
+(`_broadcast`): it goes out in ID order to at most `perMinute` (30; 1-600) people a minute, progress (sent, failed, last
+ID) is kept in the job's result, and it resumes where it left off after a restart. Cancel it with `/_jobs/{id}/cancel`
+(Jobs in the panel); after 10 failed deliveries in a row (e.g. the SMTP server refuses) the job stops. Every e-mail gets an
+**unsubscribe** link (`/_auth/unsubscribe`; bound to the address, signed); the link opens a confirmation page and the
+unsubscribe happens through a form (so nobody gets unsubscribed when a mail scanner prefetches the link). Unsubscribed
+addresses are kept in `_unsubscribed` and don't affect account e-mails. Bulk e-mail needs `email.publicUrl`. For push,
+users without a subscription aren't counted.
+
+```bash
+curl -H "$H" -X POST "$BASE/_broadcast" -H 'Content-Type: application/json' \
+  -d '{"subject":"Maintenance","text":"We are down Sunday 10:00-11:00.","role":"user","dryRun":true}'
+# → {"recipients":42}; without dryRun 202 {"job":7,"recipients":42}
+```
 
 ### Named API keys
 
@@ -1853,6 +1903,14 @@ The **debug** build installed from Android Studio is signed with a different key
 it (the card says so). To switch to a release build, back up and export from Backups, uninstall the app, install the APK
 from the release page and restore the backup.
 
+## F-Droid and privacy
+
+The F-Droid metadata is in `fastlane/metadata/android/` (title, descriptions, changelog, screenshots); the submission steps
+and open questions are in `docs/fdroid/README.md`. The release build is set up to be reproducible (the build machine's Git
+info and Google's encrypted dependency block are not written into the APK): two clean builds from the same source give a
+byte-identical APK. Privacy policy and permission rationale: [PRIVACY.en.md](PRIVACY.en.md). License: GPL-3.0-or-later ([LICENSE](LICENSE)). There is no Play Store build
+while targetSdk stays at 28 (see Why targetSdk 28?).
+
 ## Publishing a release
 
 `.github/workflows/release.yml`: when a `v1.2.3` tag is pushed (or manually from Actions, entering a version), tests run,
@@ -2123,3 +2181,6 @@ tools/          package-postgres.sh, package-cloudflared.sh (component packages 
 - [x] **Session management:** open sessions (device, address, last used), close one or all; a closed session's token stops working immediately
 - [x] **MQTT security:** local network only, per-device credentials, retained messages
 - [x] **Home automation:** MQTT action and trigger in automations, scenes (incl. a widget), sensor dashboard with threshold alerts, Home Assistant discovery
+- [x] **Management from Telegram:** `/durum`, `/yedek`, `/loglar`, `/baslat`, `/durdur` (with confirmation) from a separate admin chat
+- [x] **E-mail templates and bulk notifications:** account e-mails with per-language templates; filtered, rate-limited, cancellable bulk e-mail / web push to users, with unsubscribe
+- [x] **Outreach:** first-launch guide and sample project, offline in-app help, F-Droid metadata, reproducible builds, privacy policy

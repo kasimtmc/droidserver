@@ -30,7 +30,8 @@ import kotlinx.serialization.json.intOrNull
  *            `publicRead` → list/view `public`, değilse `admin`; `readOnly` → create/update/delete `nobody`, değilse
  *            `admin`. İsteğe bağlı yeni alanlar: `auth.users`, `collections[].ownerField`.
  *  v16 -> v17: Faz 17: `auth.passkeys` (passkey ile giriş; `_passkeys`, `_panel_passkeys` tabloları), MQTT cihaz kimlikleri
- *            ve tutulan mesajlar; mevcut alanlar değişmez.
+ *            ve tutulan mesajlar, `alerts.telegram.adminChatId` (Telegram'dan yönetim), `email.templates` (hesap e-postası
+ *            şablonları) ve toplu bildirim (`_unsubscribed` tablosu); mevcut alanlar değişmez.
  *  v15 -> v16: Faz 16: otomasyon kuralları (`automations`), herkese açık formlar (`forms`) ve `api.graphql`; mevcut alanlar değişmez.
  *  v14 -> v15: Faz 15: ortak ortam değişkenleri (`env`), kendi uygulamalar (`apps`, Git kaynağı dahil) ve
  *            `components[].sharedEnv`; mevcut alanlar değişmez.
@@ -102,7 +103,7 @@ object ConfigMigrations {
         13 to tr("Özel roller, şifreli alanlar, saklama süresi, görünümler ve raporlar, WebSocket kanalları ve telefon özellikleri (SMS, konum) eklenir. Mevcut ayarlar değişmez."),
         14 to tr("Ortak ortam değişkenleri ve sırlar (.env), kendi uygulamalarınızı (Node.js, Python, Java) çalıştırma ve Git'ten deploy eklenir. Mevcut ayarlar değişmez."),
         15 to tr("Kod yazmadan otomasyon kuralları (kayıt eklenince veya belirli saatlerde e-posta, bildirim, webhook gönderme ya da kayıt güncelleme), koleksiyonlara kayıt ekleyen herkese açık formlar, isteğe bağlı GraphQL ucu ve yapay zekâ (Claude ile sohbet, kayıtlara soru sorma, anlamsal arama) eklenir. Mevcut ayarlar değişmez."),
-        16 to tr("Passkey ile parolasız giriş (kullanıcılar ve web paneli), MQTT'de cihaz başına kimlik ve ev otomasyonu ayarları eklenir. Mevcut ayarlar değişmez."),
+        16 to tr("Passkey ile parolasız giriş (kullanıcılar ve web paneli), MQTT'de cihaz başına kimlik, ev otomasyonu, Telegram'dan yönetim ve hesap e-postası şablonları eklenir. Mevcut ayarlar değişmez."),
     )
 
     /** [from] sürümünden güncel sürüme yükseltirken neler değişir; güncelse boş. */

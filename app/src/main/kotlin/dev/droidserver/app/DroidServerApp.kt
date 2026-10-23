@@ -277,6 +277,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("autoUpdateCheck", true)
         set(v) = prefs.edit { putBoolean("autoUpdateCheck", v) }
 
+    /** İlk açılış rehberi görüldü (atlandı veya bitirildi). */
+    var onboardingDone: Boolean
+        get() = prefs.getBoolean("onboardingDone", false)
+        set(v) = prefs.edit { putBoolean("onboardingDone", v) }
+
     /** Sihirbazda uzman modu: otomatik eklenen alanlar ve uçlar da düzenlenir. */
     var expertMode: Boolean
         get() = prefs.getBoolean("expertMode", false)

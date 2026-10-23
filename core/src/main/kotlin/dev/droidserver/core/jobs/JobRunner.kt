@@ -37,7 +37,7 @@ class JobRunner(
     @Synchronized
     fun start() {
         if (loop != null) return
-        runCatching { queue.recover() }.onSuccess { if (it > 0) log(tr("İş kuyruğu: yarım kalan {0} iş yeniden kuyruğa alındı", it)) }
+        runCatching { queue.recover(except = BROADCAST_JOB) }.onSuccess { if (it > 0) log(tr("İş kuyruğu: yarım kalan {0} iş yeniden kuyruğa alındı", it)) }
         workers = Executors.newFixedThreadPool(config.concurrency) { r -> Thread(r, "ds-job").apply { isDaemon = true } }
         loop = Thread({
             while (!stopped) {
