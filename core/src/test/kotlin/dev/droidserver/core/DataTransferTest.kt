@@ -1,5 +1,7 @@
 package dev.droidserver.core
 
+import dev.droidserver.core.api.ApiException
+import dev.droidserver.core.api.RecordService
 import dev.droidserver.core.api.droidServerModule
 import dev.droidserver.core.config.AuthConfig
 import dev.droidserver.core.config.AuthMode
@@ -16,15 +18,19 @@ import dev.droidserver.core.data.ImportMode
 import dev.droidserver.core.data.TransferFormat
 import dev.droidserver.core.db.SchemaMigrator
 import dev.droidserver.core.db.SqlDriver
+import dev.droidserver.core.files.FileStore
+import dev.droidserver.core.files.Upload
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -32,8 +38,15 @@ import org.junit.After
 import org.junit.Before
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
+import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.StringWriter
 import java.net.URLEncoder
+import java.nio.file.Files
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
+import kotlin.test.assertContentEquals
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -173,5 +186,132 @@ class DataTransferTest(private val dialect: Dialect) {
         val tooMany = import(big, "dryRun=true")
         assertEquals(HttpStatusCode.BadRequest, tooMany.status)
         assertTrue("En çok 10000 satır" in tooMany.bodyAsText(), tooMany.bodyAsText())
+    }
+
+    @Test
+    fun `sablon - ipuclu basliklar, ornek satir geri okunur`() {
+        val tasks = CollectionConfig(
+            "tasks",
+            listOf(
+                FieldConfig("title", FieldType.TEXT, required = true),
+                FieldConfig("status", FieldType.SELECT, required = true, options = listOf("açık", "bitti")),
+                FieldConfig("tags", FieldType.MULTISELECT, options = listOf("ev", "iş")),
+                FieldConfig("done", FieldType.BOOLEAN),
+                FieldConfig("product", FieldType.RELATION, collection = "products"),
+            ),
+        )
+        val cfg = config.copy(collections = listOf(products, tasks))
+        SchemaMigrator(db).migrate(cfg.collections)
+        val t = DataTransfer(db, cfg)
+        val csv = t.template("tasks")
+        val lines = csv.removePrefix(Csv.BOM.toString()).trim().lines()
+        assertEquals(2, lines.size, csv)
+        assertTrue("status (zorunlu; açık|bitti)" in lines[0], lines[0])
+        assertTrue("tags (ev|iş; birden çok: virgülle)" in lines[0], lines[0])
+        // Hedefi boş ilişki örnekte boş kalır; şablon olduğu gibi içe aktarılabilir.
+        val r = t.import("tasks", TransferFormat.CSV, csv, dryRun = true)
+        assertTrue(r.errors.isEmpty(), r.errors.toString())
+        assertEquals(listOf("title", "status", "tags", "done", "product"), r.mapping.values.toList())
+    }
+
+    @Test
+    fun `zip - dosyalarla tasima, gecersiz dosya, geri almada dosyalar silinir`() = testApplication {
+        val docs = CollectionConfig(
+            "docs",
+            listOf(
+                FieldConfig("title", FieldType.TEXT, required = true),
+                FieldConfig("photo", FieldType.FILE, mimeTypes = listOf("image/*")),
+                FieldConfig("extra", FieldType.FILE, multiple = true),
+            ),
+        )
+        val cfg = config.copy(collections = listOf(products, docs))
+        SchemaMigrator(db).migrate(cfg.collections)
+        val dir = Files.createTempDirectory("ds-zip").toFile()
+        val store = FileStore(File(dir, "storage"))
+        application { droidServerModule(cfg, db, files = store) }
+        val t = DataTransfer(db, cfg, store)
+        val svc = RecordService(db, docs, collections = cfg.schemaCollections(), files = store)
+        fun upload(field: String, name: String, bytes: ByteArray): Upload =
+            store.accept(docs.fields.first { it.name == field }, store.newTemp().apply { writeBytes(bytes) }, bytes.size.toLong(), bytes.copyOf(minOf(bytes.size, 512)), name)
+        fun zip(vararg entries: Pair<String, ByteArray>) = ByteArrayOutputStream().also { o ->
+            ZipOutputStream(o).use { z -> entries.forEach { (n, b) -> z.putNextEntry(ZipEntry(n)); z.write(b); z.closeEntry() } }
+        }.toByteArray()
+        fun unzip(bytes: ByteArray) = ZipInputStream(bytes.inputStream()).use { z -> generateSequence { z.nextEntry }.map { it.name to z.readBytes() }.toList().toMap() }
+        fun diskFiles() = File(store.root, "docs").walk().filter { it.isFile }.count()
+        fun str(o: JsonObject, k: String) = o.getValue(k).jsonPrimitive.content
+        try {
+            val png = FilesHttpTest.PNG
+            val a = svc.create(Json.parseToJsonElement("""{"title":"a"}""").jsonObject, uploads = listOf(upload("photo", "kedi.png", png), upload("extra", "not.txt", "merhaba".toByteArray())))
+            svc.create(Json.parseToJsonElement("""{"title":"b"}""").jsonObject)
+            val aId = str(a, "id")
+            val photo = str(a, "photo")
+            val extra = a.getValue("extra").jsonArray.single().jsonPrimitive.content
+
+            // Dışa aktarma: data.json ve kaydın dosyaları.
+            val exported = ByteArrayOutputStream().also { assertEquals(2, t.exportZip("docs", it)) }.toByteArray()
+            val entries = unzip(exported)
+            assertEquals(setOf("data.json", "files/$aId/$photo", "files/$aId/$extra"), entries.keys)
+            assertContentEquals(png, entries.getValue("files/$aId/$photo"))
+            assertEquals(2, diskFiles())
+
+            // Deneme: kayıt ve dosya kalmaz.
+            val dry = t.importZip("docs", exported.inputStream(), dryRun = true)
+            assertTrue(dry.errors.isEmpty(), dry.errors.toString())
+            assertEquals(2, dry.created)
+            assertFalse(dry.applied)
+            assertEquals(2, diskFiles(), "deneme dosya bırakmaz")
+
+            // Gerçek aktarma: dosyalar yeni kayda kopyalanır.
+            val done = t.importZip("docs", exported.inputStream())
+            assertTrue(done.applied, done.errors.toString())
+            assertEquals(4, diskFiles())
+            val copy = svc.list(1, 10, "-id", listOf("title" to "a")).items.first()
+            val copyId = str(copy, "id").toLong()
+            assertTrue(copyId.toString() != aId)
+            assertContentEquals(png, store.file("docs", copyId, str(copy, "photo"))!!.readBytes())
+
+            // Bir satır hatalıysa önceki satırların taşınan dosyaları da silinir.
+            val data = """[{"id":$aId,"title":"c","photo":"$photo"},{"id":99,"title":null}]"""
+            val failed = t.importZip("docs", zip("data.json" to data.toByteArray(), "files/$aId/$photo" to png).inputStream())
+            assertFalse(failed.applied)
+            assertEquals(listOf(2), failed.errors.map { it.row })
+            assertEquals(4, diskFiles(), "geri alınan aktarma dosya bırakmaz")
+
+            // İçerik tipi alanın izinlerine uymazsa, zip'te olmayan dosya ve id'siz satır: satır hatası.
+            val bad = t.importZip(
+                "docs",
+                zip(
+                    "data.json" to """[{"id":1,"title":"x","photo":"sahte.png"},{"id":2,"title":"y","photo":"yok.png"},{"title":"z","extra":["a.txt"]}]""".toByteArray(),
+                    "files/1/sahte.png" to "metin".toByteArray(),
+                ).inputStream(),
+            )
+            assertEquals(listOf(1, 2, 3), bad.errors.map { it.row }, bad.errors.toString())
+            assertTrue(bad.errors.all { "photo" in it.details || "extra" in it.details })
+
+            // Güncelleme: eski dosya ancak işlem kalıcı olunca silinir.
+            val upsert = """[{"id":$aId,"title":"a2","photo":"yeni.png"}]""".toByteArray()
+            val newPng = png.copyOf().also { it[100] = 7 }
+            assertFalse(t.importZip("docs", zip("data.json" to upsert, "files/$aId/yeni.png" to newPng).inputStream(), mode = ImportMode.UPSERT, dryRun = true).applied)
+            assertTrue(store.file("docs", aId.toLong(), photo)!!.isFile, "deneme eski dosyayı silmez")
+            assertTrue(t.importZip("docs", zip("data.json" to upsert, "files/$aId/yeni.png" to newPng).inputStream(), mode = ImportMode.UPSERT).applied)
+            val updated = svc.get(aId.toLong())
+            assertFalse(store.file("docs", aId.toLong(), photo)!!.exists())
+            assertContentEquals(newPng, store.file("docs", aId.toLong(), str(updated, "photo"))!!.readBytes())
+            assertEquals(extra, updated.getValue("extra").jsonArray.single().jsonPrimitive.content, "verideki olmayan alan değişmez")
+
+            assertEquals(400, assertFailsWith<ApiException> { t.importZip("docs", zip("x.txt" to byteArrayOf(1)).inputStream()) }.status)
+            assertEquals(400, assertFailsWith<ApiException> { t.import("docs", TransferFormat.JSON, """[{"title":"x","photo":"a.png"}]""") }.status)
+
+            // HTTP: format=zip ile aynı uçlar.
+            val http = client.get("/api/collections/docs/export?format=zip") { bearerAuth(key) }
+            assertEquals(HttpStatusCode.OK, http.status)
+            assertEquals("application/zip", http.headers[HttpHeaders.ContentType])
+            assertTrue("data.json" in unzip(http.bodyAsBytes()).keys)
+            val imported = client.post("/api/collections/docs/import?format=zip&dryRun=true") { bearerAuth(key); setBody(http.bodyAsBytes()) }
+            assertEquals(HttpStatusCode.OK, imported.status, imported.bodyAsText())
+            assertEquals("4", Json.parseToJsonElement(imported.bodyAsText()).jsonObject.getValue("created").jsonPrimitive.content)
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 }

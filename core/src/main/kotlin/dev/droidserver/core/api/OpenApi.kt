@@ -98,16 +98,20 @@ object OpenApi {
                     filters.forEach { add(it) }
                 }
                 val exportParams = buildJsonArray {
-                    add(obj("name" to str("format"), "in" to str("query"), "schema" to obj("type" to str("string"), "enum" to buildJsonArray { add(str("csv")); add(str("json")) })))
+                    add(obj("name" to str("format"), "in" to str("query"), "schema" to obj("type" to str("string"), "enum" to buildJsonArray { add(str("csv")); add(str("json")); add(str("zip")) })))
                     add(query("delimiter", "string", tr("semicolon: Türkçe Excel için noktalı virgül")))
                     add(query("sort", "string", tr("Sıralama")))
                     filters.forEach { add(it) }
                 }
-                op("/collections/${c.name}/export", "get", operation(tag, tr("Dışa aktar (CSV veya JSON dosyası)"), public(Rules.Op.LIST), params = exportParams,
-                    responses = obj("200" to obj("description" to str(tr("Dosya")), "content" to obj("text/csv" to obj("schema" to type("string")), "application/json" to obj("schema" to type("array")))))))
+                op("/collections/${c.name}/export", "get", operation(tag, tr("Dışa aktar (CSV, JSON veya dosyalarıyla zip)"), public(Rules.Op.LIST), params = exportParams,
+                    responses = obj("200" to obj("description" to str(tr("Dosya")), "content" to obj(
+                        "text/csv" to obj("schema" to type("string")),
+                        "application/json" to obj("schema" to type("array")),
+                        "application/zip" to obj("schema" to obj("type" to str("string"), "format" to str("binary"))),
+                    )))))
                 if (caller.isAdmin) {
                     val importParams = buildJsonArray {
-                        add(obj("name" to str("format"), "in" to str("query"), "schema" to obj("type" to str("string"), "enum" to buildJsonArray { add(str("csv")); add(str("json")) })))
+                        add(obj("name" to str("format"), "in" to str("query"), "schema" to obj("type" to str("string"), "enum" to buildJsonArray { add(str("csv")); add(str("json")); add(str("zip")) })))
                         add(obj("name" to str("mode"), "in" to str("query"), "schema" to obj("type" to str("string"), "enum" to buildJsonArray { add(str("insert")); add(str("upsert")) })))
                         add(query("dryRun", "boolean", tr("Yalnızca denetle ve önizle, yazma")))
                         add(query("mapping", "string", tr("JSON: {\"Sütun\": \"alan\"}; boşsa adlar eşleşir")))
@@ -115,9 +119,13 @@ object OpenApi {
                     val importBody = obj("required" to JsonPrimitive(true), "content" to obj(
                         "text/csv" to obj("schema" to type("string")),
                         "application/json" to obj("schema" to obj("type" to str("array"), "items" to obj("type" to str("object")))),
+                        "application/zip" to obj("schema" to obj("type" to str("string"), "format" to str("binary"), "description" to str(tr("data.json veya data.csv ve files/<id>/<ad> dosyaları")))),
                     ))
                     op("/collections/${c.name}/import", "post", operation(tag, tr("İçe aktar (hepsi ya da hiçbiri)"), public = false, params = importParams, body = importBody,
                         responses = ok(obj("type" to str("object"), "description" to str(tr("{columns, mapping, total, created, updated, errors, sample, dryRun, applied}"))))))
+                    op("/collections/${c.name}/import/template", "get", operation(tag, tr("İçe aktarma şablonu (CSV: başlıklar, ipuçları, örnek satır)"), public = false,
+                        params = buildJsonArray { add(query("delimiter", "string", tr("semicolon: Türkçe Excel için noktalı virgül"))) },
+                        responses = obj("200" to obj("description" to str(tr("Dosya")), "content" to obj("text/csv" to obj("schema" to type("string")))))))
                 }
                 op("/collections/${c.name}/aggregate", "get", operation(tag, tr("Özet: sayı, toplam, ortalama, gruplama"), public(Rules.Op.LIST), params = aggParams,
                     responses = ok(obj("type" to str("object"), "description" to str(tr("{count, sum_alan, ...} veya {groups:[{key, count, ...}], truncated}")))), rule = c.rules[Rules.Op.LIST]))
@@ -144,7 +152,7 @@ object OpenApi {
                         responses = list(tr("{items:[{version, action (create|update|delete|restore|revert), at, actor, data}], totalItems}"))))
                     val versionParams = JsonArray(idParam + obj("name" to str("version"), "in" to str("path"), "required" to JsonPrimitive(true), "schema" to type("integer")))
                     op("$base/{id}/history/{version}/revert", "post", operation(tag, tr("Sürüme dön (dosya ve hesaplanan alanlar hariç)"), public = false,
-                        params = versionParams, responses = ok(ref(c.name))))
+                        params = JsonArray(versionParams + query("fields", "string", tr("Yalnızca bu alanlar (virgülle); boşsa hepsi"))), responses = ok(ref(c.name))))
                 }
                 if (c.trash != null) {
                     op("/collections/${c.name}/trash", "get", operation(tag, tr("Çöp kutusu ({0} gün)", c.trash.days), public = false, params = pageParams,
@@ -360,6 +368,21 @@ object OpenApi {
         if (caller.isAdmin) {
             op("/_metrics", "get", operation(tr("Sunucu"), tr("Metrikler (yönetici; ?format=prometheus)"), public = false, responses = ok(obj("type" to str("object")))))
             op("/_schema", "get", operation(tr("Sunucu"), tr("Koleksiyon tanımları (yönetici)"), public = false, responses = ok(obj("type" to str("array")))))
+            op("/_sql", "post", operation(tr("Sunucu"), tr("Salt okunur SQL sorgusu (yönetici; tek SELECT, en çok 1000 satır, 5 sn)"), public = false,
+                body = obj("required" to JsonPrimitive(true), "content" to obj("application/json" to obj("schema" to obj(
+                    "type" to str("object"), "required" to buildJsonArray { add(str("query")) },
+                    "properties" to obj("query" to type("string"), "limit" to type("integer")),
+                )))),
+                responses = ok(obj("type" to str("object"), "description" to str(tr("{columns, rows, truncated, ms}"))))))
+            if (config.collections.isNotEmpty()) {
+                op("/_sample/{collection}", "post", operation(tr("Sunucu"), tr("Örnek kayıt üret (yönetici; 1-500, kurallara uyar, olay üretmez)"), public = false,
+                    params = buildJsonArray {
+                        add(obj("name" to str("collection"), "in" to str("path"), "required" to JsonPrimitive(true),
+                            "schema" to obj("type" to str("string"), "enum" to buildJsonArray { config.collections.forEach { add(str(it.name)) } })))
+                    },
+                    body = obj("content" to obj("application/json" to obj("schema" to obj("type" to str("object"), "properties" to obj("count" to type("integer")))))),
+                    responses = ok(obj("type" to str("object"), "description" to str(tr("{created}"))), "201")))
+            }
         }
 
         return buildJsonObject {

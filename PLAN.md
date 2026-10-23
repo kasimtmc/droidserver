@@ -1011,18 +1011,35 @@ oturtmasın), sonra panelin eksiklerini kapatma, sonra güvenlik, en son yeni ö
 **17.9 SDK'lar ve GraphQL abonelikleri**
 - [ ] Dart/Flutter SDK (tipli, `fallbackUrls`, takımlar, canlı abonelik) ve Swift SDK (async/await); `_sdk/{lang}` ve
   golden testleri.
-- [ ] GraphQL abonelikleri (WebSocket üzerinden, `graphql-transport-ws` protokolü), REST'le aynı kurallar.
+- [x] GraphQL abonelikleri (WebSocket üzerinden, `graphql-transport-ws` protokolü), REST'le aynı kurallar.
+  *Durum:* `/graphql/ws` (canlı abonelik açıkken); şemada `Subscription { <koleksiyon>(id, events): <Tip>Event! }`;
+  kimlik `connection_init` payload'ında (tarayıcı başlık gönderemez); her olayda görüntüleme kuralı (SSE ile aynı), silmede
+  yalnızca kimlik; bağlantı başına en çok 20 abonelik; aynı soketten sorgu/mutasyon da (tek `next` + `complete`).
+  HTTP'deki abonelik isteği WebSocket'e yönlendiren hatayla döner. Test: `GraphQLTest` (abonelikler).
 
 **17.10 Panelde salt okunur SQL konsolu ve örnek veri**
-- [ ] Yalnızca yönetici; yalnızca `SELECT` (ayrıştırıcıyla denetim + salt okunur bağlantı/işlem), sonuç sınırı ve
+- [x] Yalnızca yönetici; yalnızca `SELECT` (ayrıştırıcıyla denetim + salt okunur bağlantı/işlem), sonuç sınırı ve
   zaman aşımı, şifreli alanlar maskeli, sorgu denetim kaydına.
-- [ ] Koleksiyona örnek veri üretme (alan tiplerine ve doğrulama kurallarına uyan; ilişkileri gözeten).
+- [x] Koleksiyona örnek veri üretme (alan tiplerine ve doğrulama kurallarına uyan; ilişkileri gözeten).
+  *Durum:* `POST /_sql` (`SqlConsole.check`: tek ifade, `select/with/values`, yazma anahtar sözcükleri ve `_ds_meta`,
+  parola özetleri, `pg_read_file` gibi tehlikeli adlar yasak) + `SqlDriver.readOnly` (SQLite `query_only`, Android salt
+  okunur açılış ve `CancellationSignal`, PostgreSQL `READ ONLY` + `statement_timeout`); 1000 satır, 5 sn; panelde SQL
+  sekmesi. `POST /_sample/{c}` (`SampleData`): tek işlem, olay yok; benzersiz alanlar mevcut kayıt sayısından devam eder.
+  Test: `DevToolsTest` (ayrıştırıcı atlansa da yazma reddedilir, iki lehçede).
 
 **17.11 Veri araçları**
-- [ ] Dosya alanlarının içe aktarımı: zip içinde CSV/JSON + dosyalar (dışa aktarma da aynı biçimde).
-- [ ] Panelde toplu düzenleme (seçili kayıtlarda alan değiştirme) ve toplu silme; `batch` ucu üzerinden.
-- [ ] Kayıt geçmişinde alan bazında geri alma (tüm sürüm yerine tek alan).
-- [ ] Koleksiyon için CSV şablonu indirme (başlıklar, örnek satır, seçenek listeleri).
+- [x] Dosya alanlarının içe aktarımı: zip içinde CSV/JSON + dosyalar (dışa aktarma da aynı biçimde).
+- [x] Panelde toplu düzenleme (seçili kayıtlarda alan değiştirme) ve toplu silme; `batch` ucu üzerinden.
+- [x] Kayıt geçmişinde alan bazında geri alma (tüm sürüm yerine tek alan).
+- [x] Koleksiyon için CSV şablonu indirme (başlıklar, örnek satır, seçenek listeleri).
+  *Durum:* `format=zip` (`data.json` + `files/<id>/<ad>`; içe aktarmada `data.csv` de); yükleme denetimi ortak
+  (`FileStore.accept`); zip akışla okunur, bellekte toplanmaz (512 MB, sıkıştırılmış ve açılmış; tanınmayan öğeler de
+  sayılır). Geri alınan aktarmada taşınan dosyalar silinir; güncellenen kaydın eski dosyaları ancak işlem kalıcı olunca
+  (`RecordService.update(removedFiles)` — önceden iç işlem bitince siliniyordu, deneme modunda dosya kaybı olurdu).
+  Toplu işlem dosya alanı olmayan koleksiyonda `/batch` (dosya alanlıyı batch kabul etmediği için tek tek).
+  `revert?fields=a,b`; panelde Geçmiş → Tek alan…. Şablon `GET /collections/{c}/import/template`; ipuçları başlıkta
+  parantez içinde, içe aktarma eşlemesi parantezi yok sayar. CLI `.zip` içe/dışa aktarır. Android'deki İçe / dışa
+  aktarma ekranına zip eklenmedi (panel ve CLI'de). Testler: `DataTransferTest` (zip, şablon), `HistoryTrashTest`.
 
 ### Grup 4 — İletişim kanalları ve yaygınlaştırma
 

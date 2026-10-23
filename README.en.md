@@ -501,6 +501,7 @@ if trash is on in their collection) is kept with its files for `days` days, then
 ```bash
 GET    /api/collections/notes/records/5/history                  # {items:[{version, action, at, actor, data}], totalItems}
 POST   /api/collections/notes/records/5/history/3/revert         # revert to version 3's values (as a new version)
+POST   /api/collections/notes/records/5/history/3/revert?fields=title   # only the title field
 GET    /api/collections/notes/trash                              # {items:[{id, deletedAt, expiresAt, actor, data}], totalItems}
 POST   /api/collections/notes/trash/5/restore                    # restore with the same ID
 DELETE /api/collections/notes/trash/5                            # delete permanently, with files
@@ -508,7 +509,8 @@ DELETE /api/collections/notes/trash/5                            # delete perman
 
 Because these endpoints contain the full record including hidden fields, regardless of rules they can only be used by the admin (and by
 a named key authorized on that collection; write permission for revert and restore); in the web
-panel they open via the **History** button on the record row and the **Trash** button on the collection. Reverting doesn't change file
+panel they open via the **History** button on the record row (the whole version, or one field with **One field…**) and the
+**Trash** button on the collection. Reverting doesn't change file
 and computed fields. A restored record is validated against today's rules: if the record it links to was deleted or
 a required field was added later, `400` (restore the linked record first). Relations emptied by `set_null` on
 deletion are not re-linked on restore. History and trash live in the `_history` and `_trash` tables; they are included in backups and data
@@ -614,7 +616,7 @@ these headers are trusted only on connections from inside the phone. Requests re
 internet (from a public IPv4/IPv6 address; excluding the home network's IPv6 prefix) get `403`: the internet-facing endpoint is the
 HTTPS endpoint or the tunnel. All responses carry `X-Content-Type-Options: nosniff`, API responses `Cache-Control: no-store`.
 
-**Import / export:** `GET /api/collections/{c}/export?format=csv|json` downloads the collection as a file (the list
+**Import / export:** `GET /api/collections/{c}/export?format=csv|json|zip` downloads the collection as a file (the list
 rule, filters, `q` and `sort` apply; hidden fields excluded; at most 100,000 records). `delimiter=semicolon` is the semicolon-separated
 CSV that Turkish Excel expects; the CSV starts with a UTF-8 BOM, and text that starts like a formula (`=`, `+`, `-`, `@`)
 is prefixed with `'` (so it doesn't execute in a spreadsheet; this is undone on import).
@@ -632,9 +634,32 @@ is detected from the header; comma decimals like `12,5`, `evet/hayır`, `2026-10
 cell doesn't send the field (default value on a new record, unchanged on update). Column names match field names
 (case-insensitive) or are mapped with `mapping={"Ürün adı":"name","Not":null}`. With `mode=upsert`, a record with an `id`
 is updated and one without is added (for editing an exported file and uploading it back). For JSON, send an array of records.
-File fields are not imported; imported records don't produce webhook, live subscription or script events. At most 10,000 rows
-and 20 MB (independent of the general body limit). In the app: Server → Import / export (preview and column mapping); in the web
-panel, above the records table.
+Imported records don't produce webhook, live subscription or script events. At most 10,000 rows and 20 MB (independent of the
+general body limit). In the app: Server → Import / export (preview and column mapping); in the web panel, above the records
+table.
+
+File fields travel in a **zip**: `format=zip` export gives `data.json` plus the records' files (`files/<id>/<name>`); the same
+zip (or a zip with `data.csv`) is uploaded back with `import?format=zip` as an `application/zip` body. A file name in a row is
+matched to the zip's file through the row's `id` and checked like a normal upload (size, type detected from the content,
+allowed types); files are stored under a new name, an updated record's old files in that field are replaced by the zip's and
+deleted only once the transaction commits. When an import is rolled back (dry run or errors) the moved files are deleted too.
+A zip can be at most 512 MB (compressed and extracted). CSV/JSON imports can't map file fields.
+
+```bash
+curl -H "$H" "$BASE/collections/notes/export?format=zip" -o notes.zip
+curl -H "$H" -X POST "$BASE/collections/notes/import?format=zip&dryRun=true" -H 'Content-Type: application/zip' --data-binary @notes.zip
+curl -H "$H" "$BASE/collections/notes/import/template?delimiter=semicolon" -o notes-template.csv
+```
+
+The **template** (`GET /api/collections/{c}/import/template`, admin) has the writable fields' headers and a sample row that
+follows the rules; the parentheses in a header are a hint (`status (required; open|done)`, `tags (home|work; multiple:
+comma-separated)`, `project (projects ID)`) and are ignored on import, so a filled-in template can be uploaded as is. In the
+web panel: the **Template** button.
+
+**Bulk edit and delete:** in the web panel's records table, select rows (or the whole page with the header box), then
+**Change field…** (a new value for the chosen field; empty clears it) or **Delete selected**. In a collection without file
+fields this is one `/batch` request (all or nothing, each record with its own rule); in a collection with file fields
+`/batch` isn't available, so the records are sent one by one.
 
 **Conditional rules:** when a condition is added to a rule (Wizard → Collection → Who can do what? → "condition"), even if the rule
 allows it, only records matching the condition are accessible. The condition uses the list filter syntax, with `&` for AND (except `like`):
@@ -867,6 +892,19 @@ all sessions can be closed from the Status screen). The panel is dependency-free
 resources), loads only its own files (`Content-Security-Policy`), cannot be framed by other sites and writes data only as
 text. Record/user/metrics operations use the normal API with the panel session; configuration, logs and backups use
 `/_admin/api/...`.
+
+The **SQL** tab is a read-only query console (`POST /api/_sql` `{query, limit}` → `{columns, rows, truncated, ms}`, admin).
+Only a single `SELECT`/`WITH`/`VALUES` statement runs, and the query also runs on a read-only connection (`query_only` on
+SQLite, a database opened read-only on Android, a `READ ONLY` transaction on PostgreSQL), so a write that slips past the check
+is still refused by the database. At most 1000 rows (200 by default) and 5 seconds; the internal tables holding the server's
+secrets and password hashes can't be queried, encrypted fields come back as `••••`, and every query is written to the audit
+log. Ctrl+Enter runs it.
+
+**Sample data:** the **Sample data** button above the records table (`POST /api/_sample/{collection}` `{count}`, 1-500,
+admin) adds records that follow field types, options, length and range limits, uniqueness and format (e-mail, URL; names,
+cities, phone numbers and titles from the field name); a relation field gets an existing record from the target collection.
+It is a single transaction and emits no automation, webhook or live events. It returns `400` if a required relation's target
+is empty, or there is a required file field or a required text field bound to a pattern.
 
 Panel counterparts of the app's screens:
 
@@ -1200,7 +1238,19 @@ work exactly as in REST; an endpoint disabled in REST is absent from GraphQL too
 fragments, `@include` / `@skip` are supported. Errors follow GraphQL: a failed root field is `null`, and `errors[]`
 carries `path`, `extensions.code` (the REST status code) and validation `details`. Instead of introspection
 (`__schema`) the schema language (SDL) is at `GET /api/graphql/schema`; code generators and IDEs can use that file.
-Limits: depth at most 8, 20 root fields and 1000 fields; use the realtime endpoint instead of subscriptions.
+Limits: depth at most 8, 20 root fields and 1000 fields.
+
+**Subscriptions** (when realtime is on): `ws://<phone>:8080/api/graphql/ws`, the `graphql-transport-ws` protocol (works
+directly with the graphql-ws, Apollo and urql clients). Credentials go in `connection_init` (a browser WebSocket can't send
+headers): `{"Authorization": "Bearer <token>"}`. For each collection the `<name>(id, events)` root sends
+`{ action record { … } }` per event; rules are the same as the realtime endpoint (the view rule on every event), on delete
+`record` only carries `id`, and relations aren't expanded. Queries and mutations can also be sent over the same connection.
+
+```js
+import { createClient } from "graphql-ws";
+const client = createClient({ url: "ws://192.168.1.20:8080/api/graphql/ws", connectionParams: { Authorization: "Bearer " + token } });
+client.subscribe({ query: 'subscription { tasks(events: ["create"]) { action record { id title } } }' }, { next: (e) => console.log(e.data), error: console.error, complete() {} });
+```
 
 ### AI (Claude, OpenAI, Gemini) and semantic search
 
@@ -1421,7 +1471,8 @@ node droidserver.mjs api GET /_jobs                              # any endpoint
 - `logs`, `config`, `deploy` and `backup` use the web panel's endpoints: the panel must be on. `deploy` checks the plan
   first and stops if there are blockers; then it follows the result in the logs.
 - For self-signed HTTPS (direct access) provide the certificate: `NODE_EXTRA_CA_CERTS=cert.pem node droidserver.mjs …`.
-- Messages are in Turkish or English depending on the system language. File fields are not imported.
+- Messages are in Turkish or English depending on the system language. File fields travel only in a zip:
+  `export notes --format zip -o notes.zip`, `import notes notes.zip`.
 
 ### MQTT (IoT)
 
@@ -2039,7 +2090,8 @@ tools/          package-postgres.sh, package-cloudflared.sh (component packages 
 - [x] **Webhooks:** signed POST, retries, delivery history
 - [x] **Batch operations and aggregates:** `/api/batch` (all or nothing), `/aggregate` (sum, average, grouping)
 - [x] **Fine-grained permissions:** conditional rules (`status=published`, `@me`, owner exception), field privacy
-- [x] **Import / export:** CSV (Excel-compatible) and JSON, preview and column mapping
+- [x] **Import / export:** CSV (Excel-compatible), JSON and zip with files, preview and column mapping, CSV template;
+  bulk edit/delete, a read-only SQL console and sample data in the panel
 - [x] **Named API keys:** read-only / limited to collections, expiring, revocable
 - [x] **Social login:** Google and GitHub (OAuth2 + PKCE)
 - [x] **Web push:** VAPID, RFC 8291, `ctx.push`, notification on record events
@@ -2054,7 +2106,8 @@ tools/          package-postgres.sh, package-cloudflared.sh (component packages 
 - [x] **Component catalog:** Node.js, Python, OpenJDK, Redis packages; one-tap install and run (awaiting on-device verification)
 - [x] **Automation rules:** no-code "when this, do that": record event or schedule, condition; e-mail, notification, webhook, update/create records
 - [x] **Forms:** public pages that add records to a collection, spam protection, thank-you page or redirect
-- [x] **GraphQL:** schema generated from collections, queries and mutations, relation expansion, same rules as REST
+- [x] **GraphQL:** schema generated from collections, queries and mutations, relation expansion, same rules as REST,
+  WebSocket subscriptions (`graphql-transport-ws`)
 - [x] **AI:** proxy that keeps the key on the server (Claude, OpenAI or Gemini; OpenAI-compatible local models), asking your records, semantic search (Voyage AI or Ollama), daily limit
 - [x] **Sign-in by SMS:** passwordless sign-in with a phone number and a code sent from the server phone, per-number and per-client limits
 - [x] **Quick Settings and widget:** start/stop from the notification shade and home screen, status, address, requests and battery

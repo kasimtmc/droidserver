@@ -28,7 +28,7 @@ async function api(path, opts = {}) {
   const headers = Object.assign({}, opts.headers || {});
   if (state.token) headers.Authorization = "Bearer " + state.token;
   let body = opts.body;
-  if (body !== undefined && !(body instanceof FormData) && typeof body !== "string") {
+  if (body !== undefined && !(body instanceof FormData) && !(body instanceof Blob) && typeof body !== "string") {
     headers["Content-Type"] = "application/json";
     body = JSON.stringify(body);
   }
@@ -60,7 +60,7 @@ function cp(c, key, params) {
   const m = ((state.info.paths || {}).collections || {})[c];
   const def = { list: "/collections/{c}/records", view: "/collections/{c}/records/{id}", create: "/collections/{c}/records",
     update: "/collections/{c}/records/{id}", delete: "/collections/{c}/records/{id}", export: "/collections/{c}/export",
-    import: "/collections/{c}/import", aggregate: "/collections/{c}/aggregate" }[key];
+    import: "/collections/{c}/import", template: "/collections/{c}/import/template", aggregate: "/collections/{c}/aggregate" }[key];
   // Geçmiş ve çöp kutusu uçları yalnızca koleksiyonda açıksa vardır (/info'da yolları; yoksa null).
   return pathOf(m && key in m ? m[key] : (def ? def.replace("{c}", c) : null), params);
 }
@@ -202,6 +202,7 @@ const TABS = [
   ["api", "API", showApi],
   ["backups", T("Yedekler"), showBackups],
   ["schema", T("Şema"), showSchema],
+  ["sql", "SQL", showSql],
   ["config", T("Konfigürasyon"), showConfig],
 ];
 
@@ -251,16 +252,37 @@ async function showRecords() {
     clear(out);
     const c = schema.find((x) => x.name === select.value);
     const idKey = nm(c.name, "id");
+    const selected = new Set();
     const q = "page=" + page + "&perPage=20" + (idKey ? "&sort=-" + idKey : "") + (filter.value.trim() ? "&" + filter.value.trim() : "");
     await guard(out, async () => {
       const list = cp(c.name, "list");
       if (!list) { out.append(el("p", { class: "muted" }, T("Bu koleksiyonun listeleme ucu kapalı."))); return; }
       const r = await api(list + "?" + q);
       const cols = [idKey, ...c.fields.map((f) => f.name), nm(c.name, "created_at")].filter((k) => k);
+      const bulk = el("div", { class: "row", hidden: true });
+      const boxes = [];
+      const syncBulk = () => {
+        clear(bulk);
+        bulk.hidden = selected.size === 0;
+        if (bulk.hidden) return;
+        bulk.append(el("span", {}, selected.size + T(" kayıt seçili")),
+          cp(c.name, "update", { id: 0 }) ? el("button", { class: "ghost", onclick: () => bulkEdit(c, [...selected], load) }, T("Alan değiştir…")) : null,
+          cp(c.name, "delete", { id: 0 }) ? el("button", { class: "ghost danger", onclick: async () => {
+            if (!confirm(selected.size + T(" kayıt silinsin mi?"))) return;
+            await guard(out, async () => { await bulkRun(c, [...selected].map((id) => ({ method: "DELETE", collection: c.name, id }))); await load(); });
+          } }, T("Seçilenleri sil")) : null);
+      };
+      const all = el("input", { type: "checkbox", title: T("Sayfadakilerin hepsi"), onchange: () => {
+        boxes.forEach(([b, id]) => { b.checked = all.checked; if (all.checked) selected.add(id); else selected.delete(id); });
+        syncBulk();
+      } });
       const rows = r.items.map((item) => {
         const id = idKey ? item[idKey] : null;
         const del = id !== null ? cp(c.name, "delete", { id }) : null;
+        const box = id !== null ? el("input", { type: "checkbox", onchange: () => { if (box.checked) selected.add(id); else selected.delete(id); syncBulk(); } }) : null;
+        if (box) boxes.push([box, id]);
         return el("tr", {},
+          el("td", {}, box),
           cols.map((k) => el("td", { title: cell(item[k]) }, cell(item[k]))),
           el("td", {},
             id !== null && cp(c.name, "update", { id }) ? el("button", { class: "ghost", onclick: () => editRecord(c, item, load) }, T("Düzenle")) : null, " ",
@@ -272,7 +294,8 @@ async function showRecords() {
       });
       out.append(
         el("p", { class: "muted" }, r.totalItems + T(" kayıt · sayfa ") + r.page + "/" + Math.max(1, r.totalPages)),
-        el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, el("tr", {}, cols.map((k) => el("th", {}, k)), el("th", {}))), el("tbody", {}, rows))),
+        bulk,
+        el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, idKey ? all : null), cols.map((k) => el("th", {}, k)), el("th", {}))), el("tbody", {}, rows))),
         el("div", { class: "row" },
           el("button", { class: "ghost", disabled: page <= 1, onclick: () => { page--; load(); } }, T("‹ Önceki")),
           el("button", { class: "ghost", disabled: page >= r.totalPages, onclick: () => { page++; load(); } }, T("Sonraki ›"))));
@@ -284,18 +307,25 @@ async function showRecords() {
   select.onchange = () => { page = 1; clear(importBox); syncTrash(); load(); };
   const live = el("span", { class: "muted" });
   const importBox = el("div");
-  const exportFmt = el("select", {}, [["csv", "CSV"], ["excel", T("CSV (Excel, ;)")], ["json", "JSON"]].map(([v, t]) => el("option", { value: v }, t)));
+  const exportFmt = el("select", {}, [["csv", "CSV"], ["excel", T("CSV (Excel, ;)")], ["json", "JSON"], ["zip", T("Zip (dosyalarla)")]].map(([v, t]) => el("option", { value: v }, t)));
   const doExport = () => guard(out, async () => {
     const f = exportFmt.value;
-    const q = "format=" + (f === "json" ? "json" : "csv") + (f === "excel" ? "&delimiter=semicolon" : "") + (filter.value.trim() ? "&" + filter.value.trim() : "");
+    const q = "format=" + (f === "excel" ? "csv" : f) + (f === "excel" ? "&delimiter=semicolon" : "") + (filter.value.trim() ? "&" + filter.value.trim() : "");
     const path = cp(select.value, "export");
     if (!path) throw new Error(T("Bu koleksiyonun dışa aktarma ucu kapalı"));
     const res = await api(path + "?" + q, { raw: true });
     if (!res.ok) { const d = await res.json().catch(() => null); throw new Error((d && d.message) || res.statusText); }
-    const name = (/filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "") || [])[1] || select.value + "." + (f === "json" ? "json" : "csv");
+    const name = (/filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "") || [])[1] || select.value + "." + (f === "excel" ? "csv" : f);
     saveBlob(await res.blob(), name);
   });
-  const fileInput = el("input", { type: "file", accept: ".csv,.json,text/csv,application/json", class: "hidden" });
+  const doTemplate = () => guard(out, async () => {
+    const path = cp(select.value, "template");
+    if (!path) throw new Error(T("Bu koleksiyonun içe aktarma ucu kapalı"));
+    const res = await api(path + (exportFmt.value === "excel" ? "?delimiter=semicolon" : ""), { raw: true });
+    if (!res.ok) { const d = await res.json().catch(() => null); throw new Error((d && d.message) || res.statusText); }
+    saveBlob(await res.blob(), select.value + "-sablon.csv");
+  });
+  const fileInput = el("input", { type: "file", accept: ".csv,.json,.zip,text/csv,application/json,application/zip", class: "hidden" });
   fileInput.onchange = async () => {
     const file = fileInput.files[0];
     fileInput.value = "";
@@ -309,7 +339,14 @@ async function showRecords() {
     el("div", { class: "row" }, exportFmt,
       el("button", { class: "ghost", onclick: doExport }, T("Dışa aktar")),
       el("button", { class: "ghost", onclick: () => fileInput.click() }, T("İçe aktar…")), fileInput,
-      trashButton),
+      el("button", { class: "ghost", title: T("Başlıklar, seçenekler ve örnek satırla CSV"), onclick: doTemplate }, T("Şablon")),
+      trashButton,
+      el("button", { class: "ghost", onclick: () => guard(out, async () => {
+        const n = Number(prompt(T("Kaç örnek kayıt eklensin? (1-500; alan kurallarına uyar, otomasyon ve webhook tetiklenmez)"), "20"));
+        if (!n) return;
+        await api(gp("sample", { collection: select.value }, "/_sample/{collection}"), { method: "POST", body: { count: n } });
+        await load();
+      }) }, T("Örnek veri"))),
     importBox,
     out));
   await load();
@@ -339,11 +376,75 @@ function showHistory(c, id, reload) {
         el("td", {}, String(h.version)), el("td", {}, ACTIONS[h.action] || h.action),
         el("td", {}, new Date(h.at).toLocaleString()), el("td", {}, h.actor || T("sunucu")),
         el("td", { title: cell(h.data) }, cell(h.data)),
-        el("td", {}, h.action !== "delete" && h.data && cp(c.name, "revert", { id, version: h.version }) ? el("button", { class: "ghost", onclick: async () => {
+        el("td", {}, h.action !== "delete" && h.data && cp(c.name, "revert", { id, version: h.version }) ? [el("button", { class: "ghost", onclick: async () => {
           if (!confirm("#" + id + " " + h.version + T(". sürüme döndürülsün mü? (dosya ve hesaplanan alanlar hariç)"))) return;
           await guard(body, async () => { await api(cp(c.name, "revert", { id, version: h.version }), { method: "POST" }); await refresh(); reload(); });
-        } }, T("Bu sürüme dön")) : null)))))));
+        } }, T("Bu sürüme dön")), " ", fieldRevert(c, id, h, body, async () => { await refresh(); reload(); })] : null)))))));
   });
+}
+
+// Tek alanı o sürümdeki değerine döndürür.
+function fieldRevert(c, id, h, body, done) {
+  const fields = c.fields.filter((f) => f.type !== "file" && !f.computed);
+  const pick = el("select", { title: T("Alan") }, el("option", { value: "" }, T("Tek alan…")),
+    fields.map((f) => el("option", { value: f.name }, f.name + " = " + cell(h.data[f.name]))));
+  pick.onchange = async () => {
+    const f = pick.value;
+    if (!f) return;
+    if (!confirm(T("Bu alan o sürümdeki değerine dönsün mü?") + "\n" + f + " = " + cell(h.data[f]) + " (" + T("Sürüm") + " " + h.version + ")")) { pick.value = ""; return; }
+    await guard(body, async () => { await api(cp(c.name, "revert", { id, version: h.version }) + "?fields=" + encodeURIComponent(f), { method: "POST" }); await done(); });
+  };
+  return pick;
+}
+
+// Toplu işlem: dosya alanı olmayan koleksiyonda /batch ile tek işlemde (hepsi ya da hiçbiri); dosya alanlıda batch
+// kabul edilmediği için tek tek.
+async function bulkRun(c, requests) {
+  const batch = gp("batch", null, "/batch");
+  if (batch && !c.fields.some((f) => f.type === "file")) {
+    await api(batch, { method: "POST", body: { requests } });
+    return;
+  }
+  for (const r of requests) {
+    const path = cp(c.name, r.method === "DELETE" ? "delete" : "update", { id: r.id });
+    await api(path, { method: r.method, body: r.body });
+  }
+}
+
+function bulkEdit(c, ids, done) {
+  const fields = c.fields.filter((f) => f.type !== "file" && !f.computed);
+  const pick = el("select", {}, fields.map((f) => el("option", { value: f.name }, f.name + " (" + f.type + ")")));
+  const value = el("input", { size: "30", placeholder: T("yeni değer; boşsa alan temizlenir") });
+  const hint = el("p", { class: "muted" });
+  const status = el("p", { class: "error" });
+  const sync = () => {
+    const f = fields.find((x) => x.name === pick.value);
+    hint.textContent = f && f.options ? T("Seçenekler: ") + f.options.join(", ") : f && ["json", "multiselect"].includes(f.type) ? T("JSON yazın, örn. [\"a\", \"b\"]") : "";
+  };
+  pick.onchange = sync;
+  sync();
+  // Metin alanında yazılan olduğu gibi; diğerlerinde JSON (sayı, true/false, dizi).
+  const parse = (f, v) => {
+    if (v.trim() === "") return null;
+    if (["text", "select"].includes(f.type)) return v;
+    try { return JSON.parse(v); } catch (e) { if (f.type === "datetime") return v; throw new Error(f.name + T(": geçerli bir değer değil")); }
+  };
+  const dialog = el("dialog", {},
+    el("h3", {}, c.name + " · " + ids.length + T(" kayıtta alan değiştir")),
+    el("div", { class: "row" }, pick, value), hint, status,
+    el("div", { class: "row" },
+      el("button", { class: "btn", onclick: async () => {
+        status.textContent = "";
+        try {
+          const f = fields.find((x) => x.name === pick.value);
+          const v = parse(f, value.value);
+          await bulkRun(c, ids.map((id) => ({ method: "PATCH", collection: c.name, id, body: { [f.name]: v } })));
+          dialog.close(); dialog.remove(); done();
+        } catch (e) { status.textContent = e.message; }
+      } }, T("Uygula")),
+      el("button", { class: "ghost", onclick: () => { dialog.close(); dialog.remove(); } }, T("Vazgeç"))));
+  document.body.append(dialog);
+  dialog.showModal();
 }
 
 function showTrash(c, reload) {
@@ -377,8 +478,9 @@ function saveBlob(blob, name) {
 // İçe aktarma: önce denetlenir (dryRun), sütunlar alanlara eşlenir; hatasızsa tek işlemde yazılır.
 async function importFlow(c, file, box, reload) {
   clear(box);
-  const text = await file.text();
-  const format = /\.json$/i.test(file.name) || text.replace(/^\uFEFF/, "").trimStart().startsWith("[") ? "json" : "csv";
+  const zip = /\.zip$/i.test(file.name);
+  const text = zip ? null : await file.text();
+  const format = zip ? "zip" : /\.json$/i.test(file.name) || text.replace(/^\uFEFF/, "").trimStart().startsWith("[") ? "json" : "csv";
   let mapping = null;
   let mode = "insert";
   const run = async (dryRun) => {
@@ -386,13 +488,13 @@ async function importFlow(c, file, box, reload) {
     const path = cp(c.name, "import");
     if (!path) throw new Error(T("Bu koleksiyonun içe aktarma ucu kapalı"));
     const res = await api(path + "?" + q, {
-      method: "POST", body: text, raw: true, headers: { "Content-Type": format === "json" ? "application/json" : "text/csv" },
+      method: "POST", body: zip ? file : text, raw: true, headers: { "Content-Type": { json: "application/json", csv: "text/csv", zip: "application/zip" }[format] },
     });
     const data = await res.json().catch(() => null);
     if (!data || !Array.isArray(data.columns)) throw new Error((data && data.message) || res.statusText);
     return data;
   };
-  const targets = [nm(c.name, "id"), ...c.fields.filter((f) => f.type !== "file").map((f) => f.name)].filter((t) => t);
+  const targets = [nm(c.name, "id"), ...c.fields.filter((f) => zip || f.type !== "file").map((f) => f.name)].filter((t) => t);
   const render = (r) => {
     clear(box);
     mapping = r.mapping;
@@ -408,7 +510,8 @@ async function importFlow(c, file, box, reload) {
     const ok = r.errors.length === 0 && r.total > 0;
     box.append(el("div", { class: "card" },
       el("h3", {}, T("İçe aktar: ") + file.name + " (" + format.toUpperCase() + ")"),
-      el("p", { class: "muted" }, T("Hatalı satır varsa hiçbiri yazılmaz. Boş hücre alanı göndermez. Dosya alanları ve olaylar (webhook, canlı) yok.")),
+      el("p", { class: "muted" }, T("Hatalı satır varsa hiçbiri yazılmaz. Boş hücre alanı göndermez. Olay (webhook, canlı) üretilmez.") + " " +
+        (zip ? T("Dosyalar zip'teki files/<id>/ klasöründen alınır.") : T("Dosya alanları yalnızca zip ile aktarılır."))),
       el("div", { class: "row" }, modeSel),
       el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, T("sütun")), el("th", {}, T("alan")))), el("tbody", {}, rows))),
       el("p", {}, r.total + T(" satır: ") + r.created + T(" yeni, ") + r.updated + T(" güncellenecek")),
@@ -893,6 +996,9 @@ const AUDIT_ACTIONS = {
   "replica.failover": T("Kopya otomatik devraldı (ana sunucuya ulaşılamadı)"), "replica.failback": T("Ana rol geri alındı"),
   "replica.demoted": T("Bu sunucu devredildi, kopyaya döndü"), "replica.fenced": T("Eski ana sunucu kopyaya çevrildi"),
   "phone.sms": T("SMS gönderildi"),
+  "sql.query": T("SQL sorgusu"), "data.sample": T("Örnek veri eklendi"), "user.sessions.close": T("Kullanıcının oturumları kapatıldı"),
+  "panel.passkey.add": T("Panel passkey'i eklendi"), "panel.passkey.delete": T("Panel passkey'i silindi"),
+  "mqtt.publish": T("MQTT mesajı gönderildi"), "mqtt.scene": T("Sahne çalıştırıldı"),
 };
 
 async function showAudit() {
@@ -1788,6 +1894,30 @@ function cliCard() {
       "node droidserver.mjs list <" + T("koleksiyon") + ">",
       "node droidserver.mjs logs -f",
     ].join("\n")) : el("p", { class: "muted" }, T("Komut satırı ucu kapalı (uzman modu)."))));
+}
+
+// ---- SQL konsolu: yalnızca SELECT, salt okunur bağlantı, sonuç sınırı ve zaman aşımı; her sorgu denetim kaydında.
+
+async function showSql() {
+  const text = el("textarea", { spellcheck: "false", placeholder: "SELECT * FROM todos ORDER BY id DESC" });
+  text.value = sessionStorage.getItem("ds-sql") || "";
+  const limit = el("input", { type: "number", min: "1", max: "1000", value: "200", size: "6", title: T("en çok satır") });
+  const out = el("div");
+  const run = () => guard(out, async () => {
+    clear(out);
+    sessionStorage.setItem("ds-sql", text.value);
+    const r = await api(gp("sql", null, "/_sql"), { method: "POST", body: { query: text.value, limit: Number(limit.value) || 200 } });
+    out.append(el("p", { class: "muted" }, r.rows.length + T(" satır") + (r.truncated ? T(" (sınırda kesildi)") : "") + " · " + r.ms + " ms"),
+      el("div", { class: "table-wrap" }, el("table", {},
+        el("thead", {}, el("tr", {}, r.columns.map((c) => el("th", {}, c)))),
+        el("tbody", {}, r.rows.map((row) => el("tr", {}, row.map((v) => el("td", { title: cell(v) }, cell(v)))))))));
+  });
+  text.onkeydown = (e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") run(); };
+  main.append(el("div", { class: "card" },
+    el("p", { class: "muted" }, T("Salt okunur: yalnızca SELECT; yazma veritabanında da reddedilir. En çok 5 saniye; şifreli alanlar maskeli; her sorgu denetim kaydına yazılır. Ctrl+Enter ile çalıştırın.")),
+    text,
+    el("div", { class: "row" }, el("button", { class: "btn", onclick: run }, T("Çalıştır")), el("span", { class: "muted" }, T("en çok")), limit, el("span", { class: "muted" }, T("satır"))),
+    out));
 }
 
 // ---- başlat

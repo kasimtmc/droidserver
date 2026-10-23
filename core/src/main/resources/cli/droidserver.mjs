@@ -39,7 +39,7 @@ Kayıtlar:
   create <koleksiyon> '<json>' | -f dosya.json
   update <koleksiyon> <id> '<json>' | -f dosya.json
   delete <koleksiyon> <id>
-  export <koleksiyon> [--format csv|json] [-o dosya]
+  export <koleksiyon> [--format csv|json|zip] [-o dosya]
   import <koleksiyon> <dosya> [--mode upsert|insert] [--dry-run]
 
 Diğer:
@@ -72,7 +72,7 @@ Records:
   create <collection> '<json>' | -f file.json
   update <collection> <id> '<json>' | -f file.json
   delete <collection> <id>
-  export <collection> [--format csv|json] [-o file]
+  export <collection> [--format csv|json|zip] [-o file]
   import <collection> <file> [--mode upsert|insert] [--dry-run]
 
 Other:
@@ -406,11 +406,13 @@ const commands = {
     const s = session(opt);
     const c = need(pos[0], t("koleksiyon", "collection"));
     const file = need(pos[1], t("dosya", "file"));
-    const format = opt.format || (file.toLowerCase().endsWith(".json") ? "json" : "csv");
+    const ext = file.toLowerCase().split(".").pop();
+    const format = opt.format || (ext === "json" || ext === "zip" ? ext : "csv");
     const q = new URLSearchParams({ format });
     if (opt.mode) q.set("mode", opt.mode);
     if (opt["dry-run"]) q.set("dryRun", "true");
-    const r = await http(s, "POST", `/collections/${enc(c)}/import?${q}`, { body: readFileSync(file), headers: { "Content-Type": "text/plain; charset=utf-8" } });
+    const type = format === "zip" ? "application/zip" : "text/plain; charset=utf-8";
+    const r = await http(s, "POST", `/collections/${enc(c)}/import?${q}`, { body: readFileSync(file), headers: { "Content-Type": type } });
     print(r, opt);
   },
 

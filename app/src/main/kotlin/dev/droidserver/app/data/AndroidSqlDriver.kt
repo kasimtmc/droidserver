@@ -12,6 +12,13 @@ import dev.droidserver.core.db.PostgresDriver
 import dev.droidserver.core.db.SqlDialect
 import dev.droidserver.core.db.SqlDriver
 import dev.droidserver.core.db.SqliteDialect
+import android.os.CancellationSignal
+import android.os.OperationCanceledException
+import dev.droidserver.core.api.ApiException
+import dev.droidserver.core.db.ReadOnlyResult
+import dev.droidserver.core.i18n.tr
+import java.util.Timer
+import kotlin.concurrent.timerTask
 
 /** Android'in yerleşik SQLite'ı üzerinde SqlDriver. Ek süreç gerektirmez. */
 class AndroidSqlDriver(private val db: SQLiteDatabase) : SqlDriver {
@@ -32,6 +39,39 @@ class AndroidSqlDriver(private val db: SQLiteDatabase) : SqlDriver {
     }
 
     override val dialect: SqlDialect = SqliteDialect
+
+    /**
+     * Aynı dosyayı ayrı ve salt okunur açar (yazma kilidi tutulmaz); süre dolunca sorgu [CancellationSignal] ile iptal
+     * edilir.
+     */
+    override fun readOnly(sql: String, maxRows: Int, timeoutSec: Int): ReadOnlyResult {
+        val ro = SQLiteDatabase.openDatabase(db.path, null, SQLiteDatabase.OPEN_READONLY)
+        val cancel = CancellationSignal()
+        val timer = Timer("ds-sql-timeout", true).apply { schedule(timerTask { cancel.cancel() }, timeoutSec * 1000L) }
+        try {
+            return ro.rawQuery(sql, null, cancel).use { c ->
+                val columns = c.columnNames.toList()
+                val rows = ArrayList<List<Any?>>()
+                while (rows.size <= maxRows && c.moveToNext()) {
+                    rows += (0 until c.columnCount).map { i ->
+                        when (c.getType(i)) {
+                            Cursor.FIELD_TYPE_NULL -> null
+                            Cursor.FIELD_TYPE_INTEGER -> c.getLong(i)
+                            Cursor.FIELD_TYPE_FLOAT -> c.getDouble(i)
+                            Cursor.FIELD_TYPE_BLOB -> "<${c.getBlob(i).size} bayt>"
+                            else -> c.getString(i)
+                        }
+                    }
+                }
+                ReadOnlyResult(columns, rows.take(maxRows), rows.size > maxRows)
+            }
+        } catch (e: OperationCanceledException) {
+            throw ApiException(408, tr("Sorgu {0} saniyede bitmedi", timeoutSec))
+        } finally {
+            timer.cancel()
+            ro.close()
+        }
+    }
 
     override fun execute(sql: String, args: List<Any?>): Int = db.compileStatement(sql).use { st ->
         bind(st, args)

@@ -67,6 +67,7 @@ import dev.droidserver.core.script.ScriptRequest
 import dev.droidserver.core.script.ScriptRoute
 import dev.droidserver.core.script.ScriptRuntime
 import dev.droidserver.core.security.FieldEncryption
+import io.ktor.server.request.receiveStream
 import io.ktor.server.request.receiveText
 import dev.droidserver.core.config.FieldConfig
 import dev.droidserver.core.config.FieldDefaults
@@ -109,6 +110,7 @@ import io.ktor.server.request.path
 import io.ktor.server.request.receiveMultipart
 import io.ktor.http.withCharset
 import io.ktor.server.response.respondText
+import io.ktor.server.response.respondOutputStream
 import io.ktor.server.response.respondTextWriter
 import io.ktor.utils.io.readAvailable
 import kotlinx.serialization.json.JsonArray
@@ -120,8 +122,11 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import dev.droidserver.core.config.ServerConfig
 import dev.droidserver.core.config.SystemCollections
+import dev.droidserver.core.data.SampleData
 import dev.droidserver.core.db.DatabaseUnavailableException
+import dev.droidserver.core.db.SqlConsole
 import dev.droidserver.core.db.SqlDriver
+import dev.droidserver.core.db.quoteIdent
 import dev.droidserver.core.mqtt.HomeAssistant
 import dev.droidserver.core.mqtt.runScene
 import dev.droidserver.core.net.AddressScope
@@ -171,6 +176,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.intOrNull
 import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
@@ -277,7 +283,7 @@ fun Application.droidServerModule(
     val channelHub = config.realtime.channels.takeIf { config.realtime.enabled && it.isNotEmpty() }
         ?.let { ChannelHub(it, config.realtime.maxConnections) }
     val liveApps = config.apps.filter { it.enabled }
-    if (channelHub != null || liveApps.any { it.websockets }) {
+    if (channelHub != null || liveApps.any { it.websockets } || (config.api.graphql && config.realtime.enabled)) {
         install(WebSockets) {
             pingPeriod = 30.seconds
             timeout = 60.seconds
@@ -749,6 +755,65 @@ fun Application.droidServerModule(
                 val hours = (call.request.queryParameters["hours"]?.toLongOrNull() ?: 24).coerceIn(1, 24 * 31)
                 val since = Instant.now().minusSeconds(hours * 3600)
                 call.respond(io { JsonArray(config.sensors.map { s -> Sensors.series(services.getValue(s.collection), s, since) }) })
+            }
+            // Salt okunur SQL konsolu (panel ve CLI): denetim + ayrı salt okunur bağlantı; şifreli alanlar maskeli.
+            val encryptedColumns = config.collections.flatMap { c -> c.fields.filter { it.encrypted }.map { it.name } }.toSet()
+            endpoint(paths, Endpoint.SQL) {
+                requireAdmin(call.caller())
+                val body = call.receive<JsonObject>()
+                val sql = SqlConsole.check(body.text("query") ?: throw ApiException(400, tr("query gerekli")))
+                val limit = (body["limit"] as? JsonPrimitive)?.intOrNull?.coerceIn(1, SqlConsole.MAX_LIMIT) ?: SqlConsole.DEFAULT_LIMIT
+                val started = System.nanoTime()
+                val result = try {
+                    io { db.readOnly(sql, limit, SqlConsole.TIMEOUT_SEC) }
+                } catch (e: ApiException) {
+                    throw e
+                } catch (e: UnsupportedOperationException) {
+                    throw ApiException(501, e.message ?: tr("Desteklenmiyor"))
+                } catch (e: Exception) {
+                    throw ApiException(400, tr("Sorgu hatası: {0}", e.message.orEmpty().take(300)))
+                }
+                call.audit("sql.query", sql.take(200))
+                val masked = result.columns.map { it in encryptedColumns }
+                call.respond(buildJsonObject {
+                    put("columns", JsonArray(result.columns.map(::JsonPrimitive)))
+                    put("rows", JsonArray(result.rows.map { row ->
+                        JsonArray(row.mapIndexed { i, v ->
+                            when {
+                                v == null -> JsonNull
+                                masked[i] -> JsonPrimitive("••••")
+                                v is Number -> JsonPrimitive(v)
+                                v is Boolean -> JsonPrimitive(v)
+                                else -> JsonPrimitive(v.toString())
+                            }
+                        })
+                    }))
+                    put("truncated", JsonPrimitive(result.truncated))
+                    put("ms", JsonPrimitive((System.nanoTime() - started) / 1_000_000))
+                })
+            }
+            // Örnek veri: kurallara uyan kayıtlar, tek işlemde; olay üretmez (otomasyon ve webhook tetiklenmez).
+            endpoint(paths, Endpoint.SAMPLE) {
+                requireAdmin(call.caller())
+                val c = byName[call.parameters["collection"]] ?: throw ApiException(404, tr("Koleksiyon bulunamadı"))
+                val body = runCatching { call.receive<JsonObject>() }.getOrDefault(JsonObject(emptyMap()))
+                val count = (body["count"] as? JsonPrimitive)?.intOrNull ?: 20
+                if (count !in 1..SampleData.MAX_COUNT) throw ApiException(400, tr("count 1-{0} olmalı", SampleData.MAX_COUNT))
+                val svc = services.getValue(c.name)
+                io {
+                    writes.write {
+                        db.transaction {
+                            val cache = HashMap<String, List<Long>>()
+                            fun ids(target: String) = cache.getOrPut(target) {
+                                db.query("SELECT \"id\" FROM ${quoteIdent(target)} ORDER BY \"id\" DESC LIMIT 500").map { (it["id"] as Number).toLong() }
+                            }
+                            val base = svc.list(1, 1, null, emptyList()).totalItems.toInt()
+                            repeat(count) { i -> svc.create(SampleData.record(c, base + i, ::ids)) }
+                        }
+                    }
+                }
+                call.audit("data.sample", c.name, tr("{0} kayıt", count))
+                call.respond(HttpStatusCode.Created, buildJsonObject { put("created", JsonPrimitive(count)) })
             }
             endpoint(paths, Endpoint.MQTT_SCENE) {
                 requireAdmin(call.caller())
@@ -1273,18 +1338,14 @@ fun Application.droidServerModule(
                         )
                     },
                     auth.users.publicFields.toSet(),
+                    subscriptions = realtime != null,
                 )
-                endpoint(paths, Endpoint.GRAPHQL_SCHEMA) {
-                    call.respondText(gql.sdl(), ContentType.parse("text/plain; charset=utf-8"))
-                }
-                endpoint(paths, Endpoint.GRAPHQL) {
-                    val caller = call.caller()
-                    val request = call.receive<JsonObject>()
+                fun backendFor(caller: Caller): GqlBackend {
                     // İlişki genişletme REST'teki expand gibi: hedef koleksiyonun görüntüleme kuralıyla.
                     fun expand(c: CollectionConfig, fields: Set<String>): Map<String, Scope?> = fields.associateWith { name ->
                         c.fields.firstOrNull { it.name == name }?.collection?.let(byName::get)?.let { Access.scope(it, Rules.Op.VIEW, caller) }
                     }
-                    val backend = object : GqlBackend {
+                    return object : GqlBackend {
                         override fun list(c: CollectionConfig, page: Int, perPage: Int, sort: String?, params: List<Pair<String, String>>, expand: Set<String>): Page {
                             val n = names.getValue(c.name)
                             val p = services.getValue(c.name).list(
@@ -1299,7 +1360,23 @@ fun Application.droidServerModule(
                         override fun update(c: CollectionConfig, id: Long, data: JsonObject) = outRecord(c, updateRecord(c, caller, id, names.getValue(c.name).inBody(data)))
                         override fun delete(c: CollectionConfig, id: Long) = deleteRecord(c, caller, id)
                     }
-                    call.respond(io { gql.execute(request, backend) })
+                }
+                endpoint(paths, Endpoint.GRAPHQL_SCHEMA) {
+                    call.respondText(gql.sdl(), ContentType.parse("text/plain; charset=utf-8"))
+                }
+                endpoint(paths, Endpoint.GRAPHQL) {
+                    val caller = call.caller()
+                    val request = call.receive<JsonObject>()
+                    call.respond(io { gql.execute(request, backendFor(caller)) })
+                }
+                // Abonelikler: graphql-transport-ws (tarayıcı WebSocket'i başlık gönderemez; kimlik connection_init'te).
+                if (realtime != null) paths.path(Endpoint.GRAPHQL_WS)?.let { wsPath ->
+                    webSocket(wsPath, protocol = GraphqlWs.PROTOCOL) {
+                        GraphqlWs(gql, realtime, byName, { c -> names[c] }, ::backendFor) { token ->
+                            val header = call.request.headers[HttpHeaders.Authorization]?.takeIf { it.startsWith("Bearer ", ignoreCase = true) }?.substring(7)?.trim()
+                            resolve(token ?: header ?: call.request.queryParameters["token"]?.trim())
+                        }.run(this)
+                    }
                 }
             }
 
@@ -1358,21 +1435,41 @@ fun Application.droidServerModule(
                     io { svc.list(1, 1, sort, params, scope = scope) } // hatalı filtre yanıt başlamadan 400
                     val date = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString().replace("-", "")
                     call.response.headers.append(HttpHeaders.ContentDisposition, "attachment; filename=\"${collection.name}-$date.${format.extension}\"")
-                    call.respondTextWriter(ContentType.parse("${format.mime}; charset=utf-8")) {
-                        withContext(Dispatchers.IO) { transfer.export(collection.name, format, this@respondTextWriter, params, sort, scope, delimiter) }
+                    if (format == TransferFormat.ZIP) {
+                        call.respondOutputStream(ContentType.Application.Zip) {
+                            withContext(Dispatchers.IO) { transfer.exportZip(collection.name, this@respondOutputStream, params, sort, scope) }
+                        }
+                    } else {
+                        call.respondTextWriter(ContentType.parse("${format.mime}; charset=utf-8")) {
+                            withContext(Dispatchers.IO) { transfer.export(collection.name, format, this@respondTextWriter, params, sort, scope, delimiter) }
+                        }
                     }
                 }
-                // İçe aktarma: yalnızca yönetici; gövde dosyanın kendisi (CSV veya JSON).
-                endpoint(paths, collection, CollectionEndpoint.IMPORT) {
-                    val caller = call.caller()
+                suspend fun RoutingCall.requireImport() {
+                    val caller = caller()
                     if (caller is Caller.Anonymous) throw ApiException(401, tr("İçe aktarma için yönetici anahtarı gerekli"))
                     val keyAllows = caller is Caller.Key && caller.allows(collection.name, write = true)
                     if (!caller.isAdmin && !keyAllows) throw ApiException(403, tr("İçe aktarma yalnızca yönetici içindir"))
+                }
+                // İçe aktarma şablonu: başlıklar (ipuçlarıyla) ve örnek satır.
+                endpoint(paths, collection, CollectionEndpoint.TEMPLATE) {
+                    call.requireImport()
+                    val delimiter = if (call.request.queryParameters["delimiter"] == "semicolon") ';' else ','
+                    call.response.headers.append(HttpHeaders.ContentDisposition, "attachment; filename=\"${collection.name}-sablon.csv\"")
+                    call.respondText(io { transfer.template(collection.name, delimiter) }, ContentType.parse("text/csv; charset=utf-8"))
+                }
+                // İçe aktarma: yalnızca yönetici; gövde dosyanın kendisi (CSV, JSON veya zip).
+                endpoint(paths, collection, CollectionEndpoint.IMPORT) {
+                    call.requireImport()
                     val q = call.request.queryParameters
                     val format = TransferFormat.of(q["format"] ?: "csv")
-                    val text = call.receiveText()
-                    val result = io {
-                        transfer.import(collection.name, format, text, DataTransfer.parseMapping(q["mapping"]), ImportMode.of(q["mode"]), q["dryRun"] == "true")
+                    val mapping = DataTransfer.parseMapping(q["mapping"])
+                    val result = if (format == TransferFormat.ZIP) {
+                        val input = call.receiveStream()
+                        io { transfer.importZip(collection.name, input, mapping, ImportMode.of(q["mode"]), q["dryRun"] == "true") }
+                    } else {
+                        val text = call.receiveText()
+                        io { transfer.import(collection.name, format, text, mapping, ImportMode.of(q["mode"]), q["dryRun"] == "true") }
                     }
                     if (result.applied) {
                         log("İçe aktarıldı: ${collection.name}, ${result.created} yeni, ${result.updated} güncellendi")
@@ -1459,10 +1556,12 @@ fun Application.droidServerModule(
                     endpoint(paths, collection, CollectionEndpoint.REVERT) {
                         val scope = archiveScope(collection, Rules.Op.UPDATE, call.caller())
                         val version = call.parameters["version"]?.toLongOrNull() ?: throw ApiException(400, tr("version sayı olmalı"))
+                        // ?fields=a,b: yalnızca bu alanlar o sürümdeki değerlerine döner.
+                        val fields = call.request.queryParameters["fields"]?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }?.toSet()?.takeIf { it.isNotEmpty() }
                         val updated = io {
-                            writes.write { svc.revert(call.idParam(), version, scope) }.also { changed(collection.name, RecordEvent.Action.UPDATE, it) }
+                            writes.write { svc.revert(call.idParam(), version, scope, fields) }.also { changed(collection.name, RecordEvent.Action.UPDATE, it) }
                         }
-                        call.audit("record.revert", "${collection.name}#${call.idParam()}", tr("sürüm {0}", version))
+                        call.audit("record.revert", "${collection.name}#${call.idParam()}", fields?.let { tr("sürüm {0}, alanlar: {1}", version, it.joinToString()) } ?: tr("sürüm {0}", version))
                         call.respond(outRecord(collection, updated))
                     }
                     endpoint(paths, collection, CollectionEndpoint.TRASH) {
@@ -1941,15 +2040,8 @@ private suspend fun receiveFile(part: PartData.FileItem, f: FieldConfig, store: 
                 }
             }
         }
-        fun invalid(message: String): Nothing = throw ApiException(400, tr("Doğrulama hatası"), mapOf(f.name to message))
-        if (size == 0L) invalid(tr("boş dosya"))
         val original = part.originalFileName.orEmpty().substringAfterLast('/').substringAfterLast('\\')
-        val kind = MimeTypes.sniff(head.toByteArray(), original.substringAfterLast('.', "").ifEmpty { null })
-        MimeTypes.extensionMismatch(original, kind)?.let(::invalid)
-        if (!MimeTypes.matches(kind.mime, f.mimeTypes)) {
-            invalid(tr("izin verilmeyen içerik tipi: {0} (izinli: {1})", kind.mime, f.mimeTypes!!.joinToString()))
-        }
-        return Upload(f.name, temp, kind, original, size, store.newName(original, kind.ext))
+        return store.accept(f, temp, size, head.toByteArray(), original)
     } catch (t: Throwable) {
         temp.delete()
         throw t

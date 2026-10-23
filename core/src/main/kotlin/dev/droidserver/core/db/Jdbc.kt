@@ -28,6 +28,30 @@ internal object Jdbc {
             }
         }
 
+    /** Salt okunur konsol sorgusu: sütun sırası korunur, en çok [maxRows] satır, [timeoutSec] saniye. */
+    fun readOnly(c: Connection, sql: String, maxRows: Int, timeoutSec: Int): ReadOnlyResult = c.createStatement().use { st ->
+        st.queryTimeout = timeoutSec
+        st.maxRows = maxRows + 1
+        st.executeQuery(sql).use { rs ->
+            val meta = rs.metaData
+            val columns = (1..meta.columnCount).map { meta.getColumnLabel(it) }
+            val rows = mutableListOf<List<Any?>>()
+            while (rs.next() && rows.size <= maxRows) {
+                rows += (1..meta.columnCount).map { i ->
+                    when (val v = rs.getObject(i)) {
+                        is Int -> v.toLong()
+                        is Short -> v.toLong()
+                        is Float -> v.toDouble()
+                        is ByteArray -> "<${v.size} bayt>"
+                        null, is Number, is String, is Boolean -> v
+                        else -> v.toString()
+                    }
+                }
+            }
+            ReadOnlyResult(columns, rows.take(maxRows), rows.size > maxRows)
+        }
+    }
+
     fun query(c: Connection, sql: String, args: List<Any?>): List<Map<String, Any?>> = c.prepareStatement(sql).use { st ->
         bind(st, args)
         st.executeQuery().use { rs ->

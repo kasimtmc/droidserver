@@ -472,12 +472,13 @@ class RecordService(
 
     /**
      * Dosya alanı gövdede `null` (dosyaları kaldır) veya mevcut adlardan tutulacaklar olarak gönderilebilir; yeni
-     * dosyalar [uploads] ile gelir. Kaldırılan dosyalar işlem tamamlanınca silinir.
+     * dosyalar [uploads] ile gelir. Kaldırılan dosyalar işlem tamamlanınca silinir; [removedFiles] verilirse silinmez,
+     * adları oraya eklenir (dış işlem geri alınabilecekse çağıran, işlem kalıcı olunca siler).
      */
-    fun update(id: Long, body: JsonObject, scope: Scope = Scope.ADMIN, uploads: List<Upload> = emptyList()): JsonObject =
-        update(id, body, scope, uploads, historyAction = "update")
+    fun update(id: Long, body: JsonObject, scope: Scope = Scope.ADMIN, uploads: List<Upload> = emptyList(), removedFiles: MutableList<String>? = null): JsonObject =
+        update(id, body, scope, uploads, historyAction = "update", removedFiles)
 
-    private fun update(id: Long, body: JsonObject, scope: Scope, uploads: List<Upload>, historyAction: String): JsonObject {
+    private fun update(id: Long, body: JsonObject, scope: Scope, uploads: List<Upload>, historyAction: String, removedFiles: MutableList<String>? = null): JsonObject {
         requireStore(uploads)
         if (uploads.isNotEmpty()) quotaUser(scope)?.let { quota!!.checkStorage(it, uploads.sumOf { u -> u.size }) }
         val removed = db.transaction {
@@ -515,7 +516,7 @@ class RecordService(
             if (collection.history != null) logHistory(id, historyAction, snapshot(id), scope.actor)
             removed
         }
-        removed.forEach { files?.delete(collection.name, id, it) }
+        if (removedFiles != null) removedFiles += removed else removed.forEach { files?.delete(collection.name, id, it) }
         // Tamamı: güncellenen kayıt artık koşula uymasa da (örn. taslak yayınlandı) yanıt döner; istemciye [present] ile.
         return get(id)
     }
@@ -905,9 +906,13 @@ class RecordService(
 
     /**
      * Kaydı geçmişteki bir sürümün değerlerine döndürür (yeni bir sürüm olarak; dosya ve hesaplanan alanlar hariç).
-     * Silinmiş kayıt önce çöp kutusundan geri yüklenmeli.
+     * [fields] verilirse yalnızca o alanlar (sürümde olmayan alan boşalır). Silinmiş kayıt önce çöp kutusundan geri
+     * yüklenmeli.
      */
-    fun revert(id: Long, version: Long, scope: Scope = Scope.ADMIN): JsonObject {
+    fun revert(id: Long, version: Long, scope: Scope = Scope.ADMIN, fields: Set<String>? = null): JsonObject {
+        fields?.firstOrNull { f -> fieldsByName[f]?.let { it.type == FieldType.FILE || it.computed != null } != false }?.let {
+            throw ApiException(400, tr("'{0}' geri alınabilir bir alan değil", it))
+        }
         if (collection.history == null) throw ApiException(404, tr("'{0}' koleksiyonunda geçmiş kapalı", collection.name))
         val row = db.query(
             "SELECT \"data\" FROM $historyTable WHERE \"collection\" = ? AND \"record\" = ? AND \"version\" = ?",
@@ -916,7 +921,9 @@ class RecordService(
         if (!exists(collection.name, id, lock = false)) {
             throw ApiException(404, tr("Kayıt silinmiş") + if (collection.trash != null) tr("; önce çöp kutusundan geri yükleyin") else "")
         }
-        return update(id, writable(opened(parseObject(row["data"]))), scope, emptyList(), historyAction = "revert")
+        val data = writable(opened(parseObject(row["data"])))
+        val values = if (fields == null) data else JsonObject(fields.associateWith { data[it] ?: JsonNull })
+        return update(id, values, scope, emptyList(), historyAction = "revert")
     }
 
     /** Çöp kutusu, son silinen önce: `{items:[{id, deletedAt, expiresAt, actor, data}], totalItems}`. */
