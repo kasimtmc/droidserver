@@ -667,8 +667,12 @@ class WizardViewModel(
                 mimeTypes = f.mimeTypes.takeIf { type == FieldType.FILE },
                 multiple = f.multiple.takeIf { type == FieldType.FILE },
                 thumbs = f.thumbs.takeIf { type == FieldType.FILE },
-                unique = f.unique && type != FieldType.FILE,
-                index = f.index && type != FieldType.FILE && type != FieldType.JSON,
+                convert = f.convert.takeIf { type == FieldType.FILE },
+                maxDimension = f.maxDimension.takeIf { type == FieldType.FILE },
+                keepLocation = f.keepLocation && type == FieldType.FILE,
+                ai = f.ai.takeIf { type == FieldType.FILE },
+                unique = f.unique && type != FieldType.FILE && type != FieldType.GEO,
+                index = f.index && type != FieldType.FILE && type != FieldType.JSON && type != FieldType.GEO,
                 default = f.default?.takeIf { FieldDefaults.problem(type, it) == null },
                 typeChange = f.typeChange?.takeIf {
                     old != null && type != old && it.from == old &&

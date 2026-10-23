@@ -1,5 +1,6 @@
 package dev.droidserver.core.api
 
+import dev.droidserver.core.config.GeoPoint
 import dev.droidserver.core.config.AuthMode
 import dev.droidserver.core.config.CollectionConfig
 import dev.droidserver.core.config.FieldType
@@ -206,6 +207,7 @@ object ApiExamples {
                 FieldType.TEXT -> "${f.name}[like]=${f.name}"
                 FieldType.BOOLEAN -> "${f.name}=true"
                 FieldType.SELECT, FieldType.MULTISELECT -> f.options?.firstOrNull()?.let { "${f.name}=$it" }
+                FieldType.GEO -> "${f.name}[near]=41.01,28.97,5"
                 FieldType.JSON, FieldType.RELATION, FieldType.FILE -> null
             }
         } ?: return null
@@ -232,6 +234,7 @@ object ApiExamples {
                 FieldType.BOOLEAN -> JsonPrimitive(true)
                 FieldType.DATETIME -> JsonPrimitive("2026-01-01T09:00:00Z")
                 FieldType.JSON -> JsonArray(listOf(JsonPrimitive("etiket")))
+                FieldType.GEO -> GeoPoint(41.0082, 28.9784).json()
                 FieldType.RELATION -> JsonPrimitive(1) // hedef koleksiyondaki bir kaydın kimliği
                 FieldType.FILE -> error(tr("atlandı"))
                 FieldType.SELECT -> JsonPrimitive(f.options?.firstOrNull() ?: "")

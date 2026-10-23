@@ -52,6 +52,19 @@ public struct Page<T: Decodable & Sendable>: Decodable, Sendable {
     public let totalPages: Int64
 }
 
+/// Konum alanı; filtre: `["konum[near]": "41.01,28.97,5"]` (km, yakından uzağa) veya `["konum[box]": "güney,batı,kuzey,doğu"]`.
+public struct GeoPoint: Codable, Sendable, Equatable {
+    public var lat: Double
+    public var lng: Double
+    public var accuracy: Double?
+
+    public init(lat: Double, lng: Double, accuracy: Double? = nil) {
+        self.lat = lat
+        self.lng = lng
+        self.accuracy = accuracy
+    }
+}
+
 /// Sunucunun hata yanıtı (`status`, `message`, alan başına `details`).
 public struct DroidServerError: Error, CustomStringConvertible, Sendable {
     public let status: Int

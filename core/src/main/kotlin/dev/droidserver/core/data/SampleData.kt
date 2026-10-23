@@ -1,5 +1,6 @@
 package dev.droidserver.core.data
 
+import dev.droidserver.core.config.GeoPoint
 import dev.droidserver.core.api.ApiException
 import dev.droidserver.core.config.CollectionConfig
 import dev.droidserver.core.config.FieldConfig
@@ -56,6 +57,8 @@ object SampleData {
             FieldType.BOOLEAN -> JsonPrimitive(random.nextBoolean())
             FieldType.DATETIME -> JsonPrimitive(Instant.now().minus(random.nextLong(0, 30 * 24 * 60), ChronoUnit.MINUTES).truncatedTo(ChronoUnit.SECONDS).toString())
             FieldType.JSON -> buildJsonObject { put("ornek", JsonPrimitive(i + 1)) }
+            // Türkiye'den rastgele bir nokta.
+            FieldType.GEO -> GeoPoint(Math.round((36.5 + random.nextDouble() * 5) * 1e5) / 1e5, Math.round((27.0 + random.nextDouble() * 16) * 1e5) / 1e5).json()
             FieldType.SELECT -> f.options?.takeIf { it.isNotEmpty() }?.let { JsonPrimitive(it[random.nextInt(it.size)]) }
             FieldType.MULTISELECT -> f.options?.takeIf { it.isNotEmpty() }?.let { o ->
                 JsonArray(o.shuffled(random).take(random.nextInt(1, minOf(o.size, 3) + 1)).map(::JsonPrimitive))

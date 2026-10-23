@@ -75,7 +75,11 @@ object OpenApi {
                 )
                 val filters = buildList {
                     if (c.search.isNotEmpty()) add(query("q", "string", tr("Arama ({0}): büyük/küçük harf ve Türkçe karakterden bağımsız", c.search.joinToString())))
-                    for (f in c.fields.filter { it.type != FieldType.JSON && it.type != FieldType.FILE }) {
+                    for (f in c.fields.filter { it.type == FieldType.GEO }) {
+                        add(query("${f.name}[near]", "string", tr("Bu uzaklıktaki kayıtlar, yakından uzağa: enlem,boylam,km (en çok 1000 km)")))
+                        add(query("${f.name}[box]", "string", tr("Bu kutudaki kayıtlar: güney,batı,kuzey,doğu")))
+                    }
+                    for (f in c.fields.filter { it.type != FieldType.JSON && it.type != FieldType.FILE && it.type != FieldType.GEO }) {
                         add(query(f.name, schemaType(f), tr("Eşittir. Diğer işleçler: {0}[ne|gt|gte|lt|lte|like|in|null]=değer", f.name)))
                     }
                 }
@@ -144,6 +148,12 @@ object OpenApi {
                             "description" to str(tr("{now, changes:[{op (create|update|delete), tempId, id, base, fields, times, time}]}")),
                         )))),
                         responses = ok(obj("type" to str("object"), "description" to str(tr("{results:[{status (ok|merged|conflict|gone|error), tempId, id, version, record, conflicts}]}"))))))
+                }
+                if (c.calendar?.feed == true) {
+                    op("/calendar/${c.name}.ics", "get", operation(tag, tr("Takvim aboneliği (iCalendar); liste kuralıyla ya da gizli anahtarla"), public(Rules.Op.LIST),
+                        params = buildJsonArray { add(query("token", "string", tr("Gizli abonelik anahtarı (takvim uygulamaları başlık gönderemez)"))) },
+                        responses = obj("200" to obj("description" to str(tr("Takvim")), "content" to obj("text/calendar" to obj("schema" to type("string"))))),
+                        rule = c.rules[Rules.Op.LIST]))
                 }
             }
             if (Rules.Op.CREATE in ops) {
@@ -464,6 +474,12 @@ object OpenApi {
             FieldType.BOOLEAN -> put("type", str("boolean"))
             FieldType.DATETIME -> { put("type", str("string")); put("format", str("date-time")) }
             FieldType.JSON -> put("description", str(tr("Serbest JSON")))
+            FieldType.GEO -> {
+                put("type", str("object"))
+                put("properties", obj("lat" to type("number"), "lng" to type("number"), "accuracy" to type("number")))
+                put("required", buildJsonArray { add(str("lat")); add(str("lng")) })
+                put("description", str(tr("Konum: enlem, boylam ve isteğe bağlı doğruluk (metre)")))
+            }
             FieldType.RELATION -> {
                 put("type", str("integer"))
                 put("description", str(tr("{0} kimliği", if (f.collection == SystemCollections.USERS) tr("Kullanıcı") else tr("'{0}' kaydı", f.collection))))

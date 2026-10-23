@@ -228,6 +228,9 @@ internal class RequestGuardSettings {
     /** `Cache-Control: no-store` yalnızca API yanıtlarına; statik site kendi önbellek başlığını verir. */
     var basePath: String = "/api"
 
+    /** Dosya indirme yolu öneki (API yoluyla, örn. `/api/files/`): kendi önbellek başlığını verir; null: yok. */
+    var filesPrefix: String? = null
+
     /** Uygulama yolları: gövdeleri burada biriktirilmez, sınırı vekil akış sırasında uygular ([AppProxy]). */
     var appPaths: List<String> = emptyList()
 }
@@ -247,6 +250,7 @@ internal val RequestGuard = createApplicationPlugin("DroidServerGuard", ::Reques
     val maxBody = limits.maxBodyKb * 1024L
     val base = pluginConfig.basePath
     val appPaths = pluginConfig.appPaths
+    val filesPrefix = pluginConfig.filesPrefix
     fun appPath(path: String) = appPaths.any { StaticConfig.underPath(path, it) }
     // İçe aktarılan dosya genel gövde sınırından büyük olabilir (yalnızca yönetici kullanır). Zip bellekte toplanmaz;
     // sınırı DataTransfer.importZip okurken uygular.
@@ -257,7 +261,9 @@ internal val RequestGuard = createApplicationPlugin("DroidServerGuard", ::Reques
     onCall { call ->
         call.response.headers.append("X-Content-Type-Options", "nosniff")
         val path = call.request.local.uri.substringBefore('?')
-        if (StaticConfig.underPath(path, base)) call.response.headers.append(HttpHeaders.CacheControl, "no-store")
+        if (StaticConfig.underPath(path, base) && filesPrefix?.let { path.startsWith(it) } != true) {
+            call.response.headers.append(HttpHeaders.CacheControl, "no-store")
+        }
         val o = origin(call.request)
         if (o.internet) {
             call.respond(

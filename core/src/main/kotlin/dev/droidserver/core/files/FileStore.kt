@@ -12,6 +12,12 @@ import java.security.SecureRandom
 fun interface ImageResizer {
     /** Başarılıysa true; [target] yazılmış olur. Görseli kırpar (her iki boyut verilmişse ortadan). */
     fun resize(source: File, target: File, width: Int, height: Int): Boolean
+
+    /**
+     * Yüklenen görseli [ext] biçiminde (`webp`, `jpg`, `png`) yeniden kodlar; uzun kenarı [maxDimension]'dan büyükse
+     * küçültür, EXIF yönünü uygular, meta veri yazmaz. Yapılamıyorsa veya gerek yoksa false ([target] kullanılmaz).
+     */
+    fun convert(source: File, target: File, ext: String, maxDimension: Int?): Boolean = false
 }
 
 /** Yüklenen, henüz kayda bağlanmamış dosya: geçici dosya ve tespit edilen tip. */
@@ -30,7 +36,7 @@ class Upload(
  * `<özgün-ad>_<rastgele>.<uzantı>` biçimindedir (uzantı içerikten); yol ayracı veya `..` içeremez.
  * Küçük resimler kayıt klasörünün `.thumbs/` altında; kayıt silinince klasörle birlikte silinir.
  */
-class FileStore(val root: File) {
+class FileStore(val root: File, private val images: ImageResizer? = null) {
     private val random = SecureRandom()
     private val tmp = File(root, ".tmp")
 
@@ -49,7 +55,7 @@ class FileStore(val root: File) {
     /**
      * [temp]'i [f] alanına yüklenen dosya olarak denetler: boş olmamalı, alanın boyut sınırını aşmamalı, uzantısı
      * içerikten tespit edilen tiple çelişmemeli, tip alanın izinli tiplerinden olmalı. [head]: ilk baytlar
-     * ([MimeTypes.HEAD_BYTES]).
+     * ([MimeTypes.HEAD_BYTES]). Görsel alanın ayarına göre hazırlanır ([Media]); bloklayıcıdır.
      */
     fun accept(f: FieldConfig, temp: File, size: Long, head: ByteArray, original: String): Upload {
         fun invalid(message: String): Nothing = throw ApiException(400, tr("Doğrulama hatası"), mapOf(f.name to message))
@@ -60,7 +66,7 @@ class FileStore(val root: File) {
         if (!MimeTypes.matches(kind.mime, f.mimeTypes)) {
             invalid(tr("izin verilmeyen içerik tipi: {0} (izinli: {1})", kind.mime, f.mimeTypes!!.joinToString()))
         }
-        return Upload(f.name, temp, kind, original, size, newName(original, kind.ext))
+        return Media.process(this, f, Upload(f.name, temp, kind, original, size, newName(original, kind.ext)), images)
     }
 
     fun recordDir(collection: String, id: Long) = File(File(root, collection), id.toString())

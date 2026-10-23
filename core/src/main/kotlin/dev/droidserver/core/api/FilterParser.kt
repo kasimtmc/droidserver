@@ -2,6 +2,7 @@ package dev.droidserver.core.api
 
 import dev.droidserver.core.config.CollectionConfig
 import dev.droidserver.core.config.FieldType
+import dev.droidserver.core.config.GeoPoint
 import dev.droidserver.core.i18n.tr
 import java.time.Instant
 import java.time.format.DateTimeParseException
@@ -16,6 +17,8 @@ import java.time.format.DateTimeParseException
  * | `like` | içerir (büyük/küçük harf duyarsız) | text |
  * | `in` | virgülle ayrılmış değerlerden biri (en çok 100) | text, integer, real, datetime, relation, id |
  * | `null` | `true`: boş, `false`: dolu | id dışında hepsi |
+ * | `near` | `enlem,boylam,km`: bu uzaklıkta (en çok 1000 km); sıralama verilmemişse yakından uzağa | geo |
+ * | `box` | `güney,batı,kuzey,doğu`: bu kutunun içinde | geo |
  *
  * Seçim (select) alanları metin gibi `eq`, `ne`, `in`, `null` kullanır. Çoklu seçimde (multiselect) `eq` "bu seçeneği
  * içerir" demektir; yalnızca `eq` ve `null` kullanılır.
@@ -26,7 +29,7 @@ import java.time.format.DateTimeParseException
  */
 object FilterParser {
     enum class Op(val key: String) {
-        EQ("eq"), NE("ne"), GT("gt"), GTE("gte"), LT("lt"), LTE("lte"), LIKE("like"), IN("in"), NULL("null");
+        EQ("eq"), NE("ne"), GT("gt"), GTE("gte"), LT("lt"), LTE("lte"), LIKE("like"), IN("in"), NULL("null"), NEAR("near"), BOX("box");
 
         companion object {
             fun of(key: String): Op? = entries.firstOrNull { it.key == key }
@@ -35,7 +38,8 @@ object FilterParser {
 
     /**
      * Ayrıştırılmış koşul. [values] ortak biçimdedir (bkz. SqlDialect): Long, Double, Boolean, Instant veya String;
-     * [Op.NULL] için tek Boolean (true: boş olmalı).
+     * [Op.NULL] için tek Boolean (true: boş olmalı); [Op.NEAR] için enlem, boylam, km; [Op.BOX] için güney, batı, kuzey, doğu
+     * (Double).
      */
     data class Condition(val field: String, val type: FieldType, val op: Op, val values: List<Any>)
 
@@ -67,6 +71,8 @@ object FilterParser {
         fun no(why: String): Nothing = throw ApiException(400, tr("{0}[{1}] kullanılamaz: {2}", name, op.key, why))
         when {
             type == FieldType.JSON -> no(tr("json alanlarına göre filtrelenemez"))
+            type == FieldType.GEO && op !in setOf(Op.NEAR, Op.BOX, Op.NULL) -> no(tr("konum alanlarında yalnızca near, box ve null kullanılır"))
+            type != FieldType.GEO && (op == Op.NEAR || op == Op.BOX) -> no(tr("near ve box yalnızca konum alanlarında kullanılır"))
             type == FieldType.FILE && op != Op.NULL -> no(tr("dosya alanlarında yalnızca null (dosya var mı) kullanılır"))
             op == Op.NULL && name == "id" -> no(tr("id hiçbir zaman boş değildir"))
             op == Op.LIKE && type != FieldType.TEXT -> no(tr("like yalnızca metin alanlarında kullanılır"))
@@ -80,12 +86,25 @@ object FilterParser {
     private fun values(name: String, type: FieldType, op: Op, raw: String): List<Any> = when (op) {
         Op.NULL -> listOf(raw.toBooleanStrictOrNull() ?: throw ApiException(400, tr("{0}[null] true veya false olmalı", name)))
         Op.LIKE -> listOf(raw.also { if (it.isEmpty()) throw ApiException(400, tr("{0}[like] boş olamaz", name)) })
+        Op.NEAR -> numbers(raw, 3) { tr("{0}[near] enlem,boylam,km olmalı, örn. 41.01,28.97,5", name) }.also { (lat, lng, km) ->
+            if (lat !in -90.0..90.0 || lng !in -180.0..180.0) throw ApiException(400, tr("{0}[near]: enlem -90..90, boylam -180..180 olmalı", name))
+            if (km <= 0 || km > GeoPoint.MAX_NEAR_KM) throw ApiException(400, tr("{0}[near]: uzaklık 0'dan büyük ve en çok {1} km olmalı", name, GeoPoint.MAX_NEAR_KM.toInt()))
+        }
+        Op.BOX -> numbers(raw, 4) { tr("{0}[box] güney,batı,kuzey,doğu olmalı, örn. 40.9,28.8,41.1,29.1", name) }.also { (s, w, n, e) ->
+            if (s !in -90.0..90.0 || n !in -90.0..90.0 || w !in -180.0..180.0 || e !in -180.0..180.0 || s > n || w > e) {
+                throw ApiException(400, tr("{0}[box]: güney ≤ kuzey (-90..90) ve batı ≤ doğu (-180..180) olmalı", name))
+            }
+        }
         Op.IN -> raw.split(',').also {
             if (raw.isEmpty()) throw ApiException(400, tr("{0}[in] en az bir değer içermeli", name))
             if (it.size > MAX_IN) throw ApiException(400, tr("{0}[in] en çok {1} değer alabilir", name, MAX_IN))
         }.map { value(name, type, it) }
         else -> listOf(value(name, type, raw))
     }
+
+    private fun numbers(raw: String, count: Int, message: () -> String): List<Double> =
+        raw.split(',').map { it.trim().toDoubleOrNull()?.takeIf { d -> d.isFinite() } ?: throw ApiException(400, message()) }
+            .also { if (it.size != count) throw ApiException(400, message()) }
 
     private fun value(name: String, type: FieldType, raw: String): Any = when (type) {
         FieldType.TEXT, FieldType.SELECT, FieldType.MULTISELECT -> raw
@@ -99,6 +118,7 @@ object FilterParser {
         }
         FieldType.JSON -> throw ApiException(400, tr("json alanlarına göre filtrelenemez: {0}", name))
         FieldType.FILE -> throw ApiException(400, tr("dosya alanlarında yalnızca null kullanılır: {0}", name))
+        FieldType.GEO -> throw ApiException(400, tr("konum alanlarında yalnızca near, box ve null kullanılır: {0}", name))
     }
 
     /**

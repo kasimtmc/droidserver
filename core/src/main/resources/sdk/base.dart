@@ -12,6 +12,23 @@ class Page<T> {
   const Page(this.items, this.page, this.perPage, this.totalItems, this.totalPages);
 }
 
+/// Konum alanı; filtre: `{'konum[near]': '41.01,28.97,5'}` (km, yakından uzağa) veya `{'konum[box]': 'güney,batı,kuzey,doğu'}`.
+class GeoPoint {
+  final double lat;
+  final double lng;
+  final double? accuracy;
+
+  const GeoPoint(this.lat, this.lng, {this.accuracy});
+
+  factory GeoPoint.fromJson(Map<String, dynamic> j) =>
+      GeoPoint((j['lat'] as num).toDouble(), (j['lng'] as num).toDouble(), accuracy: (j['accuracy'] as num?)?.toDouble());
+
+  Map<String, dynamic> toJson() => {'lat': lat, 'lng': lng, if (accuracy != null) 'accuracy': accuracy};
+
+  @override
+  String toString() => '$lat,$lng';
+}
+
 /// Sunucunun hata yanıtı (`status`, `message`, alan başına `details`).
 class DroidServerException implements Exception {
   final int status;

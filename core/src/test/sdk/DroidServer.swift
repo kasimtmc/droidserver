@@ -1,4 +1,4 @@
-// DroidServer istemcisi: "SDK deneme" sunucusu için üretildi (konfigürasyon v18).
+// DroidServer istemcisi: "SDK deneme" sunucusu için üretildi (konfigürasyon v19).
 // Konfigürasyon değişince yeniden indirin: GET <API>/_sdk/{ts|kotlin|dart|swift} (yönetici) veya uygulama/panel.
 // Gerekenler: Swift 5.9+ (async/await); bağımlılık yok. Apple platformları ve Linux (FoundationNetworking).
 //
@@ -24,6 +24,7 @@ public struct TodoItems: Decodable, Sendable {
     public let meta: JSONValue?
     public let `in`: String?
     public let due: String?
+    public let place: GeoPoint?
     public let photo: String?
     public let total: Double?
     public let owner: Int64?
@@ -43,9 +44,10 @@ public struct TodoItemsInput: Encodable, Sendable {
     public var meta: JSONValue?
     public var `in`: String?
     public var due: String?
+    public var place: GeoPoint?
     public var owner: Int64?
 
-    public init(title: String? = nil, done: Bool? = nil, qty: Int64? = nil, price: Double? = nil, status: String? = nil, tags: [String]? = nil, meta: JSONValue? = nil, `in`: String? = nil, due: String? = nil, owner: Int64? = nil) {
+    public init(title: String? = nil, done: Bool? = nil, qty: Int64? = nil, price: Double? = nil, status: String? = nil, tags: [String]? = nil, meta: JSONValue? = nil, `in`: String? = nil, due: String? = nil, place: GeoPoint? = nil, owner: Int64? = nil) {
         self.title = title
         self.done = done
         self.qty = qty
@@ -55,6 +57,7 @@ public struct TodoItemsInput: Encodable, Sendable {
         self.meta = meta
         self.`in` = `in`
         self.due = due
+        self.place = place
         self.owner = owner
     }
 }
@@ -153,6 +156,19 @@ public struct Page<T: Decodable & Sendable>: Decodable, Sendable {
     public let perPage: Int
     public let totalItems: Int64
     public let totalPages: Int64
+}
+
+/// Konum alanı; filtre: `["konum[near]": "41.01,28.97,5"]` (km, yakından uzağa) veya `["konum[box]": "güney,batı,kuzey,doğu"]`.
+public struct GeoPoint: Codable, Sendable, Equatable {
+    public var lat: Double
+    public var lng: Double
+    public var accuracy: Double?
+
+    public init(lat: Double, lng: Double, accuracy: Double? = nil) {
+        self.lat = lat
+        self.lng = lng
+        self.accuracy = accuracy
+    }
 }
 
 /// Sunucunun hata yanıtı (`status`, `message`, alan başına `details`).

@@ -1,5 +1,6 @@
 package dev.droidserver.core.data
 
+import dev.droidserver.core.config.GeoPoint
 import dev.droidserver.core.api.ApiException
 import dev.droidserver.core.api.ApiNames
 import dev.droidserver.core.api.RecordService
@@ -224,6 +225,7 @@ class DataTransfer(
                     FieldType.DATETIME -> "2026-10-14 09:30"
                     FieldType.RELATION -> tr("{0} kimliği", f.collection ?: "")
                     FieldType.JSON -> "JSON"
+                    FieldType.GEO -> tr("enlem,boylam")
                     else -> null
                 },
             )
@@ -252,6 +254,7 @@ class DataTransfer(
         v == null || v is JsonNull -> null
         v is JsonPrimitive && v.isString -> if (type == FieldType.TEXT) Csv.guard(v.content) else v.content
         v is JsonPrimitive -> v.content
+        type == FieldType.GEO -> runCatching { GeoPoint.of(v).text() }.getOrElse { v.toString() }
         else -> v.toString() // json alanı, çoklu dosya
     }
 
@@ -558,6 +561,12 @@ class DataTransfer(
                 throw IllegalArgumentException(tr("geçerli JSON değil"))
             }
             FieldType.FILE -> null
+            // "41.01,28.97" veya JSON nesne.
+            FieldType.GEO -> if (s.trimStart().startsWith("{")) {
+                runCatching { Json.parseToJsonElement(s) }.getOrElse { throw IllegalArgumentException(tr("geçerli JSON değil")) }
+            } else {
+                GeoPoint.parse(s)?.json() ?: throw IllegalArgumentException(tr("konum bekleniyor: enlem,boylam (örn. 41.01,28.97)"))
+            }
             FieldType.SELECT -> JsonPrimitive(s.trim())
             // JSON dizi veya virgülle ayrılmış seçimler ("kırmızı, mavi").
             FieldType.MULTISELECT -> if (s.trimStart().startsWith("[")) {

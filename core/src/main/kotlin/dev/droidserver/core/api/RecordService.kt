@@ -2,10 +2,12 @@ package dev.droidserver.core.api
 
 import dev.droidserver.core.auth.QuotaService
 import dev.droidserver.core.config.CollectionConfig
+import dev.droidserver.core.db.PostgresDialect
 import dev.droidserver.core.config.FieldConfig
 import dev.droidserver.core.config.Expression
 import dev.droidserver.core.config.FieldRules
 import dev.droidserver.core.config.FieldType
+import dev.droidserver.core.config.GeoPoint
 import dev.droidserver.core.config.TypeConversions
 import dev.droidserver.core.config.FieldVisibility
 import dev.droidserver.core.config.OnDelete
@@ -128,10 +130,16 @@ class RecordService(
             ?.let(SearchText::queryTokens)?.takeIf { it.isNotEmpty() }
             ?.let { "ORDER BY ${SearchTerms.relevance("$table.\"id\"", collection.name, it, relevanceArgs)} DESC, $table.\"id\" ASC" }
 
-        val orderSql = relevance ?: sort?.takeIf { it.isNotBlank() }?.split(",")?.joinToString(", ") { part ->
+        // `alan[near]` verilip sıralama verilmemişse yakından uzağa.
+        val nearest = FilterParser.parse(params, collection).lastOrNull { it.op == FilterParser.Op.NEAR }?.takeIf { sort.isNullOrBlank() }?.let { c ->
+            val column = quoteIdent(c.field)
+            "ORDER BY ${GeoPoint.approxSquaredSql(dialect.geoLat(column), dialect.geoLng(column), c.values[0] as Double, c.values[1] as Double)} ASC, $table.\"id\" ASC"
+        }
+        val orderSql = relevance ?: nearest ?: sort?.takeIf { it.isNotBlank() }?.split(",")?.joinToString(", ") { part ->
             val desc = part.startsWith("-")
             val name = part.removePrefix("-").removePrefix("+").trim()
             if (name !in sortable) throw ApiException(400, tr("Sıralanamayan alan: {0}", name))
+            if (typeOf(name) == FieldType.GEO) throw ApiException(400, tr("Konum alanına göre sıralanamaz; yakından uzağa için {0}[near] kullanın", name))
             RuleConditions.requireReadable(collection, name, scope, "sort")
             "${dialect.comparable(typeOf(name), quoteIdent(name))} ${if (desc) "DESC" else "ASC"}"
         }?.let { "ORDER BY $it, \"id\" ASC" } ?: "ORDER BY \"id\" ASC"
@@ -290,7 +298,12 @@ class RecordService(
                 args += JsonPrimitive(c.values.single() as String).toString()
                 continue
             }
+            if (c.op == FilterParser.Op.NEAR || c.op == FilterParser.Op.BOX) {
+                where += geoSql(c)
+                continue
+            }
             where += when (c.op) {
+                FilterParser.Op.NEAR, FilterParser.Op.BOX -> error("geo")
                 FilterParser.Op.EQ -> "$col = $ph"
                 FilterParser.Op.NE -> "($column IS NULL OR $col <> $ph)"
                 FilterParser.Op.GT -> "$col > $ph"
@@ -308,6 +321,41 @@ class RecordService(
             }
         }
         return "(" + where.joinToString(" AND ") + ")" to args
+    }
+
+    /**
+     * Konum koşulu; sayılar FilterParser'da doğrulandığından SQL'e doğrudan yazılır. `near`: önce kutu (enlem ve boylam
+     * aralığı), sonra [GeoPoint.approxKm] ile aynı yaklaşık uzaklık. 180. boylamı aşan arama iki aralığa bölünür.
+     */
+    private fun geoSql(c: FilterParser.Condition): String {
+        val column = quoteIdent(c.field)
+        val lat = dialect.geoLat(column)
+        val lng = dialect.geoLng(column)
+        val v = c.values.map { it as Double }
+        if (c.op == FilterParser.Op.BOX) {
+            val (s, w, n, e) = v
+            return "($column IS NOT NULL AND $lat BETWEEN ($s) AND ($n) AND $lng BETWEEN ($w) AND ($e))"
+        }
+        val (lat0, lng0, km) = v
+        val dLat = km / GeoPoint.KM_PER_DEGREE
+        val south = maxOf(-90.0, lat0 - dLat)
+        val north = minOf(90.0, lat0 + dLat)
+        // Kutunun kutba en yakın enleminde bir boylam derecesi en kısadır; aralık oraya göre.
+        val cosEdge = Math.cos(Math.toRadians(minOf(90.0, maxOf(kotlin.math.abs(south), kotlin.math.abs(north)))))
+        val dLng = if (cosEdge < 1e-9) 360.0 else dLat / cosEdge
+        val lngSql = when {
+            dLng >= 180 -> null
+            lng0 - dLng < -180 -> "($lng >= (${lng0 - dLng + 360}) OR $lng <= (${lng0 + dLng}))"
+            lng0 + dLng > 180 -> "($lng >= (${lng0 - dLng}) OR $lng <= (${lng0 + dLng - 360}))"
+            else -> "$lng BETWEEN (${lng0 - dLng}) AND (${lng0 + dLng})"
+        }
+        val radius = km / GeoPoint.KM_PER_DEGREE
+        return "(" + listOfNotNull(
+            "$column IS NOT NULL",
+            "$lat BETWEEN ($south) AND ($north)",
+            lngSql,
+            "${GeoPoint.approxSquaredSql(lat, lng, lat0, lng0)} <= (${radius * radius})",
+        ).joinToString(" AND ") + ")"
     }
 
     /** Başkasına ait kayıt ([Scope.ownedBy]) yokmuş gibi 404 döner. */
@@ -423,6 +471,7 @@ class RecordService(
         val args = values.values.toList() + search.values + listOf(now, now)
         val id = wrapConstraint { db.insert(dialect.insertReturningId(collection.name, cols), args) }
         if (collection.fullText) SearchTerms.index(db, collection.name, id, search[SearchText.COLUMN], clock())
+        checkCalendar(id)
         // Koşul yazılan kayıtta denetlenir; uymazsa işlem geri alınır.
         conditionsSql(scope.condition)?.let { (sql, a) ->
             if (db.query("SELECT \"id\" FROM $table WHERE \"id\" = ? AND $sql", listOf<Any?>(id) + a).isEmpty()) {
@@ -511,6 +560,7 @@ class RecordService(
             val args = values.values.toList() + dialect.encode(FieldType.DATETIME, clock()) + condArgs
             val n = wrapConstraint { db.execute("UPDATE $table SET ${sets.joinToString()} WHERE $cond", args) }
             if (n == 0) throw ApiException(404, tr("Kayıt bulunamadı"))
+            if (collection.calendar?.let { cal -> listOfNotNull(cal.start, cal.end, cal.resource).any { it in values } } == true) checkCalendar(id)
             if (collection.search.any { it in values }) refreshSearch(id)
             uploads.forEach { files!!.commit(it, collection.name, id) }
             if (collection.history != null) logHistory(id, historyAction, snapshot(id), scope.actor)
@@ -519,6 +569,33 @@ class RecordService(
         if (removedFiles != null) removedFiles += removed else removed.forEach { files?.delete(collection.name, id, it) }
         // Tamamı: güncellenen kayıt artık koşula uymasa da (örn. taslak yayınlandı) yanıt döner; istemciye [present] ile.
         return get(id)
+    }
+
+    /**
+     * Takvim kuralları, yazılan kaydın son halinde (işlem içinde; uymazsa geri alınır): bitiş başlangıçtan önce olamaz;
+     * çakışma kuralı açıksa aynı kaynakta (boşsa boş kaynaklılarda) zamanı üst üste binen başka kayıt olamaz (uç uca
+     * eklenen olur). PostgreSQL'de eşzamanlı iki yazma koleksiyon kilidiyle sıraya girer.
+     */
+    private fun checkCalendar(id: Long) {
+        val cal = collection.calendar ?: return
+        val endField = cal.end ?: return
+        val start = quoteIdent(cal.start)
+        val end = quoteIdent(endField)
+        val resource = cal.resource?.let(::quoteIdent)
+        val row = db.query("SELECT $start AS \"s\", $end AS \"e\"${resource?.let { ", $it AS \"r\"" }.orEmpty()} FROM $table WHERE \"id\" = ?", listOf(id)).firstOrNull() ?: return
+        val s = dialect.decode(FieldType.DATETIME, row["s"]) as? Instant ?: return
+        val e = dialect.decode(FieldType.DATETIME, row["e"]) as? Instant ?: return
+        if (e < s) throw ApiException(400, tr("Doğrulama hatası"), mapOf(endField to tr("bitiş başlangıçtan önce olamaz")))
+        if (!cal.noOverlap) return
+        if (dialect == PostgresDialect) db.query("SELECT pg_advisory_xact_lock(hashtext(?)) AS \"l\"", listOf("droidserver.calendar." + collection.name))
+        val cmp = { x: String -> dialect.comparable(FieldType.DATETIME, x) }
+        val args = mutableListOf<Any?>(id, dialect.encode(FieldType.DATETIME, e), dialect.encode(FieldType.DATETIME, s))
+        val same = resource?.let { r -> if (row["r"] == null) " AND $r IS NULL" else " AND $r = ?".also { args += row["r"] } }.orEmpty()
+        val other = db.query(
+            "SELECT \"id\" FROM $table WHERE \"id\" <> ? AND ${cmp(start)} < ${cmp("?")} AND ${cmp(end)} > ${cmp("?")}$same LIMIT 1",
+            args,
+        ).firstOrNull()?.get("id") ?: return
+        throw ApiException(409, tr("Bu zaman aralığı #{0} kaydıyla çakışıyor", other), mapOf(cal.start to tr("#{0} ile çakışıyor", other)))
     }
 
     /** Güncellemeden sonra arama sütunu, kaydın son halinden (gönderilmeyen alanlar dahil). */
@@ -753,6 +830,7 @@ class RecordService(
                 }
             }
             FieldType.JSON -> v.toString()
+            FieldType.GEO -> GeoPoint.of(v).text()
             FieldType.FILE -> throw IllegalArgumentException(tr("dosyalar multipart/form-data ile yüklenir"))
             FieldType.RELATION -> {
                 val id = prim().takeIf { !it.isString }?.longOrNull?.takeIf { it > 0 }
@@ -799,6 +877,10 @@ class RecordService(
             if (f.type == FieldType.FILE) {
                 val names = fileNames(row[f.name])
                 put(f.name, if (f.isMultiple) JsonArray(names.map(::JsonPrimitive)) else names.firstOrNull()?.let(::JsonPrimitive) ?: JsonNull)
+                continue
+            }
+            if (f.type == FieldType.GEO) {
+                put(f.name, GeoPoint.json(dialect.decode(f.type, row[f.name]) as String?))
                 continue
             }
             if (f.type == FieldType.MULTISELECT) {

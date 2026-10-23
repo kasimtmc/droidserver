@@ -223,6 +223,7 @@ private fun render(
                     append("<textarea id=\"$id\" name=\"$name\" rows=\"5\"$req${lengths(field)}>$value</textarea>")
                 } else {
                     val type = when (field.type) {
+                        FieldType.GEO -> "text\" inputmode=\"decimal\" placeholder=\"41.0082,28.9784\" pattern=\"\\s*-?[0-9.]+\\s*,\\s*-?[0-9.]+\\s*"
                         FieldType.INTEGER, FieldType.RELATION -> "number\" step=\"1"
                         FieldType.REAL -> "number\" step=\"any"
                         FieldType.DATETIME -> "datetime-local"

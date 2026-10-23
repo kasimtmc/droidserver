@@ -46,8 +46,11 @@ Future<void> main(List<String> args) async {
   await Future<void>.delayed(const Duration(milliseconds: 300));
 
   final t = await ds.todoItems.create(const TodoItemsInput(
-      title: 'Süt', qty: 2, price: 1.5, status: 'açık', tags: ['ev'], meta: {'a': 1}, in_: 'x'));
+      title: 'Süt', qty: 2, price: 1.5, status: 'açık', tags: ['ev'], meta: {'a': 1}, in_: 'x', place: GeoPoint(41.0054, 28.9768)));
   check(t.total == 3.0, 'hesaplanan alan');
+  check(t.place?.lat == 41.0054 && t.place?.lng == 28.9768, 'konum');
+  final near = await ds.todoItems.list(const ListOptions(filter: {'place[near]': '41.0,29.0,5'}));
+  check(near.items.map((x) => x.title).join() == 'Süt', 'yakın');
   check(t.owner == myId, 'sahip alanı');
   check(t.olusturulma != null, 'uzman modu adı');
   check(t.in_ == 'x' && t.tags!.single == 'ev' && (t.meta as Map)['a'] == 1, 'alanlar');

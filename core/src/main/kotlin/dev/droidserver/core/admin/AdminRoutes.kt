@@ -308,10 +308,10 @@ internal fun Route.adminPanel(
         get("/{path...}") {
             val path = call.parameters.getAll("path").orEmpty().joinToString("/").ifEmpty { "index.html" }
             val asset = Assets.get(path) ?: Assets.get("index.html") ?: throw ApiException(404, tr("Panel dosyaları bulunamadı"))
-            // Panel yalnızca kendi kaynaklarını yükler; başka sitenin çerçevesine konamaz.
+            // Panel yalnızca kendi kaynaklarını (ve harita karolarını) yükler; başka sitenin çerçevesine konamaz.
             call.response.headers.append(
                 "Content-Security-Policy",
-                "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'",
+                "default-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'",
             )
             call.response.headers.append("Referrer-Policy", "no-referrer")
             call.respondBytes(asset.second, asset.first)

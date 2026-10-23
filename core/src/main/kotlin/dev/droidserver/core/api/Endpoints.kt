@@ -155,6 +155,7 @@ enum class CollectionEndpoint(val key: String, val method: String, val path: Str
     PURGE("purge", "DELETE", "/collections/{c}/trash/{id}", tr("Kalıcı sil")),
     SYNC("sync", "GET", "/sync/{c}", tr("Eşitleme: değişiklikler")),
     SYNC_PUSH("sync.push", "POST", "/sync/{c}", tr("Eşitleme: gönder")),
+    CALENDAR("calendar", "GET", "/calendar/{c}.ics", tr("Takvim aboneliği (.ics)")),
     ;
 
     fun defaultPath(collection: String) = path.replace("{c}", collection)
@@ -164,6 +165,7 @@ enum class CollectionEndpoint(val key: String, val method: String, val path: Str
         HISTORY, REVERT -> c.history != null
         TRASH, RESTORE, PURGE -> c.trash != null
         SYNC, SYNC_PUSH -> c.sync != null
+        CALENDAR -> c.calendar?.feed == true
         else -> true
     }
 

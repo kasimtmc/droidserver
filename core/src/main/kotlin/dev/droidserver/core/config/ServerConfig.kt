@@ -856,6 +856,68 @@ data class CollectionConfig(
     /** Çevrimdışı istemci eşitlemesi (`/sync/{koleksiyon}`); null: kapalı. */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val sync: SyncConfig? = null,
+    /** Takvim: kayıtlar etkinlik olarak (çakışma kuralı, `.ics` akışı, CalDAV); null: kapalı. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val calendar: CalendarConfig? = null,
+    /** Kişiler: kayıtlar kartvizit olarak (CardDAV); null: kapalı. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val contacts: ContactsConfig? = null,
+)
+
+/**
+ * Koleksiyonun takvim eşlemesi: alan adları etkinliğin özelliklerine karşılık gelir. [noOverlap]: aynı [resource]
+ * değerinde (boşsa koleksiyonun tamamında) zaman aralıkları üst üste binen kayıt reddedilir (409). [feed]: `.ics`
+ * aboneliği (`/calendar/{koleksiyon}.ics`; liste kuralıyla ya da [feedToken] ile `?token=`). [dav]: telefon ve
+ * bilgisayar takvimleriyle iki yönlü eşitleme (CalDAV; ağ sürücüsünün adresi ve kimliğiyle).
+ */
+@Serializable
+data class CalendarConfig(
+    /** Metin alanı → SUMMARY. */
+    val title: String,
+    /** Zaman alanı → DTSTART. */
+    val start: String,
+    /** Zaman alanı → DTEND; boşsa etkinlik bir saat sayılır. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val end: String? = null,
+    /** Metin alanı → DESCRIPTION. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val description: String? = null,
+    /** Metin alanı → LOCATION, konum alanı → GEO. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val location: String? = null,
+    /** Evet/hayır alanı: tüm gün (tarih, saat yok). */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val allDay: String? = null,
+    /** Metin alanı → RRULE (örn. `FREQ=WEEKLY;BYDAY=MO`); boşsa tekrar saklanmaz. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val recurrence: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val noOverlap: Boolean = false,
+    /** Çakışmanın bakıldığı alan (oda, kişi, araç…). */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val resource: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val feed: Boolean = false,
+    /** Gizli abonelik anahtarı (en az 16 karakter): `?token=` ile kurallar aşılır, tüm etkinlikler görünür. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val feedToken: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val dav: Boolean = false,
+)
+
+/** Koleksiyonun kartvizit eşlemesi (CardDAV; ağ sürücüsünün adresi ve kimliğiyle). Alanlar metin. */
+@Serializable
+data class ContactsConfig(
+    /** → FN (ve N). */
+    val name: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val email: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val phone: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val organization: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val note: String? = null,
 )
 
 /**
@@ -1179,6 +1241,18 @@ data class FieldConfig(
     /** `file`: görseller için izinli küçük resim boyutları, örn. `["100x100", "400x0"]` (0: en-boy oranını koru). */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val thumbs: List<String>? = null,
+    /** `file`: yüklenen görsel bu biçime çevrilir (telefonda; meta veri yazılmaz). */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val convert: ImageFormat? = null,
+    /** `file`: görselin uzun kenarı en çok bu kadar piksel; büyükse yüklenirken küçültülür (telefonda). */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val maxDimension: Int? = null,
+    /** `file`: görseldeki konum (GPS) bilgisi silinmesin; varsayılan: silinir. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val keepLocation: Boolean = false,
+    /** `file`: YZ görsele bakıp etiketleri ve içindeki metni (OCR) bu alanlara yazar. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val ai: FileAiConfig? = null,
     /** Alanı kim görür; boşsa kaydı görebilen herkes. */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val visibility: FieldVisibility? = null,
@@ -1223,6 +1297,26 @@ data class FieldConfig(
     /** İzinli küçük resim boyutları; `100x100` her zaman izinli. */
     val thumbSizes: Set<String> get() = setOf(FileLimits.DEFAULT_THUMB) + thumbs.orEmpty()
 }
+
+/** Görsel dönüşüm biçimi (Android AVIF kodlayamaz). */
+@Serializable
+enum class ImageFormat(val ext: String, val mime: String) {
+    @SerialName("webp") WEBP("webp", "image/webp"),
+    @SerialName("jpeg") JPEG("jpg", "image/jpeg"),
+}
+
+/**
+ * Görsel dosya alanının YZ işlemi: kayıt yazıldıktan sonra arka planda. [tags]: metin (virgülle), çoklu seçim (yalnızca
+ * seçeneklerden) veya JSON (dizi) alanı; [text]: görseldeki yazı (metin alanı). Ayarlı YZ sağlayıcısının görsel
+ * destekleyen bir model kullanması gerekir.
+ */
+@Serializable
+data class FileAiConfig(
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val tags: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val text: String? = null,
+)
 
 object FileLimits {
     const val DEFAULT_MAX_MB = 10
@@ -1272,6 +1366,12 @@ enum class FieldType {
 
     /** [FieldConfig.options] içinden birden çok değer; JSON dizi metni olarak saklanır. */
     @SerialName("multiselect") MULTISELECT,
+
+    /**
+     * Konum: API'de `{"lat": 41.01, "lng": 28.97, "accuracy": 12}` (doğruluk metre, isteğe bağlı); veritabanında
+     * `enlem,boylam[,doğruluk]` metni. Filtre: `alan[near]=enlem,boylam,km`, `alan[box]=güney,batı,kuzey,doğu`, `alan[null]`.
+     */
+    @SerialName("geo") GEO,
 }
 
 /** Metin alanının biçimi. */
