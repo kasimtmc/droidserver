@@ -24,7 +24,7 @@ can optionally be downloaded and managed.
 └─────────────────┼───────────────────┼─────────────────────────────────┘
                   ▼                   ▼
 ┌──────────────────────────── core (pure Kotlin/JVM) ───────────────────┐
-│  ServerConfig ◄── ConfigMigrations (v1 → v3), ConfigSecrets           │
+│  ServerConfig ◄── ConfigMigrations (v1 → v22), ConfigSecrets          │
 │       │                                                               │
 │       ▼                                                               │
 │  DeployOrchestrator.deploy()                                          │
@@ -2211,14 +2211,26 @@ from commits. The version
 name and code come from the tag (`-PappVersion=1.2.3`; code `1.2.3 → 1020399`, pre-releases are lower than the stable
 release of the same version).
 
-Create the signing key once and add four secrets (Settings → Secrets and variables → Actions):
+Create the signing key once and add four secrets (Settings → Secrets and variables → Actions, or `gh`). `keytool` comes
+with the JDK (if it is not on PATH, use Android Studio's `jbr/bin/keytool`). The store is PKCS12, so no separate key
+password is asked: `ANDROID_KEY_PASSWORD` is the same as the store password.
 
 ```bash
 keytool -genkeypair -keystore release.jks -alias droidserver -keyalg RSA -keysize 4096 -validity 36500
-base64 -w0 release.jks    # output → ANDROID_KEYSTORE_BASE64
-# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS (droidserver), ANDROID_KEY_PASSWORD
-git tag v0.9.0 && git push origin v0.9.0
+base64 -w0 release.jks | gh secret set ANDROID_KEYSTORE_BASE64
+gh secret set ANDROID_KEY_ALIAS --body droidserver
+gh secret set ANDROID_KEYSTORE_PASSWORD    # asks for the password
+gh secret set ANDROID_KEY_PASSWORD         # the same password
 ```
+
+Tag the release (`git tag v0.9.0 && git push origin v0.9.0`) or run the workflow manually; it creates the tag:
+
+```bash
+gh workflow run release.yml -f version=0.9.0
+```
+
+To try the in-app update with a real release, publishing the next version from the same commit is enough
+(`-f version=0.9.1`); on a phone with 0.9.0, Status → ⚙ Settings → Update → Check now.
 
 Keep `release.jks` and its passwords somewhere safe: if the key is lost, installed apps cannot receive new versions as
 updates. Since the app does not authenticate when downloading, releases must be public. Component packages are uploaded
@@ -2470,6 +2482,7 @@ tools/          package-postgres.sh, package-cloudflared.sh (component packages 
 - [x] **Passkey sign-in:** passwordless sign-in for users and the web panel (WebAuthn; needs a domain name and HTTPS)
 - [x] **Session management:** open sessions (device, address, last used), close one or all; a closed session's token stops working immediately
 - [x] **MQTT security:** local network only, per-device credentials, retained messages
+- [x] **MQTT TLS:** encrypted connection on 8883; the phone's local root certificate, a server certificate renewed automatically when the IP changes
 - [x] **Home automation:** MQTT action and trigger in automations, scenes (incl. a widget), sensor dashboard with threshold alerts, Home Assistant discovery
 - [x] **Management from Telegram:** `/durum`, `/yedek`, `/loglar`, `/baslat`, `/durdur` (with confirmation) from a separate admin chat
 - [x] **E-mail templates and bulk notifications:** account e-mails with per-language templates; filtered, rate-limited, cancellable bulk e-mail / web push to users, with unsubscribe

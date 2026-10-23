@@ -11,17 +11,30 @@ yedekler) telefonunuzda kalır; yalnızca sizin açtığınız özellikler sizin
 - **Güncelleme denetimi:** günde bir GitHub'daki sürüm listesine bakılır (`api.github.com`). Durum → Ayarlar →
   Güncelleme'den kapatılabilir; kapalıyken yalnızca elle denetlenir.
 - **Bileşen kataloğu:** Bileşenler ekranını açtığınızda yan servislerin listesi ve seçtiğiniz paket GitHub'dan indirilir.
+- **Harita:** konumlu kayıtları haritada gösterdiğinizde (uygulamada Harita ve panolar, web panelinde) harita karoları
+  OpenStreetMap'ten (`tile.openstreetmap.org`) yüklenir. Paylaştığınız bir panoda harita varsa panoyu açanın tarayıcısı
+  da karoları oradan yükler.
 
-Bu isteklerde telefonunuz ve sunucunuz hakkında bilgi gönderilmez (GitHub, her web isteğinde olduğu gibi IP adresinizi
-görür).
+Bu isteklerde telefonunuz ve sunucunuz hakkında bilgi gönderilmez (GitHub ve OpenStreetMap, her web isteğinde olduğu
+gibi IP adresinizi görür; karo istekleri haritada bakılan bölgeyi belli eder).
 
 ## Sizin açtığınız özellikler
 
 Aşağıdakiler yalnızca siz ayarlayınca çalışır ve veriyi yalnızca ayarladığınız hizmete gönderir: internetten erişim
 (Cloudflare, Tailscale, DuckDNS, Let's Encrypt), e-posta (SMTP sunucunuz), sağlık uyarıları ve komutlar (Telegram),
 bulut yedeği (seçtiğiniz S3/WebDAV deposu, uçtan uca şifreli), web push (tarayıcıların push servisleri), sosyal giriş
-(Google, GitHub), yapay zekâ (Claude, OpenAI, Gemini), webhook'lar ve canlı kopya (sizin sunucularınız), SMS (kendi
-hattınızdan).
+(Google, GitHub), yapay zekâ (Claude, OpenAI, Gemini; görsel etiketleme ve OCR açıksa görseller de), webhook'lar ve canlı
+kopya (sizin sunucularınız), SMS (kendi hattınızdan), paketler (verdiğiniz adres veya GitHub deposu).
+
+- **Telefonda yerel YZ:** seçtiğiniz model Hugging Face'ten (`huggingface.co`) indirilir; model telefonda çalışır,
+  istemler ve kayıtlarınız dışarı gönderilmez.
+- **Ödemeler (Stripe, iyzico, Paddle):** alıcı kart bilgisini sağlayıcının kendi sayfasına girer; kart verisi
+  telefondan geçmez. Sunucu sağlayıcıya tutarı, açıklamayı ve (verdiyseniz) alıcının e-postasını gönderir; iyzico
+  ayrıca alıcının adını, kimlik numarasını, telefonunu, adresini ve IP adresini ister. Paddle'ın ödeme penceresi
+  alıcının tarayıcısında Paddle'ın betiğiyle (`cdn.paddle.com`) açılır. Sağlayıcıdan gelen ödeme bildirimleri
+  telefonunuzdaki ödeme kayıtlarına yazılır.
+- **Takvim ve kişiler (CalDAV/CardDAV):** kayıtlar yalnızca sizin bağladığınız takvim ve rehber uygulamalarıyla
+  eşitlenir; üçüncü bir hizmete gönderilmez.
 
 Sırlar (API anahtarları, parolalar, token'lar) telefonun şifreli deposunda tutulur ve konfigürasyon dosyasına ya da
 yedeklere yazılmaz.

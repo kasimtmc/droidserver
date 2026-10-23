@@ -1,10 +1,13 @@
 <p>DroidServer turns an Android phone into a backend for your apps and sites. Everything runs on the phone; no cloud account is needed.</p>
 
 <ul>
-<li><b>Data and API:</b> collections (SQLite or PostgreSQL), automatically generated REST and GraphQL APIs, realtime subscriptions, search, import/export.</li>
+<li><b>Data and API:</b> collections (SQLite or PostgreSQL), automatically generated REST and GraphQL APIs, realtime subscriptions, search, import/export, location and maps, calendar (CalDAV) and contacts (CardDAV), offline sync in the client SDKs.</li>
 <li><b>Users and rules:</b> accounts, roles, teams, two-step verification, passkeys, social login; access rules per collection.</li>
-<li><b>Files and sites:</b> file fields, thumbnails, static site hosting, network drive (WebDAV).</li>
-<li><b>Automation:</b> JavaScript scripts, a job queue, no-code automation rules, forms, webhooks, MQTT and Home Assistant.</li>
+<li><b>Files and sites:</b> file fields, thumbnails, video streaming, static site hosting, no-code pages and dashboards, network drive (WebDAV).</li>
+<li><b>Automation:</b> JavaScript scripts, a job queue, no-code automation rules, forms, webhooks, MQTT (including TLS) and Home Assistant.</li>
+<li><b>AI:</b> a Claude, OpenAI or Gemini proxy, questions over your records and semantic search; or models on the phone (llama.cpp) with no data leaving it.</li>
+<li><b>Payments:</b> payment links, subscriptions, refunds and receipts with Stripe, iyzico and Paddle; card details never pass through the phone.</li>
+<li><b>Packages:</b> share collections, rules, automations, pages and scripts in one file; installing shows what will change first.</li>
 <li><b>Management:</b> a setup wizard, web panel, command-line tool, backups (optionally encrypted to the cloud), audit log, health alerts (notification, e-mail, Telegram) and Telegram commands.</li>
 <li><b>Internet access:</b> Cloudflare tunnel, Tailscale, or direct access with your domain and a Let's Encrypt certificate.</li>
 </ul>

@@ -13,6 +13,8 @@ sürümler birbirinin üzerine güncellenir.
   verir. Farklı makinede doğrulama F-Droid'in derleme sunucusunda olur.
 - Gizlilik politikası ve izin gerekçeleri: `PRIVACY.md`, `PRIVACY.en.md`.
 - Lisans: GPL-3.0-or-later (`LICENSE`).
+- Yerel YZ için llama.cpp (MIT) git alt modülü olarak kaynaktan derlenir (NDK + CMake, ağsız ve tekrarlanabilir);
+  taslakta `submodules: true` ve `ndk` sürümü var.
 - `dev.droidserver.app.yml`: fdroiddata deposuna eklenecek meta verinin taslağı.
 
 ## Gönderim adımları
@@ -34,3 +36,9 @@ sürümler birbirinin üzerine güncellenir.
    güncellemeyi F-Droid'e bırakır; F-Droid yapısında güncelleyiciyi kapatan bir derleme seçeneği gerekebilir.
 3. **targetSdk 28.** F-Droid'de zorunlu bir alt sınır yok ama eski hedef SDK uyarısı gösterilebilir; README'deki gerekçe
    (indirilen bileşenlerin uygulama klasöründen çalışması) 1. maddeyle birlikte değerlendirilmeli.
+4. **İndirilebilir YZ modelleri.** Yerel YZ ekranı modelleri Hugging Face'ten indirir (çalıştırılabilir kod değil, veri;
+   SHA-256 sabit). Qwen2.5 ve all-MiniLM (Apache-2.0) ile BGE-M3 (MIT) özgür lisanslı; Gemma 3 ve EmbeddingGemma (Gemma
+   kullanım şartları) ile Llama 3.2 (Llama 3.2 Community License) değil. F-Droid bunlar için bir anti-özellik
+   (`NonFreeAssets` / `NonFreeNet`) isteyebilir; seçenek: F-Droid yapısında yalnızca özgür lisanslı modelleri göstermek.
+5. **Özgür olmayan ağ hizmetleri.** Ödemeler (Stripe, iyzico, Paddle), bulut YZ sağlayıcıları, Cloudflare ve Telegram
+   yalnızca kullanıcı açınca kullanılır; F-Droid `NonFreeNet` anti-özelliği ekleyebilir (uygulamayı engellemez).
