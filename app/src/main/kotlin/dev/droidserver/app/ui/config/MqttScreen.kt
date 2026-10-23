@@ -1,5 +1,6 @@
 package dev.droidserver.app.ui.config
 
+import android.content.Intent
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -48,6 +49,7 @@ import dev.droidserver.app.ui.common.ErrorText
 import dev.droidserver.app.ui.common.ScreenScaffold
 import dev.droidserver.app.ui.common.SectionCard
 import dev.droidserver.app.ui.common.TipCard
+import dev.droidserver.app.ui.common.WarningText
 import dev.droidserver.app.ui.common.copySecret
 import dev.droidserver.app.ui.common.copyToClipboard
 import dev.droidserver.app.ui.common.saveConfigChange
@@ -65,6 +67,7 @@ import dev.droidserver.core.mqtt.runScene
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -79,6 +82,10 @@ fun MqttScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit) {
 
     var enabled by remember(initial) { mutableStateOf(initial.enabled) }
     var port by remember(initial) { mutableStateOf(initial.port.toString()) }
+    var tls by remember(initial) { mutableStateOf(initial.tls) }
+    var tlsPort by remember(initial) { mutableStateOf(initial.tlsPort.toString()) }
+    var plain by remember(initial) { mutableStateOf(initial.plain) }
+    var ca by remember { mutableStateOf<Pair<String, String>?>(null) }
     var username by remember(initial) { mutableStateOf(initial.username) }
     var password by remember { mutableStateOf("") }
     var routes by remember(initial) { mutableStateOf(initial.routes) }
@@ -107,12 +114,17 @@ fun MqttScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit) {
         // Cihaz listesi varken ortak giriş kapatılabilir (parola boş); yoksa ortak parola gerekir.
         val pw = if (devices.isNotEmpty() && !sharedLogin) "" else password.ifEmpty { initial.password.ifEmpty { if (enabled) strongPassword() else "" } }
         errors = saveConfigChange(ctx, g, wizard, deploy = true, scope = listOf("mqtt")) { c ->
-            c.copy(mqtt = initial.copy(enabled = enabled, port = port.toIntOrNull() ?: 0, username = username.trim(), password = pw, routes = routes, events = events, devices = devices, scenes = scenes))
+            c.copy(
+                mqtt = initial.copy(
+                    enabled = enabled, port = port.toIntOrNull() ?: 0, plain = plain || !tls, tls = tls, tlsPort = tlsPort.toIntOrNull() ?: 0,
+                    username = username.trim(), password = pw, routes = routes, events = events, devices = devices, scenes = scenes,
+                ),
+            )
         }
         if (errors.isEmpty()) password = ""
     }
 
-    ScreenScaffold(tr("MQTT (IoT)"), subtitle = if (initial.enabled) tr("Açık · port {0}", initial.port) else tr("Kapalı"), onBack = onBack) { modifier ->
+    ScreenScaffold(tr("MQTT (IoT)"), subtitle = if (initial.enabled) tr("Açık · port {0}", listOfNotNull(initial.port.toString().takeIf { initial.plain || !initial.tls }, "${initial.tlsPort} (TLS)".takeIf { initial.tls }).joinToString()) else tr("Kapalı"), onBack = onBack) { modifier ->
         Column(modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             TipCard(
                 g, "mqtt-intro",
@@ -139,9 +151,38 @@ fun MqttScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit) {
                     },
                 )
                 Text(
-                    tr("Bağlantı şifresizdir (düz TCP) ve yalnızca yerel ağda çalışır: internetten gelen bağlantılar reddedilir (Tailscale kabul edilir). Hatalı parola denemeleri güvenlik duvarına sayılır."),
+                    tr("MQTT yalnızca yerel ağda çalışır: internetten gelen bağlantılar reddedilir (Tailscale kabul edilir). Hatalı parola denemeleri güvenlik duvarına sayılır. Düz bağlantı şifresizdir; parolaların ağda okunmaması için TLS'i açın."),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+            SectionCard(tr("TLS (şifreli bağlantı)")) {
+                Row(verticalAlignment = Alignment.CenterVertically) { Text(tr("TLS açık"), Modifier.weight(1f)); Switch(tls, { tls = it }) }
+                if (tls) {
+                    OutlinedTextField(tlsPort, { tlsPort = it.filter(Char::isDigit) }, singleLine = true, label = { Text(tr("TLS portu")) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(tr("Düz bağlantı da açık (port {0})", port), Modifier.weight(1f)); Switch(plain, { plain = it })
+                    }
+                    Text(
+                        tr("Telefon kendi yerel kök sertifikasını üretir; sunucu sertifikası telefonun yerel IP adresleri için bu kökle imzalanır ve adres değişince kendiliğinden yenilenir. Kökü cihazlara bir kez yükleyin: mosquitto için --cafile, ESP32'de setCACert, Home Assistant'ta MQTT → Gelişmiş → özel CA."),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    val root = g.engine.mqttCa
+                    LaunchedEffect(root) { ca = root?.let { r -> withContext(Dispatchers.IO) { runCatching { r.root.fingerprint to r.rootPem }.getOrNull() } } }
+                    ca?.let { (fingerprint, pem) ->
+                        Text(tr("Kökün SHA-256 parmak izi"), style = MaterialTheme.typography.labelMedium)
+                        Text(fingerprint, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = {
+                                ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_SUBJECT, "droidserver-ca.pem").putExtra(Intent.EXTRA_TEXT, pem), tr("Kök sertifika")))
+                            }) { Text(tr("Kökü paylaş")) }
+                            TextButton(onClick = { copyToClipboard(ctx, tr("Kök sertifika"), pem) }) { Text(tr("Kopyala")) }
+                        }
+                        val ip = NetUtil.localIpv4().firstOrNull()
+                        if (initial.tls && ip != null) Text("mqtts://$ip:${initial.tlsPort}", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyLarge)
+                    }
+                    if (root == null) WarningText(tr("Bu ortamda yerel kök sertifika yok; TLS açılamaz."))
+                }
             }
             SectionCard(tr("Cihazlar")) {
                 Text(
@@ -214,7 +255,7 @@ fun MqttScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit) {
                     Text(tr("{0} mesaj alındı · {1} iletildi · {2} hata", broker.received.get(), broker.delivered.get(), broker.failed.get()), style = MaterialTheme.typography.bodyMedium)
                     val clients = broker.clients()
                     Text(tr("Bağlı cihazlar ({0})", clients.size), style = MaterialTheme.typography.labelLarge)
-                    clients.forEach { c -> Text("${c.id} · ${c.address}" + (c.user?.let { " · $it" } ?: "") + if (c.subscriptions.isEmpty()) "" else " · " + c.subscriptions.joinToString(), style = MaterialTheme.typography.bodySmall) }
+                    clients.forEach { c -> Text("${c.id} · ${c.address}" + (if (c.tls) " · TLS" else "") + (c.user?.let { " · $it" } ?: "") + if (c.subscriptions.isEmpty()) "" else " · " + c.subscriptions.joinToString(), style = MaterialTheme.typography.bodySmall) }
                     Text(tr("Son mesajlar"), style = MaterialTheme.typography.labelLarge)
                     broker.recent().take(10).forEach { m ->
                         Text("${time.format(m.at)} ${m.topic} (${m.bytes} B) → ${m.result}", style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)

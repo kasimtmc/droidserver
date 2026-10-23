@@ -77,6 +77,7 @@ enum class Endpoint(val key: String, val method: String, val path: String, val t
     AI_REINDEX("ai.reindex", "POST", "/_ai/reindex", tr("Anlamsal dizini yeniden kur"), EndpointGroup.ADMIN),
     APPS("apps", "GET", "/_apps", tr("Uygulamalar: durum"), EndpointGroup.ADMIN),
     MQTT("mqtt", "GET", "/_mqtt", tr("MQTT: bağlı cihazlar ve son mesajlar"), EndpointGroup.ADMIN),
+    MQTT_CA("mqtt.ca", "GET", "/_mqtt/ca.pem", tr("MQTT TLS: cihazlara yüklenecek yerel kök sertifika"), EndpointGroup.ADMIN),
     MQTT_PUBLISH("mqtt.publish", "POST", "/_mqtt/publish", tr("MQTT: cihazlara mesaj gönder"), EndpointGroup.ADMIN),
     MQTT_SCENE("mqtt.scene", "POST", "/_mqtt/scenes/{name}", tr("MQTT: sahneyi çalıştır"), EndpointGroup.ADMIN),
     SENSORS("sensors", "GET", "/_sensors", tr("Sensör panosu: son değerler ve grafik"), EndpointGroup.ADMIN),
