@@ -7,14 +7,18 @@ import dev.droidserver.core.config.FieldType
 import dev.droidserver.core.config.ServerConfig
 
 /**
- * Konfigürasyondan tipli istemci (tek dosya): TypeScript (bağımlılıksız, `fetch`) ve Kotlin (JVM/Android;
- * `HttpURLConnection` + kotlinx.serialization). Koleksiyon tipleri, CRUD, filtre, dosya yükleme, giriş/yenileme/iki adımlı
- * doğrulama ve canlı abonelik. Yollar ve sistem alanı adları uzman modu ayarlarına göredir; kapalı uçların yöntemi yoktur.
+ * Konfigürasyondan tipli istemci (tek dosya): TypeScript (bağımlılıksız, `fetch`), Kotlin (JVM/Android;
+ * `HttpURLConnection` + kotlinx.serialization), Dart (`dart:io`; Dart VM ve Flutter) ve Swift (async/await; Apple ve Linux).
+ * Koleksiyon tipleri, CRUD, filtre, dosya yükleme, giriş/yenileme/iki adımlı doğrulama, takımlar, yedek adresler ve canlı
+ * abonelik. Yollar ve sistem alanı adları uzman modu ayarlarına göredir; kapalı uçların yöntemi yoktur. Dart ve Swift'in her
+ * sunucu için aynı olan kısmı kaynaklarda (`sdk/base.dart`, `sdk/base.swift`).
  */
 object SdkGenerator {
-    enum class Lang(val key: String, val fileName: String, val mime: String) {
-        TS("ts", "droidserver.ts", "text/plain"),
-        KOTLIN("kotlin", "DroidServerClient.kt", "text/plain"),
+    enum class Lang(val key: String, val fileName: String, val mime: String, val title: String) {
+        TS("ts", "droidserver.ts", "text/plain", "TypeScript"),
+        KOTLIN("kotlin", "DroidServerClient.kt", "text/plain", "Kotlin"),
+        DART("dart", "droidserver.dart", "text/plain", "Dart"),
+        SWIFT("swift", "DroidServer.swift", "text/plain", "Swift"),
         ;
 
         companion object {
@@ -25,6 +29,8 @@ object SdkGenerator {
     fun generate(config: ServerConfig, lang: Lang, kotlinPackage: String = "droidserver.client"): String = when (lang) {
         Lang.TS -> typescript(config)
         Lang.KOTLIN -> kotlin(config, kotlinPackage)
+        Lang.DART -> dart(config)
+        Lang.SWIFT -> swift(config)
     }
 
     /** `todo_items` → `TodoItems`. */
@@ -36,7 +42,7 @@ object SdkGenerator {
 
     private fun header(config: ServerConfig, comment: String) = """
         |$comment DroidServer istemcisi: "${config.name}" sunucusu için üretildi (konfigürasyon v${ConfigMigrations.CURRENT}).
-        |$comment Konfigürasyon değişince yeniden indirin: GET <API>/_sdk/{ts|kotlin} (yönetici) veya uygulama/panel.
+        |$comment Konfigürasyon değişince yeniden indirin: GET <API>/_sdk/{ts|kotlin|dart|swift} (yönetici) veya uygulama/panel.
         |
     """.trimMargin()
 
@@ -1103,4 +1109,246 @@ object SdkGenerator {
         |}
         |
     """.trimMargin()
+
+    private fun resource(name: String): String =
+        SdkGenerator::class.java.getResourceAsStream("/sdk/$name")?.use { it.readBytes().decodeToString() } ?: error("SDK kaynağı yok: $name")
+
+    // ---- Dart ----
+
+    private val DART_KEYWORDS = setOf(
+        "assert", "break", "case", "catch", "class", "const", "continue", "default", "do", "else", "enum", "extends", "false", "final",
+        "finally", "for", "if", "in", "is", "new", "null", "rethrow", "return", "super", "switch", "this", "throw", "true", "try", "var",
+        "void", "while", "with",
+    )
+
+    /** Dart'ta ayrılmış sözcük olan alan adı `_` ile biter (`in` → `in_`); JSON anahtarı değişmez. */
+    private fun dartName(s: String) = if (s in DART_KEYWORDS) s + "_" else s
+
+    private fun dartStr(s: String?) = if (s == null) "null" else "'" + s.replace("\\", "\\\\").replace("'", "\\'").replace("$", "\\$") + "'"
+
+    private fun dartType(f: FieldConfig?, type: FieldType): String = when (type) {
+        FieldType.TEXT, FieldType.DATETIME, FieldType.SELECT -> "String"
+        FieldType.INTEGER, FieldType.RELATION -> "int"
+        FieldType.REAL -> "double"
+        FieldType.BOOLEAN -> "bool"
+        FieldType.JSON -> "Object"
+        FieldType.FILE -> if (f?.isMultiple == true) "List<String>" else "String"
+        FieldType.MULTISELECT -> "List<String>"
+    }
+
+    /** JSON değerinden alanın Dart değeri (null olabilir; [required] ise değil). */
+    private fun dartRead(key: String, f: FieldConfig?, type: FieldType, required: Boolean): String {
+        val v = "j[${dartStr(key)}]"
+        val q = if (required) "" else "?"
+        return when (dartType(f, type)) {
+            "int" -> "($v as num$q)$q.toInt()"
+            "double" -> "($v as num$q)$q.toDouble()"
+            "List<String>" -> "($v as List$q)$q.cast<String>()"
+            "Object" -> v
+            else -> "$v as ${dartType(f, type)}$q"
+        }
+    }
+
+    private fun dart(config: ServerConfig): String {
+        val api = ApiPaths(config)
+        val users = config.auth.users
+        fun p(e: Endpoint) = dartStr(api.path(e))
+        return buildString {
+            append(header(config, "//"))
+            appendLine("// Gerekenler: yalnızca Dart 3 SDK'sı (`dart:io`). Dart VM ve Flutter Android/iOS/masaüstünde çalışır; Flutter web'de çalışmaz.")
+            appendLine("//")
+            appendLine("// Kullanım:")
+            appendLine("//   final ds = DroidServerClient('https://telefon.example.com/api', apiKey: '…');   // veya token / auth.login")
+            appendLine("//   final page = await ds.${config.collections.firstOrNull()?.let { memberName(it.name) } ?: "todos"}.list(const ListOptions(filter: {'done': 'false'}, sort: '-id'));")
+            appendLine("//   final sub = ds.subscribe(['${config.collections.firstOrNull()?.name ?: "todos"}']).listen((e) => print('${'$'}{e.action} ${'$'}{e.record}'));")
+            appendLine("// ignore_for_file: non_constant_identifier_names")
+            appendLine()
+            appendLine("import 'dart:async';")
+            appendLine("import 'dart:convert';")
+            appendLine("import 'dart:io';")
+            appendLine("import 'dart:typed_data';")
+            for (c in config.collections) {
+                val t = typeName(c.name)
+                val props = props(c)
+                appendLine()
+                appendLine("/// `${c.name}` kaydı. Gizli alanlar yetkiye göre gelmeyebilir; bu yüzden alanlar boş olabilir.")
+                appendLine("class $t {")
+                for (pr in props) {
+                    val sysId = pr.system && pr.type == FieldType.INTEGER
+                    appendLine("  final ${dartType(pr.field, pr.type)}${if (sysId) "" else "?"} ${dartName(pr.name)};")
+                }
+                appendLine("  final Map<String, dynamic>? expand;")
+                appendLine()
+                append("  const $t({")
+                append(props.joinToString(", ") { pr -> (if (pr.system && pr.type == FieldType.INTEGER) "required " else "") + "this.${dartName(pr.name)}" })
+                appendLine(", this.expand});")
+                appendLine()
+                appendLine("  factory $t.fromJson(Map<String, dynamic> j) => $t(")
+                for (pr in props) appendLine("        ${dartName(pr.name)}: ${dartRead(pr.name, pr.field, pr.type, pr.system && pr.type == FieldType.INTEGER)},")
+                appendLine("        expand: j['expand'] as Map<String, dynamic>?,")
+                appendLine("      );")
+                appendLine("}")
+                appendLine()
+                appendLine("/// `${c.name}` oluşturma/güncelleme gövdesi: verilmeyen (null) alanlar gönderilmez. Boşaltmak için `RecordCollection.updateRaw`.")
+                appendLine("class ${t}Input {")
+                val inputs = writable(c)
+                for (f in inputs) appendLine("  final ${dartType(f, f.type)}? ${dartName(f.name)};")
+                appendLine()
+                appendLine("  const ${t}Input(${if (inputs.isEmpty()) "" else "{" + inputs.joinToString(", ") { "this.${dartName(it.name)}" } + "}"});")
+                appendLine()
+                appendLine("  Map<String, dynamic> toJson() => {")
+                for (f in inputs) appendLine("        if (${dartName(f.name)} != null) ${dartStr(f.name)}: ${dartName(f.name)},")
+                appendLine("      };")
+                appendLine("}")
+            }
+            appendLine()
+            appendLine("/// ${config.name} istemcisi. `baseUrl`: API adresi, örn. `https://telefon.example.com/api`; `fallbackUrls`: canlı")
+            appendLine("/// kopyaların adresleri (ana sunucuya ulaşılamazsa veya 503 dönerse sıradaki denenir).")
+            appendLine("class DroidServerClient extends DroidServerBase {")
+            appendLine("  DroidServerClient(super.baseUrl, {super.apiKey, super.token, super.refreshToken, super.fallbackUrls})")
+            appendLine("      : super(realtimePath: ${p(Endpoint.REALTIME)}, refreshPath: ${if (users.enabled) p(Endpoint.AUTH_REFRESH) else "null"}, filesPath: ${p(Endpoint.FILES)});")
+            for (c in config.collections) {
+                val t = typeName(c.name)
+                val paths = TS_COLLECTION_ENDPOINTS.joinToString(", ") { e -> "${e.key}: ${dartStr(api.path(c, e))}" }
+                appendLine()
+                appendLine("  late final ${memberName(c.name)} = RecordCollection<$t, ${t}Input>(")
+                appendLine("      this, ${dartStr(c.name)}, const CollectionPaths($paths), $t.fromJson, (i) => i.toJson());")
+            }
+            if (users.enabled) {
+                appendLine()
+                appendLine("  late final auth = Auth(this,")
+                appendLine("      signup: ${p(Endpoint.AUTH_SIGNUP)}, login: ${p(Endpoint.AUTH_LOGIN)}, logout: ${p(Endpoint.AUTH_LOGOUT)}, me: ${p(Endpoint.AUTH_ME)},")
+                appendLine("      verify2fa: ${p(Endpoint.AUTH_2FA_VERIFY)}, requestLoginCode: ${p(Endpoint.AUTH_REQUEST_LOGIN_CODE)}, loginCode: ${p(Endpoint.AUTH_LOGIN_CODE)},")
+                appendLine("      requestSmsCode: ${p(Endpoint.AUTH_REQUEST_SMS_CODE)}, smsCode: ${p(Endpoint.AUTH_SMS_CODE)}, usage: ${p(Endpoint.AUTH_USAGE)});")
+                if (users.teams.enabled) {
+                    appendLine()
+                    appendLine("  late final teams = Teams(this,")
+                    appendLine("      list: ${p(Endpoint.TEAMS)}, create: ${p(Endpoint.TEAMS_CREATE)}, get: ${p(Endpoint.TEAM)}, update: ${p(Endpoint.TEAM_UPDATE)}, delete: ${p(Endpoint.TEAM_DELETE)},")
+                    appendLine("      addMember: ${p(Endpoint.TEAM_ADD_MEMBER)}, updateMember: ${p(Endpoint.TEAM_UPDATE_MEMBER)}, removeMember: ${p(Endpoint.TEAM_REMOVE_MEMBER)});")
+                }
+            }
+            appendLine()
+            appendLine("  /// QR / bağlantı metninden (`droidserver://connect?url=…&token=…` veya düz adres): JWT token, değilse API anahtarı olur.")
+            appendLine("  static DroidServerClient fromLink(String link) {")
+            appendLine("    final l = ConnectionLink.parse(link);")
+            appendLine("    final jwt = l.token != null && '.'.allMatches(l.token!).length == 2;")
+            appendLine("    return DroidServerClient(l.url, apiKey: jwt ? null : l.token, token: jwt ? l.token : null);")
+            appendLine("  }")
+            appendLine("}")
+            append(resource("base.dart"))
+        }
+    }
+
+    // ---- Swift ----
+
+    private val SWIFT_KEYWORDS = setOf(
+        "associatedtype", "class", "deinit", "enum", "extension", "fileprivate", "func", "import", "init", "inout", "internal", "let",
+        "open", "operator", "private", "precedencegroup", "protocol", "public", "rethrows", "static", "struct", "subscript", "typealias",
+        "var", "break", "case", "catch", "continue", "default", "defer", "do", "else", "fallthrough", "for", "guard", "if", "in", "repeat",
+        "return", "throw", "switch", "where", "while", "Any", "as", "await", "false", "is", "nil", "self", "Self", "super", "throws",
+        "true", "try",
+    )
+
+    private fun swiftName(s: String) = if (s in SWIFT_KEYWORDS) "`$s`" else s
+
+    private fun swiftStr(s: String?) = if (s == null) "nil" else "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+    private fun swiftType(f: FieldConfig?, type: FieldType): String = when (type) {
+        FieldType.TEXT, FieldType.DATETIME, FieldType.SELECT -> "String"
+        FieldType.INTEGER, FieldType.RELATION -> "Int64"
+        FieldType.REAL -> "Double"
+        FieldType.BOOLEAN -> "Bool"
+        FieldType.JSON -> "JSONValue"
+        FieldType.FILE -> if (f?.isMultiple == true) "[String]" else "String"
+        FieldType.MULTISELECT -> "[String]"
+    }
+
+    private fun swift(config: ServerConfig): String {
+        val api = ApiPaths(config)
+        val users = config.auth.users
+        fun p(e: Endpoint) = swiftStr(api.path(e))
+        return buildString {
+            append(header(config, "//"))
+            appendLine("// Gerekenler: Swift 5.9+ (async/await); bağımlılık yok. Apple platformları ve Linux (FoundationNetworking).")
+            appendLine("//")
+            appendLine("// Kullanım:")
+            appendLine("//   let ds = DroidServerClient(\"https://telefon.example.com/api\", apiKey: \"…\")   // veya token / auth.login")
+            appendLine("//   let page = try await ds.${config.collections.firstOrNull()?.let { memberName(it.name) } ?: "todos"}.list(ListOptions(sort: \"-id\", filter: [\"done\": \"false\"]))")
+            appendLine("//   for await e in ds.subscribe([\"${config.collections.firstOrNull()?.name ?: "todos"}\"]) { print(e.action, e.record) }")
+            appendLine()
+            appendLine("import Foundation")
+            appendLine("#if canImport(FoundationNetworking)")
+            appendLine("import FoundationNetworking")
+            appendLine("#endif")
+            for (c in config.collections) {
+                val t = typeName(c.name)
+                appendLine()
+                appendLine("/// `${c.name}` kaydı. Gizli alanlar yetkiye göre gelmeyebilir; bu yüzden alanlar boş olabilir.")
+                appendLine("public struct $t: Decodable, Sendable {")
+                for (pr in props(c)) {
+                    val sysId = pr.system && pr.type == FieldType.INTEGER
+                    appendLine("    public let ${swiftName(pr.name)}: ${swiftType(pr.field, pr.type)}${if (sysId) "" else "?"}")
+                }
+                appendLine("    public let expand: [String: JSONValue]?")
+                appendLine("}")
+                appendLine()
+                appendLine("/// `${c.name}` oluşturma/güncelleme gövdesi: verilmeyen (nil) alanlar gönderilmez. Boşaltmak için `RecordCollection.updateRaw`.")
+                appendLine("public struct ${t}Input: Encodable, Sendable {")
+                val inputs = writable(c)
+                for (f in inputs) appendLine("    public var ${swiftName(f.name)}: ${swiftType(f, f.type)}?")
+                appendLine()
+                appendLine("    public init(" + inputs.joinToString(", ") { "${swiftName(it.name)}: ${swiftType(it, it.type)}? = nil" } + ") {")
+                for (f in inputs) appendLine("        self.${swiftName(f.name)} = ${swiftName(f.name)}")
+                appendLine("    }")
+                appendLine("}")
+            }
+            appendLine()
+            appendLine("/// ${config.name} istemcisi. `baseUrl`: API adresi, örn. `https://telefon.example.com/api`; `fallbackUrls`: canlı")
+            appendLine("/// kopyaların adresleri (ana sunucuya ulaşılamazsa veya 503 dönerse sıradaki denenir).")
+            appendLine("public final class DroidServerClient: DroidServerBase, @unchecked Sendable {")
+            appendLine("    public init(_ baseUrl: String, apiKey: String? = nil, token: String? = nil, refreshToken: String? = nil, fallbackUrls: [String] = [], session: URLSession = .shared) {")
+            appendLine("        super.init(")
+            appendLine("            baseUrl: baseUrl, apiKey: apiKey, token: token, refreshToken: refreshToken, realtimePath: ${p(Endpoint.REALTIME)},")
+            appendLine("            refreshPath: ${if (users.enabled) p(Endpoint.AUTH_REFRESH) else "nil"}, filesPath: ${p(Endpoint.FILES)}, fallbackUrls: fallbackUrls, session: session,")
+            appendLine("        )")
+            appendLine("    }")
+            for (c in config.collections) {
+                val t = typeName(c.name)
+                val paths = TS_COLLECTION_ENDPOINTS.joinToString(", ") { e -> "${e.key}: ${swiftStr(api.path(c, e))}" }
+                appendLine()
+                appendLine("    public var ${memberName(c.name)}: RecordCollection<$t, ${t}Input> {")
+                appendLine("        RecordCollection(self, ${swiftStr(c.name)}, CollectionPaths($paths))")
+                appendLine("    }")
+            }
+            if (users.enabled) {
+                appendLine()
+                appendLine("    public var auth: Auth {")
+                appendLine("        Auth(")
+                appendLine("            client: self, signupPath: ${p(Endpoint.AUTH_SIGNUP)}, loginPath: ${p(Endpoint.AUTH_LOGIN)}, logoutPath: ${p(Endpoint.AUTH_LOGOUT)}, mePath: ${p(Endpoint.AUTH_ME)},")
+                appendLine("            verify2faPath: ${p(Endpoint.AUTH_2FA_VERIFY)}, requestLoginCodePath: ${p(Endpoint.AUTH_REQUEST_LOGIN_CODE)}, loginCodePath: ${p(Endpoint.AUTH_LOGIN_CODE)},")
+                appendLine("            requestSmsCodePath: ${p(Endpoint.AUTH_REQUEST_SMS_CODE)}, smsCodePath: ${p(Endpoint.AUTH_SMS_CODE)}, usagePath: ${p(Endpoint.AUTH_USAGE)},")
+                appendLine("        )")
+                appendLine("    }")
+                if (users.teams.enabled) {
+                    appendLine()
+                    appendLine("    public var teams: Teams {")
+                    appendLine("        Teams(")
+                    appendLine("            client: self, listPath: ${p(Endpoint.TEAMS)}, createPath: ${p(Endpoint.TEAMS_CREATE)}, getPath: ${p(Endpoint.TEAM)}, updatePath: ${p(Endpoint.TEAM_UPDATE)},")
+                    appendLine("            deletePath: ${p(Endpoint.TEAM_DELETE)}, addMemberPath: ${p(Endpoint.TEAM_ADD_MEMBER)}, updateMemberPath: ${p(Endpoint.TEAM_UPDATE_MEMBER)},")
+                    appendLine("            removeMemberPath: ${p(Endpoint.TEAM_REMOVE_MEMBER)},")
+                    appendLine("        )")
+                    appendLine("    }")
+                }
+            }
+            appendLine()
+            appendLine("    /// QR / bağlantı metninden (`droidserver://connect?url=…&token=…` veya düz adres): JWT token, değilse API anahtarı olur.")
+            appendLine("    public static func fromLink(_ link: String) throws -> DroidServerClient {")
+            appendLine("        let l = try ConnectionLink.parse(link)")
+            appendLine("        let jwt = l.token.map { $0.split(separator: \".\", omittingEmptySubsequences: false).count == 3 } ?? false")
+            appendLine("        return DroidServerClient(l.url, apiKey: jwt ? nil : l.token, token: jwt ? l.token : nil)")
+            appendLine("    }")
+            appendLine("}")
+            append(resource("base.swift"))
+        }
+    }
 }

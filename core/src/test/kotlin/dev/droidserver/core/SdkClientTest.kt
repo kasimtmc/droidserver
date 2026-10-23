@@ -161,6 +161,49 @@ class SdkClientTest {
         }
     }
 
+    /** Komut çıktısı ve çıkış kodu; araç yoksa null. */
+    private fun run(dir: File, timeoutSec: Long, vararg cmd: String): Pair<Int, String>? {
+        val p = runCatching { ProcessBuilder(*cmd).directory(dir).redirectErrorStream(true).start() }.getOrNull() ?: return null
+        val out = StringBuilder()
+        val reader = Thread { p.inputStream.bufferedReader().forEachLine { out.appendLine(it) } }.apply { start() }
+        if (!p.waitFor(timeoutSec, TimeUnit.SECONDS)) {
+            p.destroyForcibly()
+            error("${cmd.first()} $timeoutSec sn'de bitmedi:\n$out")
+        }
+        reader.join(1000)
+        return p.exitValue() to out.toString()
+    }
+
+    private fun tool(vararg cmd: String) = runCatching { ProcessBuilder(*cmd).redirectErrorStream(true).start().waitFor(30, TimeUnit.SECONDS) }.getOrDefault(false)
+
+    private val dead get() = "http://127.0.0.1:${java.net.ServerSocket(0).use { it.localPort }}/api"
+
+    /** Dart istemcisi (altın dosyayla aynı çıktı) gerçek sunucuya karşı; `dart analyze` temiz olmalı. Dart yoksa atlanır. */
+    @Test
+    fun `dart istemcisi calisir`() {
+        org.junit.Assume.assumeTrue("Dart yok", tool("dart", "--version"))
+        File(dir, "droidserver.dart").writeText(SdkGenerator.generate(SdkConfig.config, SdkGenerator.Lang.DART))
+        File("src/test/sdk/deneme.dart").copyTo(File(dir, "deneme.dart"))
+        val (analyzed, issues) = run(dir, 120, "dart", "analyze", "--fatal-infos", "droidserver.dart", "deneme.dart")!!
+        assertEquals(0, analyzed, issues)
+        val (code, out) = run(dir, 120, "dart", "run", "deneme.dart", base, SdkConfig.KEY, dead)!!
+        assertEquals(0, code, out)
+        assertTrue("TAMAM" in out, out)
+    }
+
+    /** Swift istemcisi Swift 6 kipinde uyarısız derlenir ve gerçek sunucuya karşı çalışır. Swift yoksa atlanır. */
+    @Test
+    fun `swift istemcisi calisir`() {
+        org.junit.Assume.assumeTrue("Swift yok", tool("swiftc", "--version"))
+        File(dir, "DroidServer.swift").writeText(SdkGenerator.generate(SdkConfig.config, SdkGenerator.Lang.SWIFT))
+        File("src/test/sdk/deneme.swift").copyTo(File(dir, "deneme.swift"))
+        val (built, log) = run(dir, 600, "swiftc", "-swift-version", "6", "-warnings-as-errors", "-parse-as-library", "DroidServer.swift", "deneme.swift", "-o", "deneme")!!
+        assertEquals(0, built, log)
+        val (code, out) = run(dir, 120, File(dir, "deneme").path, base, SdkConfig.KEY, dead)!!
+        assertEquals(0, code, out)
+        assertTrue("TAMAM" in out, out)
+    }
+
     @Test
     fun `typescript ciktisi ve sdk ucu`() {
         val ts = SdkGenerator.generate(SdkConfig.config, SdkGenerator.Lang.TS)

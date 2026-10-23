@@ -977,7 +977,7 @@ fun Application.droidServerModule(
             endpoint(paths, Endpoint.SDK) {
                 requireAdmin(call.caller())
                 val lang = SdkGenerator.Lang.of(call.parameters["lang"].orEmpty())
-                    ?: throw ApiException(404, tr("Bilinmeyen dil; ts veya kotlin"))
+                    ?: throw ApiException(404, tr("Bilinmeyen dil; ts, kotlin, dart veya swift"))
                 val pkg = call.request.queryParameters["package"]?.takeIf { it.isNotBlank() } ?: "droidserver.client"
                 if (!Regex("^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$").matches(pkg)) throw ApiException(400, tr("Geçersiz paket adı: {0}", pkg))
                 call.response.headers.append(HttpHeaders.ContentDisposition, "attachment; filename=\"${lang.fileName}\"")
