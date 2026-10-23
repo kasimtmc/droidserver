@@ -275,7 +275,9 @@ public actor OfflineCollection<T: Decodable & Sendable, I: Encodable & Sendable>
     public nonisolated func live(onError: (@Sendable (Error) -> Void)? = nil) -> Task<Void, Never> {
         Task {
             do { try await self.sync() } catch { onError?(error) }
-            for await _ in client.subscribe([name], onError: onError) {
+            // Abonelik kurulunca (ve her yeniden bağlanmada) bir kez daha: ilk eşitlemeyle bağlantı arasındaki değişiklik kaçmasın.
+            let ready: @Sendable () -> Void = { Task { do { try await self.sync() } catch { onError?(error) } } }
+            for await _ in client.subscribe([name], onError: onError, onReady: ready) {
                 do { try await self.sync() } catch { onError?(error) }
             }
         }

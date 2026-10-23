@@ -225,6 +225,7 @@ export class OfflineCollection<T, I> {
       } finally { busy = false; }
     };
     void go();
-    return this.ds.subscribe([this.name], () => { void go(); }, onError);
+    // Abonelik kurulunca (ve her yeniden bağlanmada) bir kez daha: ilk eşitlemeyle bağlantı arasındaki değişiklik kaçmasın.
+    return this.ds.subscribe([this.name], () => { void go(); }, onError, () => { void go(); });
   }
 }

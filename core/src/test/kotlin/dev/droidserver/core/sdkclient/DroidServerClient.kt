@@ -284,7 +284,8 @@ abstract class DroidServerBase(
      * Canlı abonelik (Server-Sent Events) arka plan iş parçacığında; bağlantı koparsa kaldığı olaydan devam eder.
      * [Closeable.close] aboneliği kapatır.
      */
-    fun subscribe(collections: List<String>, onError: (Exception) -> Unit = {}, onEvent: (RealtimeEvent) -> Unit): Closeable {
+    /** [onReady]: abonelik sunucuda kurulunca (her yeniden bağlanmada); o andan sonraki olaylar kaçmaz. */
+    fun subscribe(collections: List<String>, onError: (Exception) -> Unit = {}, onReady: () -> Unit = {}, onEvent: (RealtimeEvent) -> Unit): Closeable {
         val path = realtimePath ?: throw DroidServerException(404, "Canlı abonelik kapalı")
         val open = AtomicBoolean(true)
         val conn = AtomicReference<HttpURLConnection?>()
@@ -308,6 +309,8 @@ abstract class DroidServerBase(
                                     if (event == "message" && data.isNotEmpty()) {
                                         val o = DroidServerJson.parseToJsonElement(data.toString()).jsonObject
                                         onEvent(RealtimeEvent(o["action"]!!.jsonPrimitive.content, o["collection"]!!.jsonPrimitive.content, o["record"]!!.jsonObject))
+                                    } else if (event == "ready") {
+                                        onReady()
                                     }
                                     event = "message"
                                     data.setLength(0)
@@ -912,6 +915,7 @@ class OfflineCollection<T, I> internal constructor(
             }.apply { isDaemon = true }.start()
         }
         run()
-        return client.subscribe(listOf(name), onError) { run() }
+        // Abonelik kurulunca (ve her yeniden bağlanmada) bir kez daha: ilk eşitlemeyle bağlantı arasındaki değişiklik kaçmasın.
+        return client.subscribe(listOf(name), onError, onReady = { run() }) { run() }
     }
 }

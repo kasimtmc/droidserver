@@ -256,6 +256,7 @@ class OfflineCollection<T, I> {
     }
 
     unawaited(go());
-    return _client.subscribe([name]).listen((_) => unawaited(go()), onError: (Object e) => onError?.call(e));
+    // Abonelik kurulunca (ve her yeniden bağlanmada) bir kez daha: ilk eşitlemeyle bağlantı arasındaki değişiklik kaçmasın.
+    return _client.subscribe([name], onReady: () => unawaited(go())).listen((_) => unawaited(go()), onError: (Object e) => onError?.call(e));
   }
 }
