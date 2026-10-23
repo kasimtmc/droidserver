@@ -853,7 +853,29 @@ data class CollectionConfig(
     /** Saklama süresi: eski kayıtlar otomatik silinir; null: süresiz. */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val retention: RetentionConfig? = null,
+    /** Çevrimdışı istemci eşitlemesi (`/sync/{koleksiyon}`); null: kapalı. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val sync: SyncConfig? = null,
 )
+
+/**
+ * Çevrimdışı eşitleme. [conflict]: aynı alanı istemci çevrimdışıyken başkası da değiştirdiyse `lww` (son yazan kazanır,
+ * alan başına) veya `manual` (istemcinin değişikliği uygulanmaz, çakışma kaydı ve istemciye bildirilir). Silinen kayıtların
+ * izi [keepDays] gün tutulur; daha uzun süre bağlanmayan istemci baştan eşitlenir.
+ */
+@Serializable
+data class SyncConfig(
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val conflict: SyncConflict = SyncConflict.LWW,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val keepDays: Int = 30,
+)
+
+@Serializable
+enum class SyncConflict {
+    @SerialName("lww") LWW,
+    @SerialName("manual") MANUAL,
+}
 
 /**
  * Telefona özgü özellikler; her biri ayrı açılır ve Android izni ister. Script'lerden (`ctx.sms`, `ctx.device`) ve

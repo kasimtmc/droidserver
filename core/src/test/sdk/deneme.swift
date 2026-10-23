@@ -37,7 +37,7 @@ struct Deneme {
 
     static func run() async throws {
         let args = CommandLine.arguments
-        let base = args[1], key = args[2], dead = args[3]
+        let base = args[1], key = args[2], dead = args[3], reader = args[4]
         let enc = { (s: String) in s.addingPercentEncoding(withAllowedCharacters: .alphanumerics)! }
 
         let l = try ConnectionLink.parse("droidserver://connect?url=" + enc("http://x/api") + "&name=Evim&token=a.b.c&exp=1800000000")
@@ -104,6 +104,34 @@ struct Deneme {
         try check(try await ds.todoItems.list().totalItems == 2, "yenileme")
         try check(saved.all.count >= 2 && saved.all.last! != "bozuk", "token saklandı")
 
+        // Çevrimdışı kopya: yerel yazma, eşitleme, başka istemcinin değişikliği, çakışma, silme, depodan yeniden açma.
+        let storeDir = FileManager.default.temporaryDirectory.appendingPathComponent("ds-offline-\(UUID().uuidString)")
+        let conflicts = Saved()
+        let off = try ds.todoItems.offline(FileOfflineStore(directory: storeDir), onConflict: { conflicts.add($0.status) })
+        try await off.sync()
+        let local = try await off.create(TodoItemsInput(title: "Çevrimdışı", qty: 1))
+        let pendingBefore = try await off.pendingCount()
+        try check(local.id < 0 && pendingBefore == 1, "geçici kimlik")
+        _ = try await off.update(local.id, TodoItemsInput(qty: 2))
+        try await off.sync()
+        let synced = try await off.all().first { $0.title == "Çevrimdışı" }
+        let pendingAfter = try await off.pendingCount()
+        try check(synced != nil && synced!.id > 0 && synced!.qty == 2 && pendingAfter == 0, "eşitleme")
+        let sid = synced!.id
+        _ = try await ds.todoItems.update(sid, TodoItemsInput(title: "sunucuda"))
+        try await off.sync()
+        try check(try await off.get(sid)?.title == "sunucuda", "çekme")
+        _ = try await off.update(sid, TodoItemsInput(title: "yerel", price: 9))
+        try await Task.sleep(nanoseconds: 20_000_000)
+        _ = try await ds.todoItems.update(sid, TodoItemsInput(title: "sunucu"))
+        try await off.sync()
+        let merged = try await off.get(sid)
+        try check(merged?.title == "sunucu" && merged?.price == 9 && conflicts.all == ["merged"], "çakışma \(String(describing: merged)) \(conflicts.all)")
+        try await off.delete(sid)
+        try await off.sync()
+        try check(try await ds.todoItems.offline(FileOfflineStore(directory: storeDir)).get(sid) == nil, "silme ve yeniden açma")
+        try? FileManager.default.removeItem(at: storeDir)
+
         // Takımlar.
         let team = try await ds.teams.create("Mutfak")
         try check(team["role"]?.string == "owner", "takım rolü")
@@ -120,5 +148,16 @@ struct Deneme {
         let fb = DroidServerClient(dead, apiKey: key, fallbackUrls: [base])
         _ = try await fb.todoItems.list()
         try check(fb.baseUrl == base, "yedek adres \(fb.baseUrl)")
+
+        // Okuma kopyaya; yazmadan hemen sonra ana sunucuya.
+        let rd = DroidServerClient(base, apiKey: key, readUrls: [reader], readYourWritesMs: 300)
+        func health() async throws -> String? {
+            try droidServerDecoder.decode(JSONValue.self, from: try await rd.request("GET", "/health") ?? Data())["name"]?.string
+        }
+        try check(try await health() == "Okuma", "okuma kopyaya")
+        _ = try await rd.todoItems.create(TodoItemsInput(title: "okuma denemesi"))
+        try check(try await health() == "SDK deneme", "kendi yazdığını oku")
+        try await Task.sleep(nanoseconds: 400_000_000)
+        try check(try await health() == "Okuma", "süre bitince yine kopya")
     }
 }

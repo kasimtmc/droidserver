@@ -27,14 +27,16 @@ import dev.droidserver.core.config.CollectionConfig
 import dev.droidserver.core.config.FieldType
 import dev.droidserver.core.config.HistoryConfig
 import dev.droidserver.core.config.RetentionConfig
+import dev.droidserver.core.config.SyncConfig
+import dev.droidserver.core.config.SyncConflict
 import dev.droidserver.core.config.TrashConfig
 import dev.droidserver.core.i18n.tr
 
-/** Koleksiyonun kayıt geçmişi ve çöp kutusu ayarları. */
+/** Koleksiyonun kayıt geçmişi, çöp kutusu, saklama süresi ve çevrimdışı eşitleme ayarları. */
 @Composable
 internal fun ArchiveSection(vm: WizardViewModel, index: Int, c: CollectionConfig) {
     val path = "collections[$index]"
-    Text(tr("Geçmiş, çöp kutusu ve saklama süresi"), style = MaterialTheme.typography.titleMedium)
+    Text(tr("Geçmiş, çöp kutusu, saklama ve eşitleme"), style = MaterialTheme.typography.titleMedium)
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         ToggleWithNumber(
             key = "$index/history",
@@ -70,6 +72,25 @@ internal fun ArchiveSection(vm: WizardViewModel, index: Int, c: CollectionConfig
         )
         ErrorText(vm.errorAt("$path.retention.days"))
         c.retention?.let { r -> RetentionDetails(vm, index, c, r) }
+        ToggleWithNumber(
+            key = "$index/sync",
+            title = tr("Çevrimdışı eşitleme"),
+            description = tr("İstemci SDK'ları kayıtları cihazda tutar, bağlantı yokken de yazar ve bağlanınca eşitler. Sayı: silinen kayıtların izi kaç gün tutulur (daha uzun bağlanmayan cihaz baştan eşitlenir)."),
+            on = c.sync != null,
+            number = c.sync?.keepDays ?: SyncConfig().keepDays,
+            numberLabel = tr("Silme izi (gün)"),
+            onToggle = { on -> vm.updateCollection(index) { it.copy(sync = if (on) SyncConfig() else null) } },
+            onNumber = { n -> vm.updateCollection(index) { it.copy(sync = it.sync?.copy(keepDays = n)) } },
+        )
+        ErrorText(vm.errorAt("$path.sync.keepDays"))
+        c.sync?.let { s ->
+            Text(tr("Aynı alanı iki taraf da değiştirdiyse:"), style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(SyncConflict.LWW to tr("Son yazan kazanır"), SyncConflict.MANUAL to tr("Uygulamaya bırak (elle çöz)")).forEach { (mode, label) ->
+                    FilterChip(selected = s.conflict == mode, onClick = { vm.updateCollection(index) { it.copy(sync = s.copy(conflict = mode)) } }, label = { Text(label) })
+                }
+            }
+        }
         if (c.history != null || c.trash != null) {
             Text(
                 tr("Geçmişi ve çöp kutusunu yalnızca yönetici görür: web yönetim panelinde (kayıt satırındaki Geçmiş, koleksiyondaki Çöp kutusu) veya API ile."),

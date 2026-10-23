@@ -40,14 +40,17 @@ class RealtimeEvent {
   const RealtimeEvent(this.action, this.collection, this.record);
 }
 
+/// Koleksiyonun uç yolları; [sync] eşitleme kapalıysa null, [idField] kimlik alanının API adı.
 class CollectionPaths {
   final String? list;
   final String? view;
   final String? create;
   final String? update;
   final String? delete;
+  final String? sync;
+  final String idField;
 
-  const CollectionPaths({this.list, this.view, this.create, this.update, this.delete});
+  const CollectionPaths({this.list, this.view, this.create, this.update, this.delete, this.sync, this.idField = 'id'});
 }
 
 /// Liste seçenekleri. [filter]: `{'done': 'false', 'qty[gt]': '0', 'tags': 'yeni'}` (sorgu parametresi biçiminde).
@@ -117,7 +120,10 @@ abstract class DroidServerBase {
     required this.refreshPath,
     required this.filesPath,
     List<String> fallbackUrls = const [],
-  }) : _urls = [baseUrl, ...fallbackUrls].map(_trim).toList() {
+    List<String> readUrls = const [],
+    this.readYourWritesMs = 5000,
+  })  : _urls = [baseUrl, ...fallbackUrls].map(_trim).toList(),
+        _reads = readUrls.map(_trim).toList() {
     _http.connectionTimeout = const Duration(seconds: 10);
   }
 
@@ -129,6 +135,12 @@ abstract class DroidServerBase {
   final String? filesPath;
   final List<String> _urls;
   int _current = 0;
+  final List<String> _reads;
+  int _nextRead = 0;
+  int _primaryUntil = 0;
+
+  /// Bir yazmadan sonra okumaların ana sunucudan yapıldığı süre ("kendi yazdığını oku").
+  final int readYourWritesMs;
   final HttpClient _http = HttpClient();
 
   /// Token'lar değişince (giriş, yenileme, çıkış): saklamak için.
@@ -152,6 +164,20 @@ abstract class DroidServerBase {
   /// veya 503 dönerse (salt okunur kopya) sıradaki denenir, çalışan adres hatırlanır.
   Future<Object?> request(String method, String path,
       {Map<String, String> query = const {}, Object? json, Multipart? multipart, bool retry = true}) async {
+    // Okuma kopyalara (sırayla); yazmadan sonra kısa süre ana sunucudan.
+    if (method == 'GET' && _reads.isNotEmpty && DateTime.now().millisecondsSinceEpoch >= _primaryUntil) {
+      for (var n = 0; n < _reads.length; n++) {
+        final url = _reads[_nextRead++ % _reads.length];
+        try {
+          return await _requestAt(url, method, path, query, json, multipart, retry);
+        } on DroidServerException catch (e) {
+          if (e.status != 503) rethrow;
+        } on IOException {
+          // sıradaki
+        }
+      }
+    }
+    if (method != 'GET') _primaryUntil = DateTime.now().millisecondsSinceEpoch + readYourWritesMs;
     DroidServerException? failed;
     Object? error;
     for (var n = 0; n < _urls.length; n++) {
@@ -347,6 +373,10 @@ class RecordCollection<T, I> {
   Future<void> delete(int id) async {
     await _client.request('DELETE', _at(_paths.delete, 'delete', id));
   }
+
+  /// Çevrimdışı kopya (koleksiyonda eşitleme açık olmalı). [key]: depodaki anahtar; sunucu başına farklı verin.
+  OfflineCollection<T, I> offline(OfflineStore store, {String? key}) =>
+      OfflineCollection(_client, name, _at(_paths.sync, 'sync'), _paths.idField, _fromJson, _toJson, store, key ?? 'droidserver-$name');
 }
 
 /// Takımlar (`team` kuralı): kullanıcının takımları; üye ekleme, rol ve silme takım sahibinindir. Yanıtlar JSON.

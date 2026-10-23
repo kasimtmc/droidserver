@@ -3,6 +3,7 @@ package dev.droidserver.core
 import dev.droidserver.core.config.AuthConfig
 import dev.droidserver.core.config.AuthMode
 import dev.droidserver.core.config.CollectionConfig
+import dev.droidserver.core.config.ConfigMigrations
 import dev.droidserver.core.config.ConfigValidator
 import dev.droidserver.core.config.FieldConfig
 import dev.droidserver.core.config.FieldType
@@ -171,11 +172,24 @@ class ReplicationTest(private val primaryDialect: Dialect, private val replicaDi
         assertTrue(File(rDir, "storage/items/${rItem.getValue("id").jsonPrimitive.content}/$photo").readBytes().contentEquals(png))
         assertEquals(1, json(call("GET", "$r/collections/lists/records?q=market").second).getValue("items").jsonArray.size, "arama sütunu da kopyalandı")
 
-        // Kopya salt okunur; anahtarlar aynı (sırlar kopyalandı).
-        val (code, err) = call("POST", "$r/collections/lists/records", """{"title":"x"}""")
-        assertEquals(503, code)
-        assertTrue("salt okunur bir kopya" in err, err)
-        assertEquals(503, call("POST", "$r/auth/login", """{"email":"ali@example.com","password":"parola-1234"}""", auth = null).first)
+        // Kopyaya gelen veri yazması ana sunucuya iletilir (kural ve doğrulama orada), yanıt döner; anahtarlar aynı.
+        val (code, forwarded) = call("POST", "$r/collections/lists/records", """{"title":"kopyadan"}""")
+        assertEquals(201, code, forwarded)
+        val fwdId = json(forwarded).getValue("id").jsonPrimitive.content
+        assertEquals("kopyadan", json(call("GET", "$p/collections/lists/records/$fwdId").second).getValue("title").jsonPrimitive.content)
+        assertEquals(400, call("POST", "$r/collections/lists/records", """{"done":true}""").first, "doğrulama hatası aynen döner")
+        assertEquals(204, call("DELETE", "$r/collections/lists/records/$fwdId").first)
+        val (login, tokens) = call("POST", "$r/auth/login", """{"email":"ali@example.com","password":"parola-1234"}""", auth = null)
+        assertEquals(200, login, tokens)
+        assertTrue("token" in json(tokens))
+        // Yönetim uçları (ör. SQL konsolu) kopyanın kendisinde kalır; ana sunucu kopyayı tablosunda görür.
+        waitFor(what = "kopya tablosu") {
+            json(call("GET", "$p/_replication/replicas").second).getValue("items").jsonArray.any { it.jsonObject["appliedSeq"]?.jsonPrimitive?.content != "null" }
+        }
+        val table = json(call("GET", "$p/_replication/replicas").second)
+        val row = table.getValue("items").jsonArray.single().jsonObject
+        assertEquals("true", row.getValue("online").jsonPrimitive.content)
+        assertEquals(ConfigMigrations.CURRENT.toString(), row.getValue("version").jsonPrimitive.content)
 
         // Artımlı: güncelleme, yeni kayıt, silme (zincirleme) ve hesap.
         call("PATCH", "$p/collections/lists/records/$listId", """{"title":"Market 2","done":false}""")

@@ -116,6 +116,7 @@ with **Advanced (JSON)**; both share the same draft, and the draft is saved to `
 | `fields[].format`, `minLength`, `maxLength`, `pattern` | `text`: `email` or `url` format, character count limits, regular expression (must match the whole value). For `multiselect`, `minLength`/`maxLength` is the number of selections |
 | `history` | `{keep: 50}`: record history (at most `keep` versions per record; see History and trash) |
 | `trash` | `{days: 30}`: trash (a deleted record is kept for `days` days) |
+| `sync` | `{conflict: "lww"\|"manual", keepDays: 30}`: offline client sync (see Offline sync) |
 | `fields[].min`, `max` | `integer`/`real`: value range |
 | `fields[].computed` | `text`/`integer`/`real`/`boolean`: value computed from other fields (see Field rules and computed fields) |
 | `fields[].maxSizeMb`, `mimeTypes`, `multiple`, `thumbs` | `file`: per-file limit (10 MB), accepted types (e.g. `["image/*", "application/pdf"]`; all if empty), multiple files (at most 20), extra thumbnail sizes (e.g. `["400x0"]`; `100x100` always) |
@@ -1378,6 +1379,44 @@ backups or data moves and are rebuilt when needed.
 }
 ```
 
+### Offline sync
+
+With **Offline sync** on for a collection (Wizard → Collection → History, trash, retention and sync; `sync`) the client
+SDKs (TypeScript, Kotlin, Dart, Swift) keep the records on the device, read and write them without a connection and sync
+when connected. The server tracks every change with database triggers (API, scripts, imports and cascading deletes
+included): a version per record, the version and time each field last changed, and a mark for deleted records (`keepDays`
+days; a client that stays away longer resyncs from scratch).
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/sync/{c}?since=&epoch=&limit=` | Changes after the cursor: `{epoch, reset, next, more, changes:[{id, version, action, record}]}`. The list rule and field visibility apply; a record the client can no longer see arrives as `delete`. `reset`: the client must drop its local copy and resync |
+| `POST /api/sync/{c}` `{now, changes:[…]}` | Pending changes (at most 100): `create` (`tempId`), `update` and `delete` (`id`, the last version seen `base`, field edit times `times`). Each is applied on its own: `ok`, `merged`, `conflict`, `gone` or `error` |
+
+**Conflicts:** if someone else changed the same field on the server while the client was offline, the default is **last
+writer wins** (`lww`, per field; the client clock is corrected to the server's using the `now` it sends): the losing field
+keeps the server's value, the other fields are applied and the client is told `merged`. In **manual** mode the
+conflicting field is not applied; the client sees both values via `onConflict` and can write again. Deleting a record that
+has a newer change on the server is also a conflict.
+
+```ts
+const notes = ds.notes.offline();                 // IndexedDB in browsers, memory in Node; or pass your own store
+notes.onConflict = (c) => console.warn(c.status, c.local, c.server);
+await notes.create({ title: "Written on the plane" }); // no connection needed; the ID is negative until synced
+const stop = notes.live();                         // syncs when connected and whenever the server changes
+```
+
+```kotlin
+val notes = ds.notes.offline(FileOfflineStore(context.filesDir.resolve("offline")))
+notes.create(NotesInput(title = "Written on the plane"))
+notes.sync()   // blocking; throws IOException without a network, pending changes stay
+```
+
+In Dart `ds.notes.offline(FileOfflineStore(dir))`, in Swift `try ds.notes.offline(FileOfflineStore(directory: url))` (an
+`actor`). The store is an interface (key → JSON text): memory, file and browser IndexedDB stores come built in; a store
+such as SQLite can be plugged in. Limits: file fields arrive by name only (files are not downloaded, nor uploaded while
+offline); a relation from another collection to a record created offline should be set after that record has synced.
+Sync happens with the primary (sync requests sent to a copy are forwarded to the primary).
+
 ### Realtime subscription
 
 With `realtime.enabled` (Wizard → General → Realtime subscription), clients receive record changes instantly:
@@ -1774,8 +1813,13 @@ So that data isn't lost and service continues if the primary phone fails, a seco
    seconds. The **Live copy** card on the Status screen shows the number of pending changes, the last contact and the last error;
    a health alert fires if it cannot sync for more than 5 minutes.
 
-The copy is **read-only**: read requests work with the same keys and tokens, writes/sign-in/sign-up get `503`, and scheduled
-tasks and the job queue wait. When the primary's configuration changes (new collection, field, rule), the copy notices,
+The copy **doesn't write** to its own database: read requests are answered on the copy with the same keys and tokens; data
+writes (creating/updating/deleting records, sign-in, sign-up, teams, push subscriptions, batch, GraphQL and sync; with
+their expert-mode paths) are **forwarded to the primary** and its response goes back to the client. The request carries
+the client's own authorization header; only the primary applies rules and validation. The client's address is forwarded
+too (the primary only trusts it from a copy using its own API key), so rate limits and the firewall apply to the client,
+not the copy. If the primary can't be reached the write is explicitly rejected with `502`. Management endpoints (SQL
+console, MQTT, backups…) stay on the copy itself; scheduled tasks and the job queue wait. When the primary's configuration changes (new collection, field, rule), the copy notices,
 saves the new configuration and rebuilds itself; it applies no changes in the meantime. Sessions and the job queue are not copied.
 
 **Manual takeover:** on the copy go to Status → Live copy → **Take over**: syncing stops and the copy becomes a writable
@@ -1806,6 +1850,16 @@ catch up in 30 seconds it gives up and writes are reopened (they also reopen by 
   primary does.
 - **Fallback address (SDK):** give the client both addresses; if a connection cannot be made or the server returns `503`
   (read-only copy), the next one is tried and the working address is remembered.
+
+**Several copies and read distribution:** any number of copies can follow one primary. The primary keeps each copy's
+address, whether it is connected, how many changes it is behind and its configuration version (in the app Status →
+**Copies**, in the panel Services → Live copy, `GET /_replication/replicas`). With `readUrls` the SDKs send reads to the
+copies in turn (the primary if none can be reached); after a write, reads go to the primary for `readYourWritesMs` (5000),
+so the client sees its own write right away.
+
+```ts
+const ds = new DroidServer("http://192.168.1.20:8080/api", { apiKey, readUrls: ["http://192.168.1.21:8080/api", "http://192.168.1.22:8080/api"] });
+```
 
 ```kotlin
 val ds = DroidServerClient("http://192.168.1.20:8080/api", apiKey = key, fallbackUrls = listOf("http://192.168.1.21:8080/api"))
@@ -2216,3 +2270,5 @@ tools/          package-postgres.sh, package-cloudflared.sh (component packages 
 - [x] **Management from Telegram:** `/durum`, `/yedek`, `/loglar`, `/baslat`, `/durdur` (with confirmation) from a separate admin chat
 - [x] **E-mail templates and bulk notifications:** account e-mails with per-language templates; filtered, rate-limited, cancellable bulk e-mail / web push to users, with unsubscribe
 - [x] **Outreach:** first-launch guide and sample project, offline in-app help, F-Droid metadata, reproducible builds, privacy policy
+- [x] **Offline sync:** per collection; in the SDKs (TS, Kotlin, Dart, Swift) a local copy, a pending-write queue, per-field last writer wins or manual resolution
+- [x] **Scaling with copies:** writes sent to a copy are forwarded to the primary, several copies and a copy table, read addresses and read-your-writes in the SDKs

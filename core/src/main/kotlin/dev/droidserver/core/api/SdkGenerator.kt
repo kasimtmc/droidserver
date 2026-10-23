@@ -107,7 +107,8 @@ object SdkGenerator {
             for (c in config.collections) {
                 val t = typeName(c.name)
                 val paths = CollectionEndpoint.entries.filter { it in TS_COLLECTION_ENDPOINTS }
-                    .joinToString(", ") { e -> "${e.key}: ${api.path(c, e)?.let(::tsStr) ?: "null"}" }
+                    .joinToString(", ") { e -> "${e.key}: ${api.path(c, e)?.let(::tsStr) ?: "null"}" } +
+                    ", sync: ${api.path(c, CollectionEndpoint.SYNC)?.let(::tsStr) ?: "null"}"
                 appendLine("  readonly ${memberName(c.name)} = new Collection<$t, ${t}Input>(this, ${tsStr(c.name)}, ${idName(c)?.let(::tsStr) ?: "null"}, { $paths });")
             }
             if (users.enabled) {
@@ -137,6 +138,7 @@ object SdkGenerator {
             appendLine("    return new DroidServer(l.url, { ...options, ...auth });")
             appendLine("  }")
             appendLine("}")
+            append(resource("offline.ts"))
         }
     }
 
@@ -189,6 +191,9 @@ object SdkGenerator {
         |  fetch?: typeof fetch;
         |  /** Yedek sunucu adresleri (canlı kopya): bağlantı kurulamazsa veya sunucu 503 (salt okunur) dönerse sıradaki denenir. */
         |  fallbackUrls?: string[];
+        |  /** Okumaların gideceği kopyalar (sırayla; ulaşılamazsa ana adres). Bir yazmadan sonra `readYourWritesMs` (5000) boyunca okumalar ana sunucudan. */
+        |  readUrls?: string[];
+        |  readYourWritesMs?: number;
         |}
         |
         |export abstract class DroidServerBase {
@@ -199,10 +204,14 @@ object SdkGenerator {
         |  private readonly f: typeof fetch;
         |  private readonly urls: string[];
         |  private current = 0;
+        |  private readonly reads: string[];
+        |  private nextRead = 0;
+        |  private primaryUntil = 0;
         |  private readonly options: Options;
         |
         |  constructor(baseUrl: string, options: Options = {}) {
         |    this.urls = [baseUrl, ...(options.fallbackUrls ?? [])].map((u) => u.replace(/\/+$/, ""));
+        |    this.reads = (options.readUrls ?? []).map((u) => u.replace(/\/+$/, ""));
         |    this.options = options;
         |    this.apiKey = options.apiKey; this.token = options.token; this.refreshToken = options.refreshToken;
         |    this.f = options.fetch ?? ((...a) => fetch(...a));
@@ -218,6 +227,17 @@ object SdkGenerator {
         |
         |  /** Sırayla adresleri dener: bağlantı kurulamazsa veya 503 dönerse (salt okunur kopya) sıradaki; çalışan adres hatırlanır. */
         |  private async send(pathQs: string, init: RequestInit): Promise<Response> {
+        |    // Okuma kopyalara (sırayla); yazmadan sonra kısa süre ana sunucudan ("kendi yazdığını oku").
+        |    if (init.method === "GET" && this.reads.length && Date.now() >= this.primaryUntil) {
+        |      for (let n = 0; n < this.reads.length; n++) {
+        |        const u = this.reads[this.nextRead++ % this.reads.length];
+        |        try {
+        |          const res = await this.f(u + pathQs, init);
+        |          if (res.status !== 503) return res;
+        |        } catch { /* sıradaki */ }
+        |      }
+        |    }
+        |    if (init.method !== "GET") this.primaryUntil = Date.now() + (this.options.readYourWritesMs ?? 5000);
         |    let failed: Response | undefined, error: unknown;
         |    for (let n = 0; n < this.urls.length; n++) {
         |      const i = (this.current + n) % this.urls.length;
@@ -365,7 +385,7 @@ object SdkGenerator {
         |  return { id: pk.id, type: pk.type, response };
         |}
         |
-        |type Paths = { list: string | null; view: string | null; create: string | null; update: string | null; delete: string | null };
+        |type Paths = { list: string | null; view: string | null; create: string | null; update: string | null; delete: string | null; sync: string | null };
         |
         |export class Collection<T, I> {
         |  private readonly ds: DroidServerBase;
@@ -392,6 +412,11 @@ object SdkGenerator {
         |    return this.ds.request("PATCH", this.at("update", id), files ? { form: form(data as object, files) } : { json: data });
         |  }
         |  delete(id: number): Promise<void> { return this.ds.request("DELETE", this.at("delete", id)); }
+        |
+        |  /** Çevrimdışı kopya (koleksiyonda eşitleme açık olmalı); depo varsayılan olarak tarayıcıda IndexedDB, Node'da bellek. */
+        |  offline(store: OfflineStore = defaultStore(), key = "droidserver-" + this.name): OfflineCollection<T, I> {
+        |    return new OfflineCollection<T, I>(this.ds, this.name, this.at("sync"), this.idField ?? "id", store, key);
+        |  }
         |}
         |
         |type AuthPaths = Record<"signup" | "login" | "refresh" | "logout" | "me" | "verify2fa" | "requestLoginCode" | "loginCode" | "requestSmsCode" | "smsCode" | "usage"
@@ -553,13 +578,20 @@ object SdkGenerator {
             appendLine()
             appendLine("/**")
             appendLine(" * ${config.name} istemcisi. [baseUrl]: API adresi, örn. `https://telefon.example.com/api`; [fallbackUrls]: canlı kopyaların")
-            appendLine(" * adresleri (ana sunucuya ulaşılamazsa veya 503 dönerse sıradaki denenir).")
+            appendLine(" * adresleri (ana sunucuya ulaşılamazsa veya 503 dönerse sıradaki denenir). [readUrls]: okumaların gideceği kopyalar")
+            appendLine(" * (sırayla; ulaşılamazsa ana adres); bir yazmadan sonra [readYourWritesMs] boyunca okumalar ana sunucudan.")
             appendLine(" */")
-            appendLine("class DroidServerClient(baseUrl: String, apiKey: String? = null, token: String? = null, refreshToken: String? = null, fallbackUrls: List<String> = emptyList()) :")
-            appendLine("    DroidServerBase(baseUrl, apiKey, token, refreshToken, realtimePath = ${p(Endpoint.REALTIME)}, refreshPath = ${if (users.enabled) p(Endpoint.AUTH_REFRESH) else "null"}, filesPath = ${p(Endpoint.FILES)}, fallbackUrls = fallbackUrls) {")
+            appendLine("class DroidServerClient(")
+            appendLine("    baseUrl: String, apiKey: String? = null, token: String? = null, refreshToken: String? = null, fallbackUrls: List<String> = emptyList(),")
+            appendLine("    readUrls: List<String> = emptyList(), readYourWritesMs: Long = 5_000,")
+            appendLine(") : DroidServerBase(")
+            appendLine("    baseUrl, apiKey, token, refreshToken, realtimePath = ${p(Endpoint.REALTIME)}, refreshPath = ${if (users.enabled) p(Endpoint.AUTH_REFRESH) else "null"},")
+            appendLine("    filesPath = ${p(Endpoint.FILES)}, fallbackUrls = fallbackUrls, readUrls = readUrls, readYourWritesMs = readYourWritesMs,")
+            appendLine(") {")
             for (c in config.collections) {
                 val t = typeName(c.name)
-                val paths = TS_COLLECTION_ENDPOINTS.joinToString(", ") { e -> "${ktStr(api.path(c, e))}" }
+                val paths = TS_COLLECTION_ENDPOINTS.joinToString(", ") { e -> "${ktStr(api.path(c, e))}" } +
+                    ", ${ktStr(api.path(c, CollectionEndpoint.SYNC))}, ${ktStr(idName(c) ?: "id")}"
                 appendLine("    val ${memberName(c.name)} = RecordCollection(this, ${ktStr(c.name)}, CollectionPaths($paths), $t.serializer(), ${t}Input.serializer())")
             }
             if (users.enabled) {
@@ -589,6 +621,7 @@ object SdkGenerator {
             appendLine("    }")
             appendLine("}")
             append(KT_BASE)
+            append(resource("offline.kt"))
         }
     }
 
@@ -596,11 +629,13 @@ object SdkGenerator {
         |import kotlinx.serialization.KSerializer
         |import kotlinx.serialization.Serializable
         |import kotlinx.serialization.json.Json
+        |import kotlinx.serialization.json.JsonArray
         |import kotlinx.serialization.json.JsonElement
         |import kotlinx.serialization.json.JsonNull
         |import kotlinx.serialization.json.JsonObject
         |import kotlinx.serialization.json.JsonPrimitive
         |import kotlinx.serialization.json.buildJsonObject
+        |import kotlinx.serialization.json.jsonArray
         |import kotlinx.serialization.json.jsonObject
         |import kotlinx.serialization.json.jsonPrimitive
         |import java.io.Closeable
@@ -633,7 +668,16 @@ object SdkGenerator {
         |
         |data class RealtimeEvent(val action: String, val collection: String, val record: JsonObject)
         |
-        |data class CollectionPaths(val list: String?, val view: String?, val create: String?, val update: String?, val delete: String?)
+        |/** Koleksiyonun uç yolları; [sync] eşitleme kapalıysa null, [idField] kimlik alanının API adı. */
+        |data class CollectionPaths(
+        |    val list: String?,
+        |    val view: String?,
+        |    val create: String?,
+        |    val update: String?,
+        |    val delete: String?,
+        |    val sync: String? = null,
+        |    val idField: String = "id",
+        |)
         |
         |/** Liste seçenekleri. [filter]: `"done" to "false"`, `"qty[gt]" to "0"`, `"tags" to "yeni"` (sorgu parametresi biçiminde). */
         |data class ListOptions(
@@ -668,9 +712,14 @@ object SdkGenerator {
         |    private val refreshPath: String?,
         |    private val filesPath: String?,
         |    fallbackUrls: List<String> = emptyList(),
+        |    readUrls: List<String> = emptyList(),
+        |    private val readYourWritesMs: Long = 5_000,
         |) {
         |    private val urls = (listOf(baseUrl) + fallbackUrls).map { it.trimEnd('/') }
         |    @Volatile private var current = 0
+        |    private val reads = readUrls.map { it.trimEnd('/') }
+        |    @Volatile private var nextRead = 0
+        |    @Volatile private var primaryUntil = 0L
         |
         |    /** Şu an kullanılan sunucu adresi (yedek adreslerden biri olabilir). */
         |    val baseUrl: String get() = urls[current]
@@ -689,6 +738,19 @@ object SdkGenerator {
         |     * 503 dönerse (salt okunur kopya) sıradaki denenir, çalışan adres hatırlanır.
         |     */
         |    fun request(method: String, path: String, query: Map<String, String> = emptyMap(), json: JsonElement? = null, multipart: Multipart? = null, retry: Boolean = true): JsonElement? {
+        |        // Okuma kopyalara (sırayla); yazmadan sonra kısa süre ana sunucudan ("kendi yazdığını oku").
+        |        if (method == "GET" && reads.isNotEmpty() && System.currentTimeMillis() >= primaryUntil) {
+        |            repeat(reads.size) {
+        |                val i = nextRead++.mod(reads.size)
+        |                try {
+        |                    return requestAt(reads[i], method, path, query, json, multipart, retry)
+        |                } catch (e: DroidServerException) {
+        |                    if (e.status != 503) throw e
+        |                } catch (_: IOException) {
+        |                }
+        |            }
+        |        }
+        |        if (method != "GET") primaryUntil = System.currentTimeMillis() + readYourWritesMs
         |        var failed: DroidServerException? = null
         |        var error: IOException? = null
         |        for (n in urls.indices) {
@@ -882,6 +944,10 @@ object SdkGenerator {
         |    fun delete(id: Long) {
         |        client.request("DELETE", at(paths.delete, "delete", id))
         |    }
+        |
+        |    /** Çevrimdışı kopya (koleksiyonda eşitleme açık olmalı). [key]: depodaki anahtar; sunucu başına farklı verin. */
+        |    fun offline(store: OfflineStore, key: String = "droidserver-" + name): OfflineCollection<T, I> =
+        |        OfflineCollection(client, name, at(paths.sync, "sync"), paths.idField, serializer, input, store, key)
         |}
         |
         |/** Takımlar (`team` kuralı): kullanıcının takımları; üye ekleme, rol ve silme takım sahibinindir. Yanıtlar JSON. */
@@ -1203,13 +1269,15 @@ object SdkGenerator {
             }
             appendLine()
             appendLine("/// ${config.name} istemcisi. `baseUrl`: API adresi, örn. `https://telefon.example.com/api`; `fallbackUrls`: canlı")
-            appendLine("/// kopyaların adresleri (ana sunucuya ulaşılamazsa veya 503 dönerse sıradaki denenir).")
+            appendLine("/// kopyaların adresleri (ana sunucuya ulaşılamazsa veya 503 dönerse sıradaki denenir). `readUrls`: okumaların gideceği")
+            appendLine("/// kopyalar; bir yazmadan sonra `readYourWritesMs` boyunca okumalar ana sunucudan.")
             appendLine("class DroidServerClient extends DroidServerBase {")
-            appendLine("  DroidServerClient(super.baseUrl, {super.apiKey, super.token, super.refreshToken, super.fallbackUrls})")
+            appendLine("  DroidServerClient(super.baseUrl, {super.apiKey, super.token, super.refreshToken, super.fallbackUrls, super.readUrls, super.readYourWritesMs})")
             appendLine("      : super(realtimePath: ${p(Endpoint.REALTIME)}, refreshPath: ${if (users.enabled) p(Endpoint.AUTH_REFRESH) else "null"}, filesPath: ${p(Endpoint.FILES)});")
             for (c in config.collections) {
                 val t = typeName(c.name)
-                val paths = TS_COLLECTION_ENDPOINTS.joinToString(", ") { e -> "${e.key}: ${dartStr(api.path(c, e))}" }
+                val paths = TS_COLLECTION_ENDPOINTS.joinToString(", ") { e -> "${e.key}: ${dartStr(api.path(c, e))}" } +
+                    ", sync: ${dartStr(api.path(c, CollectionEndpoint.SYNC))}, idField: ${dartStr(idName(c) ?: "id")}"
                 appendLine()
                 appendLine("  late final ${memberName(c.name)} = RecordCollection<$t, ${t}Input>(")
                 appendLine("      this, ${dartStr(c.name)}, const CollectionPaths($paths), $t.fromJson, (i) => i.toJson());")
@@ -1236,6 +1304,7 @@ object SdkGenerator {
             appendLine("  }")
             appendLine("}")
             append(resource("base.dart"))
+            append(resource("offline.dart"))
         }
     }
 
@@ -1304,17 +1373,23 @@ object SdkGenerator {
             }
             appendLine()
             appendLine("/// ${config.name} istemcisi. `baseUrl`: API adresi, örn. `https://telefon.example.com/api`; `fallbackUrls`: canlı")
-            appendLine("/// kopyaların adresleri (ana sunucuya ulaşılamazsa veya 503 dönerse sıradaki denenir).")
+            appendLine("/// kopyaların adresleri (ana sunucuya ulaşılamazsa veya 503 dönerse sıradaki denenir). `readUrls`: okumaların gideceği")
+            appendLine("/// kopyalar; bir yazmadan sonra `readYourWritesMs` boyunca okumalar ana sunucudan.")
             appendLine("public final class DroidServerClient: DroidServerBase, @unchecked Sendable {")
-            appendLine("    public init(_ baseUrl: String, apiKey: String? = nil, token: String? = nil, refreshToken: String? = nil, fallbackUrls: [String] = [], session: URLSession = .shared) {")
+            appendLine("    public init(")
+            appendLine("        _ baseUrl: String, apiKey: String? = nil, token: String? = nil, refreshToken: String? = nil, fallbackUrls: [String] = [],")
+            appendLine("        readUrls: [String] = [], readYourWritesMs: Int = 5000, session: URLSession = .shared,")
+            appendLine("    ) {")
             appendLine("        super.init(")
             appendLine("            baseUrl: baseUrl, apiKey: apiKey, token: token, refreshToken: refreshToken, realtimePath: ${p(Endpoint.REALTIME)},")
-            appendLine("            refreshPath: ${if (users.enabled) p(Endpoint.AUTH_REFRESH) else "nil"}, filesPath: ${p(Endpoint.FILES)}, fallbackUrls: fallbackUrls, session: session,")
+            appendLine("            refreshPath: ${if (users.enabled) p(Endpoint.AUTH_REFRESH) else "nil"}, filesPath: ${p(Endpoint.FILES)}, fallbackUrls: fallbackUrls,")
+            appendLine("            readUrls: readUrls, readYourWritesMs: readYourWritesMs, session: session,")
             appendLine("        )")
             appendLine("    }")
             for (c in config.collections) {
                 val t = typeName(c.name)
-                val paths = TS_COLLECTION_ENDPOINTS.joinToString(", ") { e -> "${e.key}: ${swiftStr(api.path(c, e))}" }
+                val paths = TS_COLLECTION_ENDPOINTS.joinToString(", ") { e -> "${e.key}: ${swiftStr(api.path(c, e))}" } +
+                    ", sync: ${swiftStr(api.path(c, CollectionEndpoint.SYNC))}, idField: ${swiftStr(idName(c) ?: "id")}"
                 appendLine()
                 appendLine("    public var ${memberName(c.name)}: RecordCollection<$t, ${t}Input> {")
                 appendLine("        RecordCollection(self, ${swiftStr(c.name)}, CollectionPaths($paths))")
@@ -1349,6 +1424,7 @@ object SdkGenerator {
             appendLine("    }")
             appendLine("}")
             append(resource("base.swift"))
+            append(resource("offline.swift"))
         }
     }
 }

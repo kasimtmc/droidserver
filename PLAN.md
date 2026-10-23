@@ -1103,21 +1103,42 @@ başlar (panel eşitleme ve güvenli bağlantılar bunların temelidir). Dört g
 ### Grup 1 — Çevrimdışı istemciler ve kopyalarla ölçek
 
 **18.1 Çevrimdışı istemci eşitleme**
-- [ ] Sunucu: koleksiyon başına değişiklik akışı (`/sync/{koleksiyon}?since=<imleç>`), kuralları ve alan gizliliğini
+- [x] Sunucu: koleksiyon başına değişiklik akışı (`/sync/{koleksiyon}?since=<imleç>`), kuralları ve alan gizliliğini
   uygulayarak; silinenler için iz (tombstone) ve saklama süresi.
-- [ ] SDK'lar (TS, Kotlin, Dart): yerel depo (IndexedDB / SQLite), bekleyen yazma kuyruğu, bağlanınca gönderme ve çekme,
+- [x] SDK'lar (TS, Kotlin, Dart): yerel depo (IndexedDB / SQLite), bekleyen yazma kuyruğu, bağlanınca gönderme ve çekme,
   canlı abonelikle anında güncelleme.
-- [ ] Çakışma çözümü: alan bazında "son yazan kazanır" (kayıt sürümü + alan zamanları) varsayılan; koleksiyon başına
+- [x] Çakışma çözümü: alan bazında "son yazan kazanır" (kayıt sürümü + alan zamanları) varsayılan; koleksiyon başına
   "elle çöz" seçeneğinde çakışma kaydı ve SDK geri çağrısı.
+  *Durum:* `collections[].sync` (`lww`/`manual`, `keepDays`), konfigürasyon v18. `SyncLog`: tetikleyicilerle `_sync`
+  (kayıt sürümü, genel sıra, silme izi) ve `_sync_fields` (alan başına sürüm ve zaman); eski Android SQLite'ında da çalışır
+  (JSON fonksiyonu, UPSERT ve pencere fonksiyonu yok), PostgreSQL'de sıra işlem kilidiyle (numara sırası = tamamlanma
+  sırası). Temizlik son numaralı izi silmez (SQLite'ta numara geri gitmesin; testte yakalandı). `epoch` değişince veya
+  imleç silinen izlerden eskiyse `reset`. `SyncService`: çekmede liste kuralı (görünmeyen kayıt `delete`), göndermede
+  yazmalar normal yoldan (kural, kanca, olay), istemci saati `now` ile düzeltilir. SDK'larda `koleksiyon.offline(depo)`:
+  takılabilir depo (bellek, dosya, tarayıcıda IndexedDB), kayıt başına birleşen kuyruk, negatif geçici kimlik,
+  `onConflict`/`onRejected`, `live()`. Çakışma kaydı istemciye döner (sunucuda ayrı tablo tutulmadı). Uygulamada ve
+  panelde koleksiyon ayarı. Testler: `SyncTest` (iki lehçe), `SdkClientTest` (dört dil).
+
 - Karar: dosya alanları çevrimdışında nasıl ele alınsın (yalnızca adres mi, isteğe bağlı önbellek mi).
+  *Karar (kullanıcı, 23 Ekim 2026):* **yalnızca adres**; çevrimdışıyken dosya yüklenmez. Yerel depo SDK'da takılıp
+  çıkarılabilir bir arayüz (hazır: tarayıcıda IndexedDB, diğerlerinde JSON dosyası; bağımlılık yok). Eşitleme dört
+  SDK'ya birden (TS, Kotlin, Dart, Swift).
 
 **18.2 Kopyalarla ölçek**
-- [ ] Kopyaya gelen yazma ana sunucuya iletilir (istemcinin kimliğiyle; 503 yerine), yanıt istemciye döner; bağlantı
+- [x] Kopyaya gelen yazma ana sunucuya iletilir (istemcinin kimliğiyle; 503 yerine), yanıt istemciye döner; bağlantı
   koparsa açık hata.
-- [ ] Birden çok kopya; ana sunucuda kopya tablosu (gecikme, son temas, sürüm), panelde ve uygulamada.
-- [ ] Okumaların kopyalara dağıtılması: SDK'da okuma adresleri listesi ve "kendi yazdığını oku" garantisi (yazmadan sonra
+- [x] Birden çok kopya; ana sunucuda kopya tablosu (gecikme, son temas, sürüm), panelde ve uygulamada.
+- [x] Okumaların kopyalara dağıtılması: SDK'da okuma adresleri listesi ve "kendi yazdığını oku" garantisi (yazmadan sonra
   kısa süre ana sunucudan oku).
+  *Durum:* `WriteForwarding` eklentisi: iletilen uçlar uç tanımlarından (uzman modu yollarıyla) türetilir; istemcinin
+  yetki başlığı, kopyanın kimliği (`X-DroidServer-Replica`, ana sunucunun API anahtarı) ve istemci adresi gider; ana sunucu
+  adrese yalnızca bu anahtarla güvenir ("yerel" işareti iletilmez). Ulaşılamazsa 502. `/_replication/replicas` ve
+  `ReplicaRegistry.report` (uygulanan sıra, şema sürümü), panelde Canlı kopya kartında tablo, uygulamada Durum → Kopyalar.
+  SDK'larda `readUrls` + `readYourWritesMs`. Testler: `ReplicationTest` (iletim, tablo), `WriteForwardingTest`,
+  `SdkClientTest` (dört dilde okuma adresleri).
+
 - Karar: kopya iletilen yazmalarda kendi kural denetimini mi yapsın, yalnızca ana sunucu mu (öneri: yalnızca ana).
+  *Karar (kullanıcı, 23 Ekim 2026):* **yalnızca ana sunucu.**
 
 ### Grup 2 — Konum, takvim ve medya
 

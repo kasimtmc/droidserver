@@ -1,6 +1,7 @@
 package dev.droidserver.core.replication
 
 import dev.droidserver.core.config.ConfigJson
+import dev.droidserver.core.config.ConfigMigrations
 import dev.droidserver.core.config.FieldType
 import dev.droidserver.core.config.ServerConfig
 import dev.droidserver.core.db.SqlDriver
@@ -369,6 +370,7 @@ class Replicator(
         // Ana sunucu açılışta "beni devralan var mı" diye bu adresi sorar (IP bağlantıdan).
         setRequestProperty("X-Replica-Port", config.server.port.toString())
         setRequestProperty("X-Replica-Path", config.server.basePath)
+        setRequestProperty("X-Replica-Version", ConfigMigrations.CURRENT.toString())
     }
 
     private fun sleep(ms: Long) {

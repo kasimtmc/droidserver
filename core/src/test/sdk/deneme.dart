@@ -86,6 +86,33 @@ Future<void> main(List<String> args) async {
   check((await ds.todoItems.list()).totalItems == 2, 'yenileme');
   check(saved.length >= 2 && saved.last != 'bozuk', 'token saklandı');
 
+  // Çevrimdışı kopya: yerel yazma, eşitleme, başka istemcinin değişikliği, çakışma, silme, depodan yeniden açma.
+  final storeDir = await Directory.systemTemp.createTemp('ds-offline');
+  final store = FileOfflineStore(storeDir);
+  final off = ds.todoItems.offline(store);
+  final conflicts = <String>[];
+  off.onConflict = (c) => conflicts.add(c.status);
+  await off.sync();
+  final local = await off.create(const TodoItemsInput(title: 'Çevrimdışı', qty: 1));
+  check(local.id < 0 && await off.pendingCount() == 1, 'geçici kimlik');
+  await off.update(local.id, const TodoItemsInput(qty: 2));
+  await off.sync();
+  final synced = (await off.all()).firstWhere((r) => r.title == 'Çevrimdışı');
+  check(synced.id > 0 && synced.qty == 2 && await off.pendingCount() == 0, 'eşitleme');
+  await ds.todoItems.update(synced.id, const TodoItemsInput(title: 'sunucuda'));
+  await off.sync();
+  check((await off.get(synced.id))?.title == 'sunucuda', 'çekme');
+  await off.update(synced.id, const TodoItemsInput(title: 'yerel', price: 9));
+  await Future<void>.delayed(const Duration(milliseconds: 20));
+  await ds.todoItems.update(synced.id, const TodoItemsInput(title: 'sunucu'));
+  await off.sync();
+  final merged = await off.get(synced.id);
+  check(merged?.title == 'sunucu' && merged?.price == 9 && conflicts.join() == 'merged', 'çakışma ${merged?.title} $conflicts');
+  await off.delete(synced.id);
+  await off.sync();
+  check(await ds.todoItems.offline(FileOfflineStore(storeDir)).get(synced.id) == null, 'silme ve yeniden açma');
+  await storeDir.delete(recursive: true);
+
   // Takımlar.
   final team = await ds.teams.create('Mutfak');
   check(team['role'] == 'owner', 'takım rolü');
@@ -103,7 +130,16 @@ Future<void> main(List<String> args) async {
   await fb.todoItems.list();
   check(fb.baseUrl == base, 'yedek adres ${fb.baseUrl}');
 
-  for (final c in [admin, ds, fb]) {
+  // Okuma kopyaya; yazmadan hemen sonra ana sunucuya.
+  final rd = DroidServerClient(base, apiKey: key, readUrls: [args[3]], readYourWritesMs: 300);
+  Future<String> health() async => ((await rd.request('GET', '/health')) as Map<String, dynamic>)['name'] as String;
+  check(await health() == 'Okuma', 'okuma kopyaya');
+  await rd.todoItems.create(const TodoItemsInput(title: 'okuma denemesi'));
+  check(await health() == 'SDK deneme', 'kendi yazdığını oku');
+  await Future<void>.delayed(const Duration(milliseconds: 400));
+  check(await health() == 'Okuma', 'süre bitince yine kopya');
+
+  for (final c in [admin, ds, fb, rd]) {
     c.close();
   }
   print('TAMAM');

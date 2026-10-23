@@ -20,6 +20,7 @@ import dev.droidserver.core.jobs.JobQueue
 import dev.droidserver.core.alerts.AlertKind
 import dev.droidserver.core.api.RecordService
 import dev.droidserver.core.config.ReplicaSource
+import dev.droidserver.core.replication.ChangeLog
 import dev.droidserver.core.replication.Failover
 import dev.droidserver.core.replication.FailoverHost
 import dev.droidserver.core.replication.FailoverPort
@@ -358,7 +359,7 @@ class ServerEngine(
         try {
             val startedAt = Instant.now()
             val gate = WriteGate()
-            val failoverPort = FailoverPort(instanceId, failoverTiming, replicaRegistry::seen, ::demote)
+            val failoverPort = FailoverPort(instanceId, failoverTiming, replicaRegistry::seen, ::demote, replicaRegistry)
             if (replaced != null) {
                 failoverPort.isFenced = true
                 gate.pause(reason = tr("Bu sunucu devredildi; yeni ana sunucu: {0}", replaced))
@@ -500,6 +501,12 @@ class ServerEngine(
      * Çalışan sunucunun veritabanından yedek alır (sunucu çalışmaya devam eder). [configText]: diskteki konfigürasyon
      * (sırlar referans olarak). Zamanlanmış yedeklerde eskiler `backup.keep`'e göre silinir.
      */
+    /** Ana sunucudaki kopya tablosu: anadaki son sıra (kopyalanabilir değilse null) ve bilinen kopyalar. */
+    fun replicaTable(): Pair<Long?, List<ReplicaRegistry.Report>> {
+        val latest = driver?.takeIf { running?.replication?.source == true }?.let { runCatching { ChangeLog.latest(it) }.getOrNull() }
+        return latest to replicaRegistry.reports()
+    }
+
     fun backup(configText: String, kind: BackupKind): BackupInfo {
         val store = backups ?: throw IllegalStateException(tr("Yedek klasörü yok"))
         val (db, cfg) = synchronized(this) { (driver ?: throw IllegalStateException(tr("Sunucu çalışmıyor"))) to running!! }
