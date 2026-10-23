@@ -18,10 +18,31 @@ import io.ktor.server.routing.route
  *   GET  /_auth/verify?token=   → hesabı doğrular
  *   GET  /_auth/reset?token=    → yeni parola formu (JavaScript yok)
  *   POST /_auth/reset           → parolayı değiştirir
+ *   GET  /_auth/unsubscribe     → toplu e-postadan çıkma onayı (bağlantı tarayıcılarca önceden açılsa da çıkarmaz)
+ *   POST /_auth/unsubscribe     → çıkarır
  * Sayfalar başka kaynak yüklemez, çerçeveye konamaz, önbelleğe alınmaz.
  */
-internal fun Route.authPages(serverName: String, users: UserService, minPassword: Int, writes: WriteGate) {
+internal fun Route.authPages(serverName: String, users: UserService, minPassword: Int, writes: WriteGate, unsubscribe: Boolean = false) {
     route("/_auth") {
+        if (unsubscribe) {
+            get("/unsubscribe") {
+                val q = call.request.queryParameters
+                val body = "<p>${esc(tr("{0} adresine toplu e-posta gönderilmesin mi? Hesap e-postaları (doğrulama, parola sıfırlama) yine gelir.", q["email"]))}</p>" +
+                    "<form method=\"post\" action=\"/_auth/unsubscribe\"><input type=\"hidden\" name=\"email\" value=\"${esc(q["email"])}\">" +
+                    "<input type=\"hidden\" name=\"t\" value=\"${esc(q["t"])}\"><button type=\"submit\">${esc(tr("Abonelikten çık"))}</button></form>"
+                call.page(HttpStatusCode.OK, serverName, tr("Abonelikten çık"), body)
+            }
+            post("/unsubscribe") {
+                val p = call.receiveParameters()
+                val result = runCatching { io { writes.write { users.unsubscribe(p["email"], p["t"]) } } }
+                call.page(
+                    if (result.isSuccess) HttpStatusCode.OK else HttpStatusCode.BadRequest,
+                    serverName,
+                    if (result.isSuccess) tr("Abonelikten çıktınız") else tr("Çıkılamadı"),
+                    if (result.isSuccess) tr("<p>Bu adrese artık toplu e-posta gönderilmeyecek.</p>") else "<p>${esc(result.exceptionOrNull()?.message)}</p>",
+                )
+            }
+        }
         get("/verify") {
             val token = call.request.queryParameters["token"]
             val result = runCatching { io { writes.write { users.confirmVerification(token) } } }

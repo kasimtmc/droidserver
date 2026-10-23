@@ -28,6 +28,7 @@ import dev.droidserver.core.graphql.GqlBackend
 import dev.droidserver.core.graphql.GqlOps
 import dev.droidserver.core.graphql.GraphQL
 import dev.droidserver.core.i18n.tr
+import dev.droidserver.core.jobs.Broadcaster
 import dev.droidserver.core.jobs.Job
 import dev.droidserver.core.phone.PhoneService
 import dev.droidserver.core.realtime.ChannelHub
@@ -177,6 +178,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.intOrNull
+import java.net.URLEncoder
 import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
@@ -622,8 +624,8 @@ fun Application.droidServerModule(
         runCatching { ChangeLog.uninstall(db) }
     }
 
-    // Arka plan işleri: kuyruk script'ler açıkken; çalıştırıcı script'te iş türü tanımlıysa.
-    val jobQueue = if (config.scripts.enabled) JobQueue(db) else null
+    // Arka plan işleri: kuyruk script'ler veya toplu bildirim açıkken; çalıştırıcı script'te iş türü tanımlıysa.
+    val jobQueue = if (config.jobQueue) JobQueue(db) else null
     val jobRunner = scripts?.takeIf { it.jobTypes.isNotEmpty() && jobQueue != null }?.let { JobRunner(jobQueue!!, it, config.scripts.jobs, writes, log) }
     scripts?.jobs = jobQueue?.let { q ->
         JobSink { name, data, delay, attempts, key ->
@@ -637,7 +639,18 @@ fun Application.droidServerModule(
         monitor.subscribe(ApplicationStopping) { jobRunner.stop() }
     }
 
-    val mailer = if (config.email.enabled) Mailer(config, mailSender ?: Mailer.smtp(config), log) else null
+    val rawMail = if (config.email.enabled) mailSender ?: Mailer.smtp(config) else null
+    val mailer = rawMail?.let { Mailer(config, it, log) }
+    // Toplu bildirim: kalıcı kuyrukta, kendi çalıştırıcısıyla (script'lerden bağımsız).
+    val broadcaster = if (config.broadcasts && users != null && jobQueue != null) {
+        val base = config.email.publicUrl?.trim()?.trimEnd('/').orEmpty()
+        Broadcaster(db, config, jobQueue, rawMail, push, { email ->
+            "$base/_auth/unsubscribe?email=${URLEncoder.encode(email, "UTF-8")}&t=${users.unsubscribeToken(email)}"
+        }, writes, log).also { b ->
+            b.start()
+            monitor.subscribe(ApplicationStopping) { b.stop() }
+        }
+    } else null
     scripts?.mail = mailer?.let { m -> m::custom }
     scripts?.push = push?.let { p -> { user, title, body, url -> p.sendToUser(user, p.message(title, body, url, null)) } }
 
@@ -688,7 +701,7 @@ fun Application.droidServerModule(
             WebDav(dav, roots).install(this)
         }
         if (config.static.enabled && www != null) staticSite(config, StaticSite(www))
-        if (users != null && mailer != null) authPages(config.name, users, config.auth.users.minPasswordLength, writes)
+        if (users != null && mailer != null) authPages(config.name, users, config.auth.users.minPasswordLength, writes, unsubscribe = broadcaster != null)
         route(config.server.basePath) {
             endpoint(paths, Endpoint.HEALTH) {
                 call.respond(buildJsonObject {
@@ -814,6 +827,19 @@ fun Application.droidServerModule(
                 }
                 call.audit("data.sample", c.name, tr("{0} kayıt", count))
                 call.respond(HttpStatusCode.Created, buildJsonObject { put("created", JsonPrimitive(count)) })
+            }
+            // Toplu e-posta / web push: dryRun alıcı sayısını verir; gönderim kuyrukta, /_jobs'tan izlenir ve iptal edilir.
+            endpoint(paths, Endpoint.BROADCAST) {
+                requireAdmin(call.caller())
+                val b = broadcaster ?: throw ApiException(404, tr("Toplu bildirim kapalı (kullanıcı hesapları ve e-posta veya web push gerekli)"))
+                val body = call.receive<JsonObject>()
+                val request = io { b.parse(body) }
+                if ((body["dryRun"] as? JsonPrimitive)?.booleanOrNull == true) {
+                    return@endpoint call.respond(buildJsonObject { put("recipients", JsonPrimitive(io { b.count(request) })) })
+                }
+                val (job, recipients) = io { b.enqueue(request) }
+                call.audit("broadcast.create", "${request.channel}#$job", tr("{0} alıcı: {1}", recipients, request.subject))
+                call.respond(HttpStatusCode.Accepted, buildJsonObject { put("job", JsonPrimitive(job)); put("recipients", JsonPrimitive(recipients)) })
             }
             endpoint(paths, Endpoint.MQTT_SCENE) {
                 requireAdmin(call.caller())
@@ -1191,6 +1217,7 @@ fun Application.droidServerModule(
                 val id = call.parameters["id"]?.toLongOrNull() ?: throw ApiException(404, tr("İş bulunamadı"))
                 val job = io { writes.write { q.retry(id) } }
                 jobRunner?.wake()
+                broadcaster?.wake()
                 call.audit("job.retry", "${job.name}#$id")
                 call.respond(job.toJson())
             }
@@ -1639,12 +1666,13 @@ private fun Route.authRoutes(
     fun RoutingContext.mailLater(email: String?, purpose: UserService.Purpose) {
         val m = mailer ?: return
         val address = email?.trim()?.lowercase() ?: return
+        val lang = Mailer.language(call.request.headers[HttpHeaders.AcceptLanguage])
         call.application.launch(Dispatchers.IO) {
             val (id, verified) = users.findByEmail(address) ?: return@launch
             if (purpose == UserService.Purpose.VERIFY && verified) return@launch
             if (!m.allow(address, purpose.claim)) return@launch
             val token = users.purposeToken(id, purpose)
-            if (purpose == UserService.Purpose.VERIFY) m.verification(address, token) else m.reset(address, token)
+            if (purpose == UserService.Purpose.VERIFY) m.verification(address, token, lang) else m.reset(address, token, lang)
         }
     }
 
@@ -1728,11 +1756,12 @@ private fun Route.authRoutes(
             endpoint(paths, Endpoint.AUTH_REQUEST_LOGIN_CODE) {
                 val email = call.body().text("email")
                 val m = mailer
+                val lang = Mailer.language(call.request.headers[HttpHeaders.AcceptLanguage])
                 call.application.launch(Dispatchers.IO) {
                     val address = email?.trim()?.lowercase() ?: return@launch
                     if (users.findByEmail(address) == null || !m.allow(address, "login")) return@launch
                     val (to, code) = writes.write { users.newLoginCode(address) } ?: return@launch
-                    m.loginCode(to, code, config.auth.users.emailLoginUrl)
+                    m.loginCode(to, code, config.auth.users.emailLoginUrl, lang)
                 }
                 call.respond(HttpStatusCode.Accepted, buildJsonObject { put("message", JsonPrimitive(tr("Bu adresle bir hesap varsa giriş kodu gönderildi"))) })
             }

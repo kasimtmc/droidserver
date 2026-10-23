@@ -166,6 +166,35 @@ private fun TelegramEditor(vm: WizardViewModel, draft: ServerConfig) {
                 }
             }) { Text(tr("Deneme gönder")) }
         }
+        // Yönetim komutları ayrı bir sohbetten (uyarılar örneğin ailece görülen bir gruba giderken).
+        OutlinedTextField(
+            value = t.adminChatId.orEmpty(),
+            onValueChange = { v -> vm.updateAlerts { it.copy(telegram = t.copy(adminChatId = v.trim().ifEmpty { null })) } },
+            label = { Text(tr("Yönetici sohbeti (komutlar)")) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+            isError = vm.errorAt("alerts.telegram.adminChatId") != null,
+            supportingText = {
+                Text(
+                    vm.errorAt("alerts.telegram.adminChatId")
+                        ?: tr("Boşsa komutlar kapalı. Bu sohbetten /durum, /yedek, /loglar, /baslat ve /durdur yazılabilir; başka sohbetlerden gelen komutlar yok sayılır."),
+                )
+            },
+        )
+        OutlinedButton(onClick = {
+            val key = vm.telegramToken() ?: run { status = tr("Önce token'ı kaydedin."); return@OutlinedButton }
+            status = tr("Aranıyor…")
+            scope.launch {
+                status = runCatching { withContext(Dispatchers.IO) { TelegramChannel.discoverChat(key) } }.fold(
+                    { found ->
+                        when {
+                            found == null -> tr("Bota henüz mesaj yazılmamış; yönetici sohbetinden botunuza /start yazıp yeniden deneyin.")
+                            found.first.startsWith("@") -> tr("Kanallar komut gönderemez; kendi sohbetinizden botunuza yazın.")
+                            else -> { vm.updateAlerts { it.copy(telegram = it.telegram?.copy(adminChatId = found.first)) }; tr("Bulundu: {0}", found.second) }
+                        }
+                    },
+                    { tr("Bulunamadı: {0}", it.message) },
+                )
+            }
+        }) { Text(tr("Yönetici sohbetini bul")) }
     }
     status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 }

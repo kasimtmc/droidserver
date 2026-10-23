@@ -175,10 +175,27 @@ class JobQueue(private val db: SqlDriver, private val clock: () -> Instant = Ins
     fun counts(): Map<String, Long> =
         db.query("SELECT \"status\", COUNT(*) AS n FROM $t GROUP BY \"status\"").associate { it["status"].toString() to (it["n"] as Number).toLong() }
 
-    /** Açılışta: önceki çalıştırmada yarım kalan işler (uygulama kapandı) yeniden kuyruğa. */
-    fun recover(): Int {
+    /**
+     * Açılışta: önceki çalıştırmada yarım kalan işler (uygulama kapandı) yeniden kuyruğa. [only]/[except]: yalnızca o
+     * türdeki / o tür dışındaki işler (her çalıştırıcı kendi işlerini alır; başkasının süren işine dokunmaz).
+     */
+    fun recover(only: String? = null, except: String? = null): Int {
         val now = clock()
-        return db.execute("UPDATE $t SET \"status\" = ?, \"updated_at\" = ? WHERE \"status\" = ?", listOf(Job.QUEUED, at(now), Job.RUNNING))
+        val name = when {
+            only != null -> " AND \"name\" = ?"
+            except != null -> " AND \"name\" <> ?"
+            else -> ""
+        }
+        return db.execute("UPDATE $t SET \"status\" = ?, \"updated_at\" = ? WHERE \"status\" = ?$name", listOfNotNull(Job.QUEUED, at(now), Job.RUNNING, only ?: except))
+    }
+
+    /** Süren işin ara sonucu (ilerleme); iş bu arada iptal edildiyse false. */
+    fun progress(id: Long, result: JsonElement): Boolean {
+        val now = clock()
+        return db.execute(
+            "UPDATE $t SET \"result\" = ?, \"updated_at\" = ? WHERE \"id\" = ? AND \"status\" = ?",
+            listOf(json(result), at(now), id, Job.RUNNING),
+        ) == 1
     }
 
     /** [keepDays] günden eski biten, başarısız ve iptal edilmiş işleri siler. */

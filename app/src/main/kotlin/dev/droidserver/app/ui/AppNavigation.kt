@@ -30,6 +30,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import dev.droidserver.app.AppGraph
+import dev.droidserver.app.data.TemplateRequest
 import dev.droidserver.app.ui.components.ComponentsScreen
 import dev.droidserver.app.ui.config.ApiExplorerScreen
 import dev.droidserver.app.ui.config.AutomationsScreen
@@ -55,6 +56,9 @@ import dev.droidserver.app.ui.config.CliScreen
 import dev.droidserver.app.ui.config.MqttScreen
 import dev.droidserver.app.ui.config.TeamsScreen
 import dev.droidserver.app.ui.config.UsersScreen
+import dev.droidserver.app.ui.help.HelpScreen
+import dev.droidserver.app.ui.help.HelpSectionScreen
+import dev.droidserver.app.ui.help.OnboardingScreen
 import dev.droidserver.app.ui.status.ConnectScreen
 import dev.droidserver.app.ui.logs.LogsScreen
 import dev.droidserver.app.ui.status.StatusScreen
@@ -97,6 +101,9 @@ object Routes {
     const val DRIVE = "drive"
     const val APPS = "apps"
     const val SETTINGS = "settings"
+    const val ONBOARDING = "onboarding"
+    const val HELP = "help"
+    const val HELP_SECTION = "help/{index}"
 }
 
 private data class TopLevel(val route: String, val label: String, val icon: ImageVector)
@@ -125,12 +132,12 @@ fun AppNavigation(g: AppGraph) {
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
 
-    // İlk açılışta konfigürasyon yoksa doğrudan sihirbaz (döndürmede tekrar açılmasın).
+    // İlk açılışta konfigürasyon yoksa rehber (bir kez), sonra sihirbaz (döndürmede tekrar açılmasın).
     var firstRunHandled by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         if (!firstRunHandled) {
             firstRunHandled = true
-            if (!g.configRepo.hasConfig()) nav.navigate(Routes.WIZARD)
+            if (!g.configRepo.hasConfig()) nav.navigate(if (g.settings.onboardingDone) Routes.WIZARD else Routes.ONBOARDING)
         }
     }
 
@@ -162,6 +169,7 @@ fun AppNavigation(g: AppGraph) {
                     onConnect = { nav.navigate(Routes.CONNECT) },
                     onTroubleshoot = { nav.navigate(Routes.TROUBLESHOOT) },
                     onSettings = { nav.navigate(Routes.SETTINGS) },
+                    onHelp = { nav.navigate(Routes.HELP) },
                     onOpen = { r -> if (r == Routes.COMPONENTS) nav.navigateTopLevel(r) else nav.navigate(r) },
                 )
             }
@@ -209,6 +217,16 @@ fun AppNavigation(g: AppGraph) {
             composable(Routes.FIREWALL) { FirewallScreen(g, onBack = back) }
             composable(Routes.ALERTS) { AlertsScreen(g, onBack = back) }
             composable(Routes.JOBS) { JobsScreen(g, onBack = back) }
+            composable(Routes.ONBOARDING) {
+                OnboardingScreen(onDone = { template ->
+                    g.settings.onboardingDone = true
+                    // Örnek proje: sihirbaz ilk açılışta taslağa uygular, deploy'dan sonra örnek veri ve site kurulur.
+                    template?.let { g.pendingTemplate.set(TemplateRequest(it.id, applyDraft = true)) }
+                    nav.navigate(Routes.WIZARD) { popUpTo(Routes.ONBOARDING) { inclusive = true } }
+                })
+            }
+            composable(Routes.HELP) { HelpScreen(onBack = back, onOpen = { nav.navigate("help/$it") }) }
+            composable(Routes.HELP_SECTION) { e -> HelpSectionScreen(e.arguments?.getString("index")?.toIntOrNull() ?: -1, onBack = back) }
             composable(Routes.SETTINGS) { dev.droidserver.app.ui.status.SettingsScreen(g, onBack = back) }
             composable(Routes.ENV) { EnvScreen(g, wizard, onBack = back) }
             composable(Routes.AUTOMATIONS) { AutomationsScreen(g, wizard, onBack = back) }

@@ -52,7 +52,16 @@ android {
         release {
             isMinifyEnabled = false
             if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
+            // Tekrarlanabilir derleme (F-Droid aynı kaynaktan aynı APK'yı üretebilsin): derleme ortamına bağlı Git bilgisi
+            // APK'ya yazılmaz.
+            vcsInfo.include = false
         }
+    }
+
+    // Bağımlılık listesi APK'ya Google'ın anahtarıyla şifreli bir blok olarak eklenir; F-Droid bunu kabul etmez.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
 
     compileOptions {
@@ -85,6 +94,15 @@ android {
 kotlin {
     compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
 }
+
+// Uygulama içi yardım: README'ler derlemede `assets/help/` altına kopyalanır (çevrimdışı; bölümlere uygulama ayırır).
+val helpAssets = layout.buildDirectory.dir("generated/help-assets")
+val copyHelp by tasks.registering(Copy::class) {
+    from(rootProject.file("README.md"), rootProject.file("README.en.md"))
+    into(helpAssets.map { it.dir("help") })
+}
+android.sourceSets.getByName("main").assets.directories += helpAssets.get().asFile.path
+tasks.named("preBuild") { dependsOn(copyHelp) }
 
 dependencies {
     implementation(project(":core"))

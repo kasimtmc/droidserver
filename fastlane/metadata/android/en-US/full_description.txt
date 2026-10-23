@@ -1,0 +1,14 @@
+<p>DroidServer turns an Android phone into a backend for your apps and sites. Everything runs on the phone; no cloud account is needed.</p>
+
+<ul>
+<li><b>Data and API:</b> collections (SQLite or PostgreSQL), automatically generated REST and GraphQL APIs, realtime subscriptions, search, import/export.</li>
+<li><b>Users and rules:</b> accounts, roles, teams, two-step verification, passkeys, social login; access rules per collection.</li>
+<li><b>Files and sites:</b> file fields, thumbnails, static site hosting, network drive (WebDAV).</li>
+<li><b>Automation:</b> JavaScript scripts, a job queue, no-code automation rules, forms, webhooks, MQTT and Home Assistant.</li>
+<li><b>Management:</b> a setup wizard, web panel, command-line tool, backups (optionally encrypted to the cloud), audit log, health alerts (notification, e-mail, Telegram) and Telegram commands.</li>
+<li><b>Internet access:</b> Cloudflare tunnel, Tailscale, or direct access with your domain and a Let's Encrypt certificate.</li>
+</ul>
+
+<p>Optional side services (PostgreSQL, Redis, Node.js, Python, cloudflared…) are downloaded and managed from within the app.</p>
+
+<p><b>Note:</b> targetSdk 28 is a deliberate choice: it lets downloaded side services run from the app's folder.</p>

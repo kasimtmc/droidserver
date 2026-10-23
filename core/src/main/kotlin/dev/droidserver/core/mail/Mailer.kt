@@ -1,5 +1,6 @@
 package dev.droidserver.core.mail
 
+import dev.droidserver.core.config.EmailTemplate
 import dev.droidserver.core.config.ServerConfig
 import dev.droidserver.core.i18n.tr
 import java.net.URLEncoder
@@ -45,8 +46,10 @@ class Mailer(
         }
     }
 
-    fun verification(to: String, token: String) {
+    /** [lang]: alıcının dili (isteğin `Accept-Language`'ı); o dilde şablon varsa o kullanılır. */
+    fun verification(to: String, token: String, lang: String? = null) {
         val link = base?.let { "$it/_auth/verify?token=${enc(token)}" }
+        if (sendTemplate(EmailTemplate.VERIFY, lang, to, token, link)) return
         val text = buildString {
             appendLine(tr("Merhaba,"))
             appendLine()
@@ -59,8 +62,9 @@ class Mailer(
         send(to, tr("{0}: e-posta adresinizi doğrulayın", name), text)
     }
 
-    fun reset(to: String, token: String) {
+    fun reset(to: String, token: String, lang: String? = null) {
         val link = base?.let { "$it/_auth/reset?token=${enc(token)}" }
+        if (sendTemplate(EmailTemplate.RESET, lang, to, token, link)) return
         val text = buildString {
             appendLine(tr("Merhaba,"))
             appendLine()
@@ -74,10 +78,11 @@ class Mailer(
     }
 
     /** E-postayla giriş kodu; [linkBase] verilmişse istemci uygulamanın giriş sayfasına bağlantı da. */
-    fun loginCode(to: String, code: String, linkBase: String?) {
+    fun loginCode(to: String, code: String, linkBase: String?, lang: String? = null) {
         val link = linkBase?.trim()?.takeIf { it.isNotEmpty() }?.let { b ->
             b + (if ('?' in b) "&" else "?") + "email=${enc(to)}&code=$code"
         }
+        if (sendTemplate(EmailTemplate.LOGIN, lang, to, code, link)) return
         val text = buildString {
             appendLine(tr("Merhaba,"))
             appendLine()
@@ -98,9 +103,17 @@ class Mailer(
         sender.send(to, subject, text, html)
     }
 
-    private fun send(to: String, subject: String, text: String) {
+    /** Tür ve dil için şablon varsa onunla gönderir. */
+    private fun sendTemplate(kind: String, lang: String?, to: String, code: String, link: String?): Boolean {
+        val t = template(config.email.templates, kind, lang) ?: return false
+        val (subject, text, html) = render(t, mapOf("app" to name, "email" to to, "code" to code, "link" to (link ?: code)))
+        send(to, subject, text, html)
+        return true
+    }
+
+    private fun send(to: String, subject: String, text: String, html: String? = null) {
         try {
-            sender.send(to, subject, text, null)
+            sender.send(to, subject, text, html)
             log("E-posta gönderildi: ${mask(to)} ($subject)")
         } catch (e: Exception) {
             log("E-posta gönderilemedi (${mask(to)}): ${e.message}")
@@ -112,6 +125,29 @@ class Mailer(
         private const val HOUR = 3_600_000L
 
         private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
+
+        /** [kind] için [lang] dilindeki şablon, yoksa dilsiz olanı. */
+        fun template(templates: List<EmailTemplate>, kind: String, lang: String?): EmailTemplate? =
+            templates.firstOrNull { it.kind == kind && lang != null && it.lang == lang } ?: templates.firstOrNull { it.kind == kind && it.lang == null }
+
+        /** Konu, metin ve HTML; `{ad}` yer tutucuları [vars] ile (HTML'de kaçışlanarak) doldurulur, bilinmeyenler boş. */
+        fun render(t: EmailTemplate, vars: Map<String, String>): Triple<String, String, String?> {
+            fun fill(s: String, escape: Boolean) = VAR.replace(s) { m -> vars[m.groupValues[1]].orEmpty().let { v -> if (escape) html(v) else v } }
+            // Konu tek satır kalmalı (değerlerde satır sonu olmaz ama yine de).
+            return Triple(fill(t.subject, false).replace(Regex("[\\r\\n]+"), " "), fill(t.text, false), t.html?.let { fill(it, true) })
+        }
+
+        /** Önizleme için örnek değerlerle (uygulamadaki şablon düzenleyici). */
+        fun preview(t: EmailTemplate, app: String): Triple<String, String, String?> =
+            render(t, mapOf("app" to app, "email" to "ornek@example.com", "code" to "123456", "link" to "https://ornek.example/_auth/${t.kind}?token=…"))
+
+        /** `Accept-Language` başlığının ilk dili (`tr-TR,tr;q=0.9` → `tr`). */
+        fun language(header: String?): String? =
+            header?.split(',')?.firstOrNull()?.substringBefore(';')?.substringBefore('-')?.trim()?.lowercase()?.takeIf { Regex("^[a-z]{2}$").matches(it) }
+
+        private val VAR = Regex("\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
+
+        private fun html(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;")
 
         /** Loglarda adresin yalnızca ilk harfi ve alan adı: `a***@example.com`. */
         fun mask(address: String): String = address.substringBefore('@').take(1) + "***@" + address.substringAfter('@')

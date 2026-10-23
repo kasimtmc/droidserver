@@ -243,6 +243,8 @@ object ConfigValidator {
     private val DDNS_DOMAIN = Regex("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
     private val HOSTNAME = Regex("^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,63}$")
     private val TELEGRAM_CHAT = Regex("^(-?[0-9]{1,20}|@[A-Za-z][A-Za-z0-9_]{4,31})$")
+    private val TELEGRAM_ADMIN_CHAT = Regex("^-?[0-9]{1,20}$")
+    private val TEMPLATE_VAR = Regex("\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
     private val CLOCK = Regex("^([01][0-9]|2[0-3]):[0-5][0-9]$")
 
     /** pgjdbc'nin her sertifikaya güvenen SSL fabrikası; bağlantıyı ortadaki adam saldırısına açar. */
@@ -449,6 +451,10 @@ object ConfigValidator {
             telegram?.let { t ->
                 if (t.botToken.isBlank()) error("alerts.telegram.botToken", tr("Bot token'ı gerekli (@BotFather verir)"))
                 if (!TELEGRAM_CHAT.matches(t.chatId)) error("alerts.telegram.chatId", tr("Sohbet kimliği sayı (örn. 123456789) veya @kanal adı olmalı"))
+                // Komut gönderen sohbetin kimliği her zaman sayıdır (kanala komut yazılamaz).
+                if (t.adminChatId != null && !TELEGRAM_ADMIN_CHAT.matches(t.adminChatId)) {
+                    error("alerts.telegram.adminChatId", tr("Yönetici sohbetinin kimliği sayı olmalı (örn. 123456789)"))
+                }
             }
             if (diskFreeMb !in 50..1_000_000) error("alerts.diskFreeMb", tr("Disk eşiği 50 MB - 1 TB olmalı"))
             if (errorRatePercent !in 1..100) error("alerts.errorRatePercent", tr("Hata oranı eşiği 1-100 olmalı"))
@@ -487,6 +493,20 @@ object ConfigValidator {
                 publicUrl?.takeIf { it.isNotBlank() }?.let { u ->
                     if (!Regex("^https?://[^\\s/]+(:\\d+)?(/\\S*)?$").matches(u)) error("email.publicUrl", tr("Adres http:// veya https:// ile başlamalı, örn. https://evim.duckdns.org:8443"))
                 }
+            }
+            templates.forEachIndexed { i, t ->
+                val at = "email.templates[$i]"
+                if (t.kind !in EmailTemplate.KINDS) error("$at.kind", tr("Şablon türü {0} olmalı", EmailTemplate.KINDS.joinToString()))
+                if (t.lang != null && !Regex("^[a-z]{2}$").matches(t.lang)) error("$at.lang", tr("Dil iki harfli kod olmalı (tr, en) veya boş"))
+                if (t.subject.isBlank() || '\n' in t.subject || '\r' in t.subject) error("$at.subject", tr("Konu tek satır ve boş olmamalı"))
+                if (t.text.isBlank()) error("$at.text", tr("Metin boş olmamalı"))
+                if (t.text.length > 20_000 || (t.html?.length ?: 0) > 100_000) error("$at.text", tr("Şablon çok uzun"))
+                listOfNotNull(t.subject, t.text, t.html).flatMap { TEMPLATE_VAR.findAll(it).map { m -> m.groupValues[1] } }
+                    .firstOrNull { it !in EmailTemplate.PLACEHOLDERS }
+                    ?.let { error("$at.text", tr("Bilinmeyen yer tutucu {{0}}; kullanılabilenler: {1}", it, EmailTemplate.PLACEHOLDERS.joinToString { p -> "{$p}" })) }
+            }
+            templates.groupBy { it.kind to it.lang }.filter { it.value.size > 1 }.keys.firstOrNull()?.let { (kind, lang) ->
+                error("email.templates", tr("'{0}' türü için aynı dilde ({1}) iki şablon var", kind, lang ?: tr("varsayılan")))
             }
         }
         if (config.auth.users.requireVerified && !(config.email.enabled && config.auth.users.enabled)) {

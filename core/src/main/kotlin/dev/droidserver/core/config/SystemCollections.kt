@@ -104,6 +104,13 @@ object SystemCollections {
     )
 
     const val JOBS = "_jobs"
+    const val UNSUBSCRIBED = "_unsubscribed"
+
+    /** Toplu e-postadan çıkan adresler (küçük harf); hesap silinip yeniden açılsa da geçerli. */
+    val unsubscribed = CollectionConfig(
+        name = UNSUBSCRIBED,
+        fields = listOf(FieldConfig("email", FieldType.TEXT, required = true, unique = true)),
+    )
 
     /**
      * Arka plan işleri (bkz. JobQueue): tür, veri, durum (`queued`, `running`, `done`, `failed`, `cancelled`), deneme
