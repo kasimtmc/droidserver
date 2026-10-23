@@ -9,6 +9,9 @@ import dev.droidserver.core.config.ConfigSecrets
 import dev.droidserver.core.config.ConfigValidator
 import dev.droidserver.core.config.ServerConfig
 import dev.droidserver.core.i18n.tr
+import dev.droidserver.core.packages.PackageFile
+import dev.droidserver.core.packages.PackageSignature
+import dev.droidserver.core.packages.Packages
 import dev.droidserver.core.replication.Failover
 import dev.droidserver.core.replication.ReplicaStatus
 import dev.droidserver.core.security.FieldEncryption
@@ -73,6 +76,27 @@ class AppAdminHost(
     override fun createBackup(): BackupInfo = backups.backup(BackupKind.MANUAL, actor = "panel")
 
     override fun replica(): ReplicaStatus? = engine.replica.value
+
+    override fun installPackage(pkg: PackageFile): String {
+        val raw = repo.load()
+        val plan = Packages.plan(ConfigSecrets.resolve(raw, secrets::get), pkg, engine.scriptsDir?.list()?.toSet().orEmpty())
+        require(!plan.blocked) { (plan.conflicts + plan.errors + listOfNotNull((pkg.signature as? PackageSignature.Invalid)?.reason)).joinToString("; ") }
+        engine.stagePackage(pkg, plan.previous)
+        repo.saveText(Packages.apply(raw, pkg).toJson())
+        logs.add(tr("Paket kuruldu: {0} {1}; deploy ediliyor", pkg.manifest.name, pkg.manifest.version))
+        ServerService.deploy(context)
+        return tr("{0} {1} kuruluyor; sunucu kısa süre yeniden başlar.", pkg.manifest.title, pkg.manifest.version)
+    }
+
+    override fun removePackage(name: String): String {
+        val raw = repo.load()
+        val p = raw.packages.firstOrNull { it.name == name } ?: throw IllegalArgumentException(tr("'{0}' paketi kurulu değil", name))
+        repo.saveText(Packages.remove(raw, name).toJson())
+        engine.unstagePackage(p)
+        logs.add(tr("Paket kaldırıldı: {0}; deploy ediliyor", name))
+        ServerService.deploy(context)
+        return tr("{0} kaldırılıyor; koleksiyonların verileri veritabanında kalır.", p.title)
+    }
 
     override fun takeover() {
         val cfg = repo.load()

@@ -203,12 +203,18 @@ class AppGraph(context: Context, val profile: Profile, profiles: ProfileStore) {
         const val TLS_SECRET = "tls_identity_password"
     }
 
+    /** Telefonda çalışan modeller (llama.cpp); reddedilen yükleme sağlık uyarısı olur. */
+    val localModels = dev.droidserver.app.ai.LocalModels(context) { msg ->
+        engine.health.event(dev.droidserver.core.alerts.AlertKind.LOCAL_AI, msg, "local-ai")
+    }
+
     /** Deploy ve veri taşıma aynı anda çalışmasın (servis ve sihirbaz paylaşır). */
     val deployLock = Mutex()
 
     init {
         // Web paneli konfigürasyonu, logları ve yedekleri uygulamadaki gibi yönetir.
         engine.adminHost = AppAdminHost(context, configRepo, secrets, engine, logs, backups)
+        engine.localAi = localModels
         engine.appsHost = apps
         // Kopyada ana sunucunun konfigürasyonu değişince: paylaşılan kısmı alıp kaydet (sırlar şifreli depoya) ve yeniden deploy.
         engine.onPrimaryConfig = { primary, _ ->

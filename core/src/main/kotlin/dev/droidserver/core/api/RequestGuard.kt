@@ -255,7 +255,12 @@ internal val RequestGuard = createApplicationPlugin("DroidServerGuard", ::Reques
     // İçe aktarılan dosya genel gövde sınırından büyük olabilir (yalnızca yönetici kullanır). Zip bellekte toplanmaz;
     // sınırı DataTransfer.importZip okurken uygular.
     fun ApplicationRequest.zipImport() = DataTransfer.isImportPath(local.uri.substringBefore('?')) && queryParameters["format"]?.lowercase() == "zip"
-    fun limitFor(path: String) = if (DataTransfer.isImportPath(path)) maxOf(maxBody, DataTransfer.MAX_IMPORT_BYTES) else maxBody
+    fun limitFor(path: String) = when {
+        DataTransfer.isImportPath(path) -> maxOf(maxBody, DataTransfer.MAX_IMPORT_BYTES)
+        // Paket zip'i (yalnızca yönetici).
+        path.endsWith("/_packages/plan") -> maxOf(maxBody, dev.droidserver.core.packages.Packages.MAX_BYTES)
+        else -> maxBody
+    }
     fun limitFor(request: ApplicationRequest) = if (request.zipImport()) DataTransfer.MAX_ZIP_BYTES else limitFor(request.local.uri.substringBefore('?'))
 
     onCall { call ->

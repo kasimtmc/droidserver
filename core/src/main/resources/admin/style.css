@@ -152,6 +152,19 @@ dialog {
   width: min(720px, 94vw); padding: 22px; box-shadow: 0 12px 40px rgba(0, 0, 0, .25);
 }
 dialog.wide { width: min(1000px, 96vw); }
+/* ---- panolar */
+.dash { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
+.dash .widget { background: var(--card-2); border-radius: var(--radius-sm); padding: 12px; min-width: 0; }
+.dash .w2 { grid-column: span 2; } .dash .w3 { grid-column: span 3; }
+.dash h4 { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
+.dash .big { font-size: 36px; font-weight: 700; }
+.dash .map { height: 280px; margin: 0; }
+@media (max-width: 800px) { .dash { grid-template-columns: 1fr; } .dash .w2, .dash .w3 { grid-column: auto; } }
+svg.chart { width: 100%; height: auto; } svg.chart text { fill: var(--muted); font-size: 11px; }
+svg.chart .bar { fill: var(--accent); } svg.chart .line { stroke: var(--accent); fill: none; stroke-width: 2; }
+.widget-edit { cursor: grab; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.widget-edit.dragging { opacity: .5; } .widget-edit.drop { outline: 2px dashed var(--accent); }
+
 /* ---- harita */
 .map { position: relative; height: min(60vh, 520px); overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--card-2); touch-action: none; cursor: grab; user-select: none; margin: 10px 0; }
 .map-layer { position: absolute; inset: 0; }
