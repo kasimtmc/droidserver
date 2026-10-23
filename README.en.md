@@ -823,6 +823,21 @@ resources), loads only its own files (`Content-Security-Policy`), cannot be fram
 text. Record/user/metrics operations use the normal API with the panel session; configuration, logs and backups use
 `/_admin/api/...`.
 
+Panel counterparts of the app's screens:
+
+- **Users → Teams** (when teams are on): all teams; create, delete, add members (by e-mail), make owner/member, remove.
+- **Automation:** add, edit, enable/disable and delete automation rules, **Try now**; recent runs. **Forms**: address,
+  title, collection, fields and their order, thank-you text or redirect, submission limit.
+- **Services:** MQTT (status, connected devices, recent messages, routes, record events, messages to devices), network drive
+  (shares, read-only, address), live replica and failover (sync status, automatic takeover, witness address, failback,
+  **Take over**), AI (today's usage, semantic index, rebuild), your own apps (status, release, deploy) and the command line
+  tool's install commands.
+
+Settings on these screens are saved the same way as the Schema and Configuration tabs: they pass the app's validation, the
+plan is shown first, and the audit log records them as `panel`. A new MQTT or network drive password can be typed in the
+panel (the phone moves it to the encrypted store; left empty, the saved password is kept). The AI provider key, replica
+setup (the primary's key) and app zips are entered on the phone only.
+
 ### Audit log
 
 Admin actions are logged with who, when and from where: server starts and configuration changes (added/removed collections
@@ -853,6 +868,7 @@ is running:
 | Server isn't running / Component stopped | the server could not start; a component exceeded its restart limit | yes |
 | Backup failed | scheduled backup, copy to folder or cloud upload failed | |
 | App crashed | the app was closed by an uncaught error (reported on next launch) | yes |
+| The system restarted the server | Android killed and restarted the service; Android 11+ also gives the reason | |
 
 The same problem is repeated every `repeatHours` (6) hours, and a single "resolved" message is sent once it clears. During
 **quiet hours** (`quietHours`, e.g. 23:00-07:00) only critical alerts are sent; the others follow when quiet hours end if the problem persists.
@@ -1411,9 +1427,15 @@ password are shown on the screen (if the password is left empty a strong one is 
 
 Connecting:
 
-- **Windows:** This PC → **Add a network location** → the address.
+- **Windows:** This PC → **Add a network location** → the address. If it is not accepted, type `\\<phone>@8080\dav`.
+  Windows uses Digest over plain HTTP and only tries Basic over HTTPS (the server also accepts Basic only over HTTPS);
+  so if it says the password is wrong, re-enter the username and password, there is no need to switch to HTTPS. The
+  **WebClient** service must be running. Windows limits a single file to 50 MB by default (registry:
+  `WebClient\Parameters\FileSizeLimitInBytes`).
 - **macOS:** Finder → Go → **Connect to Server** → the address.
-- **Linux:** Files → Other Locations → `dav://<phone>:8080/dav`; or `davfs2`.
+- **Linux (GNOME):** Files → Other Locations → `dav://<phone>:8080/dav`; or `davfs2`.
+- **Linux (KDE/Dolphin):** type `webdav://<phone>:8080/dav` in the location bar; or Network → **Add Network Folder** →
+  WebDAV, Server: the IP only (no `http://` or port), Port: `8080`, Folder: `/dav`, encryption off.
 - **Phones and tablets:** Solid Explorer, CX File Explorer, iOS Files (add a WebDAV server).
 
 Security:
@@ -1436,6 +1458,12 @@ If the server is unreachable, Status → **Troubleshooter** checks on a single s
 responds, the local network address, internet connectivity, access from the internet (tunnel address, router forwarding,
 DuckDNS), certificate validity, components, battery optimization, notification permission, free storage and active health alerts.
 Each finding has a fix button next to it (start the server, the relevant Android setting, the wizard's Access step, Logs).
+
+What prevents long-running operation shows up here too: the app's battery setting is **Restricted** (Android stops the
+server in the background), Android 12+'s child process restrictions are on while components are in use (see Known Android
+limitations), and the system killed and restarted the server service. For the last one Android 11+ also says why the
+previous process ended (out of memory, excessive battery usage, stopped by the user…); the same goes to Logs and to a
+health alert.
 
 ### Environment and secrets (.env)
 
@@ -1707,7 +1735,9 @@ from the release page and restore the backup.
 
 `.github/workflows/release.yml`: when a `v1.2.3` tag is pushed (or manually from Actions, entering a version), tests run,
 a signed release APK is built, checked with `apksigner` and uploaded to the release as `droidserver-1.2.3.apk` +
-`.apk.sha256` (notes are generated from commits; versions with a suffix like `-beta.1` become pre-releases). The version
+`.apk.sha256` (versions with a suffix like `-beta.1` become pre-releases). If `.github/release-notes/<version>.md` exists
+the release notes start with it (template: `TEMPLATE.md`; the in-app update shows this text), followed by notes generated
+from commits. The version
 name and code come from the tag (`-PappVersion=1.2.3`; code `1.2.3 → 1020399`, pre-releases are lower than the stable
 release of the same version).
 
@@ -1717,7 +1747,7 @@ Create the signing key once and add four secrets (Settings → Secrets and varia
 keytool -genkeypair -keystore release.jks -alias droidserver -keyalg RSA -keysize 4096 -validity 36500
 base64 -w0 release.jks    # output → ANDROID_KEYSTORE_BASE64
 # ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS (droidserver), ANDROID_KEY_PASSWORD
-git tag v0.2.0 && git push origin v0.2.0
+git tag v0.9.0 && git push origin v0.9.0
 ```
 
 Keep `release.jks` and its passwords somewhere safe: if the key is lost, installed apps cannot receive new versions as
@@ -1918,13 +1948,13 @@ tools/          package-postgres.sh, package-cloudflared.sh (component packages 
 ## Roadmap
 
 - [x] **Wizard UI:** step-by-step collection/field/auth selection instead of a JSON editor
-- [x] **PostgreSQL:** Postgres component + pgjdbc; Postgres dialect, data migration from SQLite (awaiting on-device verification)
+- [x] **PostgreSQL:** Postgres component + pgjdbc; Postgres dialect, data migration from SQLite
 - [x] **Relations:** `relation` field type, `onDelete`, `expand` parameter (rules at the API layer)
 - [x] **Advanced filters:** `gt`, `lt`, `like`, `in`, `null` operators and field selection
 - [x] **User management:** `_users` collection, register/login/refresh endpoints, per-collection access rules, account management from the app
 - [x] **Custom business logic:** user-defined endpoints, record events and scheduled jobs in JavaScript (Rhino)
 - [x] **Static files / file uploads:** `file` field type (type detection from content, streaming size limit, thumbnails), static site (upload as zip)
-- [x] **Internet access:** direct IP (HTTPS + automatic port forwarding + DuckDNS), Cloudflare quick/named tunnel, Tailscale (awaiting on-device verification)
+- [x] **Internet access:** direct IP (HTTPS + automatic port forwarding + DuckDNS), Cloudflare quick/named tunnel, Tailscale
 - [x] **TLS:** Let's Encrypt certificate for direct access (DNS-01 with a DuckDNS name, automatic renewal)
 - [x] **Backups:** scheduled backups (SQLite and PostgreSQL, restorable across engines), copy to a folder, restore
 - [x] **Web admin panel:** browser-based management under `/_admin` (sign-in with a pairing code)

@@ -818,6 +818,21 @@ JavaScript'tir (core kaynaklarında `admin/`), yalnızca kendi dosyalarını yü
 çerçevesine konamaz ve verileri yalnızca metin olarak yazar. Kayıt/kullanıcı/metrik işleri normal API'yi panel oturumuyla
 kullanır; konfigürasyon, log ve yedek için `/_admin/api/...`.
 
+Uygulamadaki ekranların panel karşılıkları:
+
+- **Kullanıcılar → Takımlar** (takımlar açıksa): tüm takımlar, kur, sil, üye ekle (e-postayla), sahip/üye yap, çıkar.
+- **Otomasyon:** otomasyon kurallarını ekle, düzenle, aç/kapat, sil ve **Şimdi dene**; son çalışmalar. **Formlar**: adres,
+  başlık, koleksiyon, alanlar ve sıraları, teşekkür metni veya yönlendirme, gönderim sınırı.
+- **Servisler:** MQTT (durum, bağlı cihazlar, son mesajlar, yönlendirmeler, kayıt olayları, cihazlara mesaj), ağ sürücüsü
+  (paylaşımlar, salt okunur, adres), canlı kopya ve devralma (eşitleme durumu, otomatik devralma, tanık adresi, geri alma,
+  **Devral**), yapay zekâ (bugünkü kullanım, anlamsal dizin, yeniden kur), kendi uygulamalarınız (durum, sürüm, deploy) ve
+  komut satırı aracının kurulum komutları.
+
+Bu ekranlardaki ayarlar Şema ve Konfigürasyon sekmeleriyle aynı yoldan kaydedilir: uygulamadaki doğrulamadan geçer, önce
+plan gösterilir, denetim kaydına `panel` olarak düşer. Yeni MQTT veya ağ sürücüsü parolası panelden yazılabilir (telefon
+şifreli depoya taşır; boş bırakılırsa kayıtlı parola korunur). YZ sağlayıcı anahtarı, kopya kurulumu (ana sunucunun
+anahtarı) ve uygulama zip'i yalnızca telefondan girilir.
+
 ### Denetim kaydı
 
 Yönetici işlemleri kim, ne zaman, nereden bilgisiyle kaydedilir: sunucu başlatma ve konfigürasyon değişiklikleri
@@ -848,6 +863,7 @@ denetlenir:
 | Sunucu çalışmıyor / bileşen durdu | sunucu başlatılamadı; bileşen yeniden başlatma sınırını aştı | evet |
 | Yedek alınamadı | zamanlanmış yedek, klasöre kopyalama veya bulut yüklemesi başarısız | |
 | Uygulama kapandı | uygulama yakalanmayan bir hatayla kapandı (sonraki açılışta) | evet |
+| Sistem sunucuyu yeniden başlattı | Android servisi öldürüp yeniden başlattı; Android 11+ nedenini de yazar | |
 
 Aynı sorun `repeatHours` (6) saatte bir hatırlatılır, düzelince bir kez "düzeldi" gelir. **Sessiz saatlerde**
 (`quietHours`, örn. 23:00-07:00) yalnızca kritik uyarılar gider; diğerleri sorun sürüyorsa sessiz saat bitince.
@@ -1398,9 +1414,15 @@ ve parola ekranda (parola boş bırakılırsa güçlü bir parola üretilir, şi
 
 Bağlanma:
 
-- **Windows:** Bu bilgisayar → **Ağ konumu ekle** → adres.
+- **Windows:** Bu bilgisayar → **Ağ konumu ekle** → adres. Kabul etmezse `\\<telefon>@8080\dav` yazın. Windows düz
+  HTTP'de Digest kullanır, Basic'i yalnızca HTTPS'de dener (sunucu da Basic'i yalnızca HTTPS'de kabul eder); bu yüzden
+  "parola yanlış" diyorsa kullanıcı adı ve parolayı yeniden girin, HTTPS'e geçmek gerekmez. **WebClient** hizmeti
+  çalışıyor olmalı. Windows tek dosyayı varsayılan olarak 50 MB ile sınırlar (kayıt defterinde
+  `WebClient\Parameters\FileSizeLimitInBytes`).
 - **macOS:** Finder → Git → **Sunucuya Bağlan** → adres.
-- **Linux:** Dosyalar → Diğer Konumlar → `dav://<telefon>:8080/dav`; ya da `davfs2`.
+- **Linux (GNOME):** Dosyalar → Diğer Konumlar → `dav://<telefon>:8080/dav`; ya da `davfs2`.
+- **Linux (KDE/Dolphin):** adres çubuğuna `webdav://<telefon>:8080/dav`; ya da Ağ → **Ağ klasörü ekle** → WebDAV,
+  Sunucu: yalnızca IP (`http://` ve port olmadan), Kapı: `8080`, Klasör: `/dav`, şifreleme kapalı.
 - **Telefon ve tablet:** Solid Explorer, CX Dosya Gezgini, iOS Dosyalar (WebDAV sunucusu ekle).
 
 Güvenlik:
@@ -1422,6 +1444,11 @@ Sunucuya ulaşılamıyorsa Durum → **Sorun giderici**: konfigürasyonu, sunucu
 adresini, internet bağlantısını, internetten erişimi (tünel adresi, modem yönlendirmesi, DuckDNS), sertifika süresini,
 bileşenleri, pil optimizasyonunu, bildirim iznini, boş depolamayı ve etkin sağlık uyarılarını tek ekranda denetler.
 Her bulgunun yanında çözüm düğmesi vardır (sunucuyu başlat, ilgili Android ayarı, sihirbazın Erişim adımı, Loglar).
+
+Uzun süre çalışmayı engelleyenler de burada görünür: uygulamanın pil ayarı **Kısıtlı** ise (Android sunucuyu arka planda
+durdurur), bileşen kullanılırken Android 12+'nın alt süreç kısıtı açıksa (bkz. Bilinen Android kısıtları) ve sistem
+sunucu servisini öldürüp yeniden başlattıysa. Sonuncusunda Android 11+ önceki sürecin neden bittiğini de söyler (bellek
+yetmedi, aşırı pil kullanımı, kullanıcı durdurdu…); aynı bilgi Loglar'a ve sağlık uyarısı olarak da düşer.
 
 ### Ortam ve sırlar (.env)
 
@@ -1682,7 +1709,8 @@ APK'yı kurun ve yedeği geri yükleyin.
 
 `.github/workflows/release.yml`: `v1.2.3` etiketi gönderilince (veya Actions'tan elle, sürüm girerek) testler koşar,
 imzalı yayın APK'sı üretilir, `apksigner` ile denetlenir ve sürüme `droidserver-1.2.3.apk` + `.apk.sha256` olarak
-yüklenir (notlar commit'lerden üretilir; `-beta.1` gibi ekli sürümler ön sürüm olur). Sürüm adı ve kodu etiketten
+yüklenir (`-beta.1` gibi ekli sürümler ön sürüm olur). Sürüm notu `.github/release-notes/<sürüm>.md` varsa onunla başlar
+(şablon: `TEMPLATE.md`; uygulama içi güncelleme bu metni gösterir), altına commit'lerden üretilen notlar eklenir. Sürüm adı ve kodu etiketten
 gelir (`-PappVersion=1.2.3`; kod `1.2.3 → 1020399`, ön sürümler aynı sürümün kararlısından küçük).
 
 İmza anahtarını bir kez oluşturun ve dört secret ekleyin (Settings → Secrets and variables → Actions):
@@ -1691,7 +1719,7 @@ gelir (`-PappVersion=1.2.3`; kod `1.2.3 → 1020399`, ön sürümler aynı sür�
 keytool -genkeypair -keystore release.jks -alias droidserver -keyalg RSA -keysize 4096 -validity 36500
 base64 -w0 release.jks    # çıktı → ANDROID_KEYSTORE_BASE64
 # ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS (droidserver), ANDROID_KEY_PASSWORD
-git tag v0.2.0 && git push origin v0.2.0
+git tag v0.9.0 && git push origin v0.9.0
 ```
 
 `release.jks`'i ve parolalarını güvenli bir yerde saklayın: anahtar kaybolursa kurulu uygulamalar yeni sürümleri
@@ -1889,13 +1917,13 @@ tools/          package-postgres.sh, package-cloudflared.sh (Termux derlemelerin
 ## Yol haritası
 
 - [x] **Sihirbaz arayüzü:** JSON düzenleyici yerine adım adım koleksiyon/alan/auth seçimi
-- [x] **PostgreSQL:** Postgres bileşeni + pgjdbc; Postgres lehçesi, SQLite'tan veri taşıma (cihazda doğrulama bekliyor)
+- [x] **PostgreSQL:** Postgres bileşeni + pgjdbc; Postgres lehçesi, SQLite'tan veri taşıma
 - [x] **İlişkiler:** `relation` alan tipi, `onDelete`, `expand` parametresi (kurallar API katmanında)
 - [x] **Gelişmiş filtre:** `gt`, `lt`, `like`, `in`, `null` operatörleri ve alan seçimi
 - [x] **Kullanıcı yönetimi:** `_users` koleksiyonu, kayıt/giriş/yenileme uçları, koleksiyon başına yetki kuralları, uygulamadan hesap yönetimi
 - [x] **Özel iş mantığı:** JavaScript (Rhino) ile kullanıcı tanımlı uçlar, kayıt olayları ve zamanlanmış görevler
 - [x] **Statik dosya / dosya yükleme:** `file` alan tipi (içerikten tip tespiti, akışta boyut sınırı, küçük resim), statik site (zip ile yükleme)
-- [x] **İnternetten erişim:** doğrudan IP (HTTPS + otomatik port yönlendirme + DuckDNS), Cloudflare hızlı/adlandırılmış tünel, Tailscale (cihazda doğrulama bekliyor)
+- [x] **İnternetten erişim:** doğrudan IP (HTTPS + otomatik port yönlendirme + DuckDNS), Cloudflare hızlı/adlandırılmış tünel, Tailscale
 - [x] **TLS:** doğrudan erişimde Let's Encrypt sertifikası (DuckDNS adıyla DNS-01, kendiliğinden yenileme)
 - [x] **Yedekleme:** zamanlanmış yedek (SQLite ve PostgreSQL, motorlar arası geri yüklenebilir), klasöre kopya, geri yükleme
 - [x] **Web admin paneli:** `/_admin` altında tarayıcıdan yönetim (eşleştirme koduyla giriş)

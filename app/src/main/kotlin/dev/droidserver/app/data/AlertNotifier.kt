@@ -1,10 +1,13 @@
 package dev.droidserver.app.data
 
+import android.app.ActivityManager
+import android.app.ApplicationExitInfo
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import dev.droidserver.app.R
 import dev.droidserver.app.graph
@@ -72,4 +75,36 @@ object CrashMarker {
     }
 
     private const val FILE = "crash.txt"
+}
+
+/** Sistemin servisi öldürüp yeniden başlatması (START_STICKY): sağlık uyarısı ve sorun giderici için. */
+object ServiceRestart {
+    /** Bu süreçte servis sistemce yeniden başlatıldıysa açıklaması; süreç her başlatmada yenidir. */
+    @Volatile
+    var last: String? = null
+        private set
+
+    fun record(context: Context): String =
+        (tr("{0} tarihinde sistem sunucu servisini durdurup yeniden başlattı.", Instant.now()) + (exitReason(context)?.let { "\n$it" }.orEmpty()))
+            .also { last = it }
+
+    /** Önceki sürecin bitiş nedeni (Android 11+). */
+    private fun exitReason(context: Context): String? {
+        if (Build.VERSION.SDK_INT < 30) return null
+        val info = runCatching {
+            context.getSystemService(ActivityManager::class.java).getHistoricalProcessExitReasons(null, 0, 1).firstOrNull()
+        }.getOrNull() ?: return null
+        val reason = when (info.reason) {
+            ApplicationExitInfo.REASON_LOW_MEMORY -> tr("bellek yetmedi")
+            ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> tr("aşırı pil veya işlemci kullanımı")
+            ApplicationExitInfo.REASON_SIGNALED -> tr("sistem sonlandırdı (sinyal {0})", info.status)
+            ApplicationExitInfo.REASON_USER_REQUESTED -> tr("kullanıcı durdurdu (Zorla durdur veya son uygulamalardan kaydırma)")
+            ApplicationExitInfo.REASON_CRASH, ApplicationExitInfo.REASON_CRASH_NATIVE -> tr("çökme")
+            ApplicationExitInfo.REASON_ANR -> tr("yanıt vermedi (ANR)")
+            ApplicationExitInfo.REASON_PERMISSION_CHANGE -> tr("izin değişti")
+            else -> tr("kod {0}", info.reason)
+        }
+        return tr("Önceki süreç {0} tarihinde bitti: {1}.", Instant.ofEpochMilli(info.timestamp), reason) +
+            (info.description?.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty())
+    }
 }

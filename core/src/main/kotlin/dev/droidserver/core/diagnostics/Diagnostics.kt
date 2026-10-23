@@ -9,7 +9,7 @@ import java.time.Instant
 enum class Level { OK, INFO, WARNING, PROBLEM }
 
 /** Bulgunun yanında önerilen düzeltme (app bir düğmeye bağlar). */
-enum class Fix { START_SERVER, BATTERY_SETTINGS, NOTIFICATION_SETTINGS, OPEN_WIZARD, OPEN_ACCESS, OPEN_COMPONENTS, OPEN_LOGS, OPEN_WIFI_SETTINGS }
+enum class Fix { START_SERVER, BATTERY_SETTINGS, APP_SETTINGS, DEVELOPER_SETTINGS, NOTIFICATION_SETTINGS, OPEN_WIZARD, OPEN_ACCESS, OPEN_COMPONENTS, OPEN_LOGS, OPEN_WIFI_SETTINGS }
 
 data class Finding(val id: String, val level: Level, val title: String, val detail: String, val fix: Fix? = null)
 
@@ -17,6 +17,8 @@ data class Finding(val id: String, val level: Level, val title: String, val deta
  * Sorun gidericinin girdileri; app toplar (ağ istekleri, Android ayarları, bileşenler). null: denetlenemedi.
  * [localHealth]: telefonun kendisinden `http://127.0.0.1:<port>/api/health` yanıt verdi mi; [publicHealth]: dış
  * adres (tünel veya doğrudan erişim) yanıt verdi mi; [internet]: genel bir adres çözülüp bağlanılabildi mi.
+ * [backgroundRestricted]: pil ayarı "Kısıtlı"; [childProcessLimit]: Android 12+ alt süreç kısıtı açık ve bileşen
+ * çalışıyor; [serviceRestart]: bu süreçte sistem servisi öldürüp yeniden başlattıysa açıklaması.
  */
 data class DiagnosticInput(
     val hasConfig: Boolean,
@@ -35,6 +37,9 @@ data class DiagnosticInput(
     val certificateUntil: Instant? = null,
     val failedComponents: List<String> = emptyList(),
     val batteryOptimized: Boolean? = null,
+    val backgroundRestricted: Boolean? = null,
+    val childProcessLimit: Boolean? = null,
+    val serviceRestart: String? = null,
     val notificationsAllowed: Boolean? = null,
     val freeStorageBytes: Long? = null,
     val activeAlerts: List<String> = emptyList(),
@@ -114,6 +119,21 @@ object Diagnostics {
             )
             false -> add(Finding("battery", Level.OK, tr("Pil optimizasyonundan muaf"), ""))
             null -> {}
+        }
+        if (i.backgroundRestricted == true) {
+            add(Finding("background", Level.PROBLEM, tr("Arka plan kullanımı kısıtlı"), tr("Uygulamanın pil ayarı \"Kısıtlı\"; Android sunucuyu arka planda durdurur. Uygulama bilgisi → Pil → Kısıtlanmamış seçin."), Fix.APP_SETTINGS))
+        }
+        if (i.childProcessLimit == true) {
+            add(
+                Finding(
+                    "processes", Level.WARNING, tr("Alt süreç kısıtı açık"),
+                    tr("Android 12+ bileşenleri (PostgreSQL, cloudflared, uygulamalar) uyarısız durdurabilir. Geliştirici seçenekleri → \"Alt süreç kısıtlamalarını devre dışı bırak\" (Android 14+) veya README'deki ADB komutu."),
+                    Fix.DEVELOPER_SETTINGS,
+                ),
+            )
+        }
+        i.serviceRestart?.let {
+            add(Finding("restart", Level.WARNING, tr("Sistem sunucuyu yeniden başlattı"), it + "\n" + tr("Sık oluyorsa pil optimizasyonundan muaf tutun ve üreticinin pil ayarlarına bakın (dontkillmyapp.com)."), Fix.BATTERY_SETTINGS))
         }
         if (i.notificationsAllowed == false) {
             add(Finding("notifications", Level.WARNING, tr("Bildirimler kapalı"), tr("Sunucu bildirimi ve sağlık uyarıları görünmez."), Fix.NOTIFICATION_SETTINGS))

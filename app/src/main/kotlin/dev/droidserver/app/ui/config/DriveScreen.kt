@@ -128,8 +128,18 @@ fun DriveScreen(g: AppGraph, wizard: WizardViewModel, onBack: () -> Unit) {
             SectionCard(tr("Bilgisayardan bağlanma")) {
                 val a = address ?: "http://<telefon>:8080${initial.path}"
                 Text(tr("Windows: Bu bilgisayar → Ağ konumu ekle → {0}", a), style = MaterialTheme.typography.bodySmall)
+                Text(
+                    tr("Windows adresi kabul etmezse: {0}. WebClient hizmeti çalışıyor olmalı; Windows tek dosyayı varsayılan olarak 50 MB ile sınırlar.",
+                        "\\\\" + a.removePrefix("http://").replaceFirst(":", "@").replace("/", "\\")),
+                    style = MaterialTheme.typography.bodySmall,
+                )
                 Text(tr("macOS: Finder → Git → Sunucuya Bağlan → {0}", a), style = MaterialTheme.typography.bodySmall)
-                Text(tr("Linux: Dosyalar → Diğer Konumlar → {0}", a.replaceFirst("http://", "dav://")), style = MaterialTheme.typography.bodySmall)
+                Text(tr("Linux (GNOME): Dosyalar → Diğer Konumlar → {0}", a.replaceFirst("http://", "dav://")), style = MaterialTheme.typography.bodySmall)
+                Text(
+                    tr("Linux (KDE/Dolphin): {0}; ya da Ağ klasörü ekle → WebDAV, Sunucu: yalnızca IP, Kapı: {1}, Klasör: {2}, şifreleme kapalı.",
+                        a.replaceFirst("http://", "webdav://"), a.substringAfterLast(":").substringBefore("/"), initial.path),
+                    style = MaterialTheme.typography.bodySmall,
+                )
                 Text(tr("Android/iOS: Solid Explorer, CX Dosya Gezgini, Dosyalar uygulaması (WebDAV sunucusu ekle)."), style = MaterialTheme.typography.bodySmall)
                 Text(
                     tr("Parola ağda açık gitmez (Digest). İnternetten bağlanacaksanız HTTPS adresini (doğrudan erişim veya tünel) kullanın."),

@@ -9,6 +9,8 @@ import dev.droidserver.core.config.ConfigSecrets
 import dev.droidserver.core.config.ConfigValidator
 import dev.droidserver.core.config.ServerConfig
 import dev.droidserver.core.i18n.tr
+import dev.droidserver.core.replication.Failover
+import dev.droidserver.core.replication.ReplicaStatus
 import dev.droidserver.core.security.FieldEncryption
 import dev.droidserver.core.server.ServerEngine
 import kotlinx.serialization.json.JsonArray
@@ -69,4 +71,14 @@ class AppAdminHost(
     override fun backups(): List<BackupInfo> = engine.backups?.list().orEmpty()
 
     override fun createBackup(): BackupInfo = backups.backup(BackupKind.MANUAL, actor = "panel")
+
+    override fun replica(): ReplicaStatus? = engine.replica.value
+
+    override fun takeover() {
+        val cfg = repo.load()
+        check(cfg.replication.replicaOf != null) { tr("Bu sunucu kopya değil") }
+        repo.saveText(Failover.promote(cfg, engine.replica.value?.primaryId).toJson())
+        logs.add(tr("Web panelinden devralındı; deploy ediliyor"))
+        ServerService.deploy(context)
+    }
 }
