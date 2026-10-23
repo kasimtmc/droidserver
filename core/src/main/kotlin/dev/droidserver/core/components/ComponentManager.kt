@@ -373,7 +373,7 @@ class ComponentManager(
         val proc = pid?.let { File("/proc/$it") }
         // Android başka uygulamaların süreçlerini /proc'ta göstermez; görünüyorsa komut satırına bakılır.
         val alive = proc != null && proc.exists() &&
-            runCatching { File(proc, "cmdline").readText().contains(program) }.getOrDefault(true)
+            runCatching { runsProgram(File(proc, "cmdline").readText(), program) }.getOrDefault(true)
         if (alive) return
         lock.delete()
         log("$id: eski kilit dosyası silindi (${lock.name}, PID ${pid ?: "?"} artık bu programa ait değil)")
@@ -480,3 +480,14 @@ class ComponentManager(
 
     private fun unzip(bytes: ByteArray, dest: File) = unzipSafely(bytes.inputStream(), dest)
 }
+
+/**
+ * Komut satırı (`/proc/<pid>/cmdline`, NUL ayrımlı) [program]'ı mı çalıştırıyor: ilk iki argümandan birinin dosya adı
+ * (betikte ilki yorumlayıcıdır) ya da süreç adını değiştiren Postgres alt süreçleri gibi `program:` biçimi. Alt dize
+ * araması yetmez: yoldaki başka bir klasör adı (`/home/runner`) programın adını içerebilir.
+ */
+internal fun runsProgram(cmdline: String, program: String): Boolean =
+    cmdline.split('\u0000').take(2).any { arg ->
+        val first = arg.substringBefore(' ')
+        first.substringAfterLast('/') == program || first == "$program:"
+    }
