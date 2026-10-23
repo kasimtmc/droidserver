@@ -59,6 +59,7 @@ enum class AutomationActionType(val title: String) {
     @SerialName("log") LOG(tr("Loga yaz")),
     @SerialName("mqtt") MQTT(tr("MQTT mesajı gönder")),
     @SerialName("ai") AI(tr("YZ ile alan doldur")),
+    @SerialName("payment") PAYMENT(tr("Ödeme bağlantısı oluştur")),
 }
 
 /**
@@ -72,6 +73,9 @@ enum class AutomationActionType(val title: String) {
  *  - `mqtt`: [topic] (joker olmadan; `{alan}` kullanılabilir), [body] içerik, [retain] tutulan mesaj.
  *  - `ai`: [body] istem (`{alan}` kayıttan dolar), [field] tetikleyen kaydın yazılacak alanı (özet, sınıflandırma, çeviri);
  *    seçim alanında yanıt seçeneklerden biri olmalı. Ayarlı YZ sağlayıcısıyla (telefondaki yerel model dahil).
+ *  - `payment`: [amount] tutar (`{total}` gibi bir alan ya da `149.90`), [currency] (varsayılan TRY), [subject] açıklama,
+ *    [provider] (boşsa ilk sağlayıcı), [to] alıcının e-postası (isteğe bağlı); bağlantı tetikleyen kayda bağlanır ve
+ *    ödeme sayfasının adresi [field] alanına yazılır. Durum ödemeler ayarındaki durum alanına gelir.
  */
 @Serializable
 data class AutomationAction(
@@ -86,6 +90,9 @@ data class AutomationAction(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val topic: String? = null,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val retain: Boolean = false,
     @EncodeDefault(EncodeDefault.Mode.NEVER) val field: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val amount: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val currency: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val provider: PaymentProvider? = null,
 ) {
     companion object {
         /** `push` eyleminde kaydın sahibi. */

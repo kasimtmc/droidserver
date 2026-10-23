@@ -306,6 +306,7 @@ private fun ActionCard(cfg: ServerConfig, collection: String?, scheduled: Boolea
             AutomationActionType.UPDATE -> collection != null || a.type == t
             AutomationActionType.MQTT -> cfg.mqtt.enabled || a.type == t
             AutomationActionType.AI -> (cfg.ai.enabled && collection != null && !scheduled) || a.type == t
+            AutomationActionType.PAYMENT -> (cfg.payments.enabled && collection != null && !scheduled) || a.type == t
             else -> true
         }
     }
@@ -364,6 +365,25 @@ private fun ActionCard(cfg: ServerConfig, collection: String?, scheduled: Boolea
                         targets.forEach { f -> FilterChip(a.field == f.name, { onChange(a.copy(field = f.name)) }, label = { Text(f.name) }) }
                     }
                     Text(tr("Seçim alanında yanıt seçeneklerden biri olmalı (sınıflandırma). Yerel modelde yavaş olabilir; olay sırayla işlenir."), style = MaterialTheme.typography.bodySmall)
+                }
+                AutomationActionType.PAYMENT -> {
+                    field(tr("Tutar"), a.amount, tr("Sayı, alan ya da hesap: {total}, {service.price}, {product.price} * {quantity}")) { a.copy(amount = it) }()
+                    field(tr("Para birimi"), a.currency, tr("Üç harf; boşsa TRY")) { a.copy(currency = it.trim().uppercase().ifEmpty { null }) }()
+                    field(tr("Açıklama"), a.subject, tr("Ödeme sayfasında görünür, örn. Sipariş #{id}")) { a.copy(subject = it) }()
+                    field(tr("Alıcının e-postası (isteğe bağlı)"), a.to, tr("Örn. {email}")) { a.copy(to = it) }()
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(a.provider == null, { onChange(a.copy(provider = null)) }, label = { Text(tr("İlk sağlayıcı")) })
+                        cfg.payments.providers.filter { it.enabled }.forEach { p -> FilterChip(a.provider == p.provider, { onChange(a.copy(provider = p.provider)) }, label = { Text(p.provider.title) }) }
+                    }
+                    Text(tr("Ödeme sayfasının adresinin yazılacağı alan:"), style = MaterialTheme.typography.bodySmall)
+                    val targets = cfg.collections.firstOrNull { it.name == collection }?.fields.orEmpty().filter { it.computed == null && it.type == FieldType.TEXT }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        targets.forEach { f -> FilterChip(a.field == f.name, { onChange(a.copy(field = if (a.field == f.name) null else f.name)) }, label = { Text(f.name) }) }
+                    }
+                    Text(
+                        tr("Sonraki eylemlerde {payment_url} kullanılır (ör. e-postayla gönderin). Güncellemede çalışacaksa koşula {0}[null]=true ekleyin; bağlantı bir kez üretilir.", a.field ?: "payment_url"),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
                 AutomationActionType.MQTT -> {
                     field(tr("Konu"), a.topic, tr("Joker olmadan, örn. ev/salon/lamba veya ev/{oda}/lamba")) { a.copy(topic = it) }()

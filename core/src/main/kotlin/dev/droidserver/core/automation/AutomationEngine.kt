@@ -8,6 +8,7 @@ import dev.droidserver.core.config.GeoPoint
 import dev.droidserver.core.config.AutomationActionType
 import dev.droidserver.core.config.AutomationConfig
 import dev.droidserver.core.config.CollectionConfig
+import dev.droidserver.core.config.Expression
 import dev.droidserver.core.config.FieldType
 import dev.droidserver.core.i18n.tr
 import dev.droidserver.core.mqtt.MqttBroker
@@ -72,6 +73,8 @@ class AutomationOutputs(
     val mqtt: ((topic: String, payload: String, retain: Boolean) -> Int)? = null,
     /** YZ (sistem talimatı, istem) → yanıt metni. */
     val ai: ((system: String, prompt: String) -> String)? = null,
+    /** Ödeme bağlantısı (PaymentService.create gövdesi) → (ödeme sayfası, kayda yazılacak durum alanı). */
+    val payment: ((body: JsonObject) -> Pair<String, Map<String, JsonElement>>)? = null,
 )
 
 /**
@@ -191,7 +194,7 @@ class AutomationEngine(
                     val n = matched.count { update(rule, collection!!, it, action, vars, 0) }
                     tr("{0} kayıt güncellendi", n)
                 } else {
-                    perform(rule, action, collection, JsonObject(emptyMap()), vars, 0)
+                    perform(rule, action, collection, JsonObject(emptyMap()), vars.toMutableMap(), 0)
                 }
             }
             record(rule, trigger, true, done.joinToString("; "), started)
@@ -218,7 +221,8 @@ class AutomationEngine(
         val started = System.nanoTime()
         val collection = rule.trigger.collection
         return try {
-            val vars = mapOf("collection" to (collection ?: ""), "event" to trigger, "count" to "1") + extra
+            // Ödeme eyleminden sonra `{payment_url}` sonraki eylemlerde (ör. e-postada) kullanılır.
+            val vars = (mapOf("collection" to (collection ?: ""), "event" to trigger, "count" to "1") + extra).toMutableMap()
             val done = rule.actions.map { action ->
                 if (action.type == AutomationActionType.UPDATE) {
                     if (update(rule, collection!!, rec, action, vars, depth)) tr("kayıt güncellendi") else tr("değişiklik yok")
@@ -233,7 +237,7 @@ class AutomationEngine(
     }
 
     /** UPDATE dışındaki eylemler; yapılanın kısa açıklaması. */
-    private fun perform(rule: AutomationConfig, a: AutomationAction, collection: String?, rec: JsonObject, vars: Map<String, String>, depth: Int): String {
+    private fun perform(rule: AutomationConfig, a: AutomationAction, collection: String?, rec: JsonObject, vars: MutableMap<String, String>, depth: Int): String {
         fun fill(t: String?) = fill(t.orEmpty(), rule, rec, vars)
         return when (a.type) {
             AutomationActionType.EMAIL -> {
@@ -301,8 +305,37 @@ class AutomationEngine(
                 changed(collection!!, RecordEvent.Action.UPDATE, updated, depth + 1)
                 tr("YZ: '{0}' alanı yazıldı", f.name)
             }
+            AutomationActionType.PAYMENT -> {
+                val create = outputs.payment ?: error(tr("Ödemeler kapalı"))
+                val id = (rec["id"] as? JsonPrimitive)?.longOrNull ?: error(tr("Kaydın kimliği yok"))
+                val body = buildJsonObject {
+                    put("amount", JsonPrimitive(amount(fill(a.amount).trim())))
+                    a.currency?.let { put("currency", JsonPrimitive(it)) }
+                    put("description", JsonPrimitive(fill(a.subject).trim().ifEmpty { "${rule.name} #$id" }))
+                    a.provider?.let { put("provider", JsonPrimitive(it.wire)) }
+                    fill(a.to).trim().takeIf { '@' in it }?.let { put("email", JsonPrimitive(it)) }
+                    put("collection", JsonPrimitive(collection))
+                    put("record", JsonPrimitive(id))
+                    if (a.values.isNotEmpty()) put("buyer", JsonObject(a.values.mapValues { JsonPrimitive(fill(it.value)) }))
+                }
+                val (url, fields) = create(body)
+                vars["payment_url"] = url
+                val write = fields + listOfNotNull(a.field?.let { it to JsonPrimitive(url) })
+                if (write.isNotEmpty()) {
+                    val updated = writes.write { services.getValue(collection!!).update(id, JsonObject(write)) }
+                    changed(collection!!, RecordEvent.Action.UPDATE, updated, depth + 1)
+                }
+                tr("ödeme bağlantısı oluşturuldu")
+            }
             AutomationActionType.UPDATE -> error("UPDATE")
         }
+    }
+
+    /** Tutar: sayı ya da doldurulmuş ifade (`249.9 * 2`); sonuç iki ondalığa yuvarlanır. */
+    private fun amount(text: String): String {
+        text.toBigDecimalOrNull()?.let { return text }
+        val v = runCatching { Expression.parse(text).evaluate(emptyMap()) }.getOrNull() as? Number ?: error(tr("Tutar sayı değil: '{0}'", text.take(60)))
+        return java.math.BigDecimal(v.toString()).setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()
     }
 
     /** Kaydı günceller; değerler zaten aynıysa yazmaz. Yazıldıysa true. */
@@ -333,13 +366,24 @@ class AutomationEngine(
     private fun fill(template: String, rule: AutomationConfig, rec: JsonObject, vars: Map<String, String>): String =
         PLACEHOLDER.replace(template) { m ->
             val key = m.groupValues[1]
-            when (key) {
-                "now" -> clock().truncatedTo(ChronoUnit.SECONDS).toString()
-                "rule" -> rule.name
-                in vars -> vars.getValue(key)
-                else -> (rec[key] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content ?: (rec[key]?.takeIf { it !is JsonNull }?.toString() ?: "")
+            val sub = m.groupValues[2]
+            when {
+                sub.isNotEmpty() -> related(rule.trigger.collection, rec, key)?.let { text(it[sub]) }.orEmpty()
+                key == "now" -> clock().truncatedTo(ChronoUnit.SECONDS).toString()
+                key == "rule" -> rule.name
+                key in vars -> vars.getValue(key)
+                else -> text(rec[key])
             }
         }
+
+    private fun text(v: JsonElement?): String = (v as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content ?: (v?.takeIf { it !is JsonNull }?.toString() ?: "")
+
+    /** `{ilişki.alan}`: ilişki alanının gösterdiği kayıt (bir adım; hedef koleksiyon okunamıyorsa null). */
+    private fun related(collection: String?, rec: JsonObject, field: String): JsonObject? {
+        val f = byCollection[collection]?.fields?.firstOrNull { it.name == field && it.type == FieldType.RELATION } ?: return null
+        val id = (rec[field] as? JsonPrimitive)?.longOrNull ?: return null
+        return runCatching { services[f.collection]?.get(id) }.getOrNull()
+    }
 
     private fun record(rule: AutomationConfig, trigger: String, ok: Boolean, message: String, started: Long): AutomationRun {
         val run = AutomationRun(rule.name, trigger, ok, message, clock(), (System.nanoTime() - started) / 1_000_000)
@@ -361,7 +405,7 @@ class AutomationEngine(
         const val MAX_PENDING = 1_000
         const val MAX_BULK = 1_000
         const val HISTORY = 100
-        private val PLACEHOLDER = Regex("\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
+        private val PLACEHOLDER = Regex("\\{([A-Za-z_][A-Za-z0-9_]*)(?:\\.([A-Za-z_][A-Za-z0-9_]*))?\\}")
 
         fun typed(type: FieldType?, text: String): JsonElement {
             if (text.isEmpty()) return JsonNull

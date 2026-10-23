@@ -155,6 +155,7 @@ yer tutucu anahtar yerine yeni üretilmiş bir anahtarla). Sonrasında **Sunucu*
 | `forms` | Herkese açık formlar: `name` (adres `/forms/<name>`), `collection`, `title`, `fields`, `successMessage`, `redirect` … (bkz. Formlar) |
 | `pages` | Kodsuz sayfalar: `name` (`/pages/<name>`), `collection`, `title`, `fields`, `detailFields`, `filter`, `sort`, `perPage`, `layout` (`cards`/`table`), `detail`, `login`, `accent` (bkz. Sayfalar ve panolar) |
 | `dashboards` | Panolar: `name`, `title`, `widgets: [{type: number\|chart\|table\|map, view, metric, chart, field, limit, width}]`, `shareToken` |
+| `payments` | Ödemeler: `providers` (`provider`: `stripe`/`iyzico`/`paddle`, `secretKey`, `apiKey`, `webhookSecret`, `clientToken` (`secret:`), `sandbox`, `enabled`), `publicUrl`, `plans` (`name`, `title`, `provider`, `price`, `role`, `quotas`), `statusField`, `merchant` (bkz. Ödemeler) |
 | `ai` | Yapay zekâ: `enabled`, `provider` (`claude`/`openai`/`gemini`), `url`, `apiKey` (`secret:`), `model`, `effort`, `access`, `dailyLimit`, `embeddings`, `semantic` (bkz. Yapay zekâ) |
 | `webdav` | Ağ sürücüsü: `enabled`, `path`, `username`, `password` (`secret:`), `readOnly`, `site`, `scripts`, `uploads`, `maxFileMb` (bkz. Ağ sürücüsü) |
 | `mqtt` | MQTT (IoT): `enabled`, `port` (1883), `username`, `password` (`secret:`), `routes` (`topic`, `collection`, `valueField`, `topicField`), `events`, `eventPrefix`, `maxClients`, `devices` (cihaz başına kimlik), `scenes`, `homeAssistant` (bkz. MQTT) |
@@ -1372,6 +1373,46 @@ yukarı/aşağı ile sıralanır; genişlik 1-3 sütun. `shareToken` verilirse `
 paylaşılır (giriş gerekmez, adresi bilen görür; grafikler SVG, harita karo görselleri, betik yok). Yönetici verisi
 `GET /api/_dashboards/<ad>`.
 
+### Ödemeler (Stripe, iyzico, Paddle)
+
+Sunucu → **Ödemeler** (`payments`) ödeme sağlayıcılarını bağlar; birden çok sağlayıcı açılabilir. Müşteri
+**sağlayıcının kendi ödeme sayfasında** öder: kart bilgisi telefondan hiç geçmez. Sonuç sağlayıcının imzalı
+bildirimiyle (webhook) gelir.
+
+| Sağlayıcı | Ne zaman | Gerekenler |
+|---|---|---|
+| **Stripe** | Uluslararası kartlar, Apple/Google Pay; abonelik | Gizli anahtar (`sk_test_…` testte), webhook imza sırrı (`whsec_…`) |
+| **iyzico** | Türkiye: yerli kartlar, taksit | API anahtarı ve gizli anahtar, test için sandbox; alıcının adı, kimlik no, telefonu, adresi |
+| **Paddle** | Vergi ve fatura Paddle'da (satıcı kaydı); abonelik | API anahtarı, bildirim sırrı, istemci token'ı; varsayılan ödeme bağlantısı `<adres>/payments/paddle` |
+
+**Erişim şart:** bildirimler telefona internetten ulaşmalı, bu yüzden doğrudan erişim veya **kendi alan adınızla**
+Cloudflare Tunnel gerekir (hızlı tünelin adresi her başlatmada değişir). Konfigürasyon denetimi bunu ister; ekrandaki
+**Denetle** adresin yanıt verdiğine bakar. `publicUrl` sunucunun HTTPS adresidir. Sağlayıcının panelinde bildirim adresi
+olarak `<publicUrl>/payments/hook/<stripe|iyzico|paddle>` girilir (ekranda kopyalanır).
+
+- **Bağlantı:** `POST /api/_payments` (yönetici) `{"amount": "149.90", "currency": "TRY", "description": "…",
+  "provider"?, "collection"?, "record"?, "email"?, "buyer"? (iyzico), "data"?}` → `{id, token, url, page, status, …}`.
+  `url` sağlayıcının ödeme sayfası, `page` (`/payments/<token>`) alıcının döndüğü durum sayfası (bildirim gecikirse
+  durumu sağlayıcıya sorar; ödenince **makbuz**). Script'lerden `ctx.payments.create({...})`; panelde Konfigürasyon →
+  Ödemeler'den de oluşturulur. Liste `GET /api/_payments?status=paid`.
+- **Otomasyonda** `payment` eylemi: tutar `{total}`, ilişkili kayıttan `{service.price}` ya da hesap
+  (`{product.price} * {quantity}`); ödeme sayfasının adresi seçilen alana, `{payment_url}` sonraki eylemlere (e-posta).
+  Yeni kayıtta çalışır; güncellemede koşul `payment_url[null]=true` istemeli (bağlantı bir kez üretilir).
+- **Durum:** `pending`, `paid`, `failed`, `canceled`, `refunded`. Bağlı kayıtta `payment_status` alanı (`statusField`)
+  varsa oraya yazılır ve otomasyonlar, canlı aboneler, webhook'lar duyar. Ödenmiş ödeme geri gitmez (sırasız olay);
+  aynı bildirim ikinci kez gelirse yok sayılır (`_payment_events`). iyzico'da sonuç her zaman iyzico'ya sorulur, iadeler
+  kendiliğinden gelmez.
+- **Abonelik** (Stripe, Paddle): planlar (`plans`: ad, başlık, sağlayıcıdaki fiyat kimliği, rol, isteğe bağlı kota).
+  Kullanıcı `POST /api/payments/subscribe {"plan"}` ile ödeme sayfasına gider; abonelik sürdükçe planın rolünü alır,
+  bitince önceki rolüne döner (yönetici rolü değişmez). Planın `quotas`'ı o roldeki kullanıcılara genel kota yerine
+  uygulanır. `GET /api/payments/plans`, `GET /api/payments/subscriptions`; SDK'larda `payments`.
+- **Makbuz:** sağlayıcının belgesi varsa ona (Stripe makbuzu, Paddle faturası), yoksa sunucunun ürettiği basit PDF
+  (satıcı `merchant`). Fatura yerine geçmez.
+- **Şablonlar:** ödemeler açıkken kurulan **Mağaza ve sipariş** ve **Randevu** şablonlarına ödeme eklenir. Randevuda
+  bağlantı talep gelince hizmetin fiyatıyla üretilir (e-posta açıksa gönderilir); siparişte tutarı müşteri gönderdiği
+  için bağlantı, siz siparişi **onaylandı** yapınca üretilir ve müşteri Siparişlerim'de görür. Müşteri ödeme alanlarını
+  yazamaz.
+
 ### GraphQL
 
 Sihirbaz → Genel → **GraphQL** açıkken `POST /api/graphql` (`{"query", "variables", "operationName"}`) çalışır. Şema
@@ -2380,6 +2421,7 @@ tools/          package-postgres.sh, package-cloudflared.sh (Termux derlemelerin
 - [x] **Yaygınlaştırma:** ilk açılış rehberi ve örnek proje, uygulama içi çevrimdışı yardım, F-Droid meta verisi, tekrarlanabilir derleme, gizlilik politikası
 - [x] **Çevrimdışı eşitleme:** koleksiyon başına; SDK'larda (TS, Kotlin, Dart, Swift) yerel kopya, bekleyen yazma kuyruğu, alan bazında son yazan kazanır veya elle çözme
 - [x] **Kopyalarla ölçek:** kopyaya gelen yazma ana sunucuya iletilir, birden çok kopya ve kopya tablosu, SDK'da okuma adresleri ve kendi yazdığını oku
+- [x] **Ödemeler:** Stripe, iyzico ve Paddle; barındırılan ödeme sayfası, imzalı bildirimler (bir kez), kayda durum, otomasyonda ödeme bağlantısı, abonelikte rol ve kota, makbuz PDF, ödemeli sipariş ve randevu şablonları
 - [x] **Telefonda yerel YZ:** llama.cpp kaynaktan, indirilebilir GGUF modelleri (sohbet ve gömme, SHA-256 doğrulamalı), bellek/ısı denetimi ve sağlık uyarısı, otomasyonlarda YZ adımı
 - [x] **Eklenti ve şablon paketleri:** koleksiyon, görünüm, otomasyon, form, sayfa, pano, script ve örnek veri tek dosyada; kurmadan önce plan, güncelleme, kaldırma, ECDSA imzası; dosyadan, adresten, GitHub'dan
 - [x] **Kodsuz sayfalar ve panolar:** koleksiyondan sunucuda üretilen liste/detay sayfaları (kurallar, girişli oturum, arama, sıralama), görünümlerden sayı/grafik/tablo/harita panoları, paylaşılabilir salt okunur adres

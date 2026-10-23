@@ -3,6 +3,8 @@ package dev.droidserver.core.auth
 import dev.droidserver.core.api.ApiException
 import dev.droidserver.core.config.CollectionConfig
 import dev.droidserver.core.config.FieldType
+import dev.droidserver.core.config.QuotaConfig
+import dev.droidserver.core.config.SystemCollections
 import dev.droidserver.core.config.ServerConfig
 import dev.droidserver.core.db.SqlDriver
 import dev.droidserver.core.db.quoteIdent
@@ -51,9 +53,19 @@ class QuotaService(
     private val counter: DailyCounter,
 ) {
     private val quotas = config.auth.users.quotas
-    val active: Boolean = config.auth.users.enabled && quotas.isSet
 
-    fun recordLimit(c: CollectionConfig): Int? = c.ownerField?.let { quotas.collections[c.name] ?: quotas.records }
+    /** Abonelik planlarının rollere bağladığı kotalar (genel kotanın yerine). */
+    private val roleQuotas = config.payments.plans.mapNotNull { p -> p.quotas?.let { p.role to it } }.toMap()
+    val active: Boolean = config.auth.users.enabled && (quotas.isSet || roleQuotas.values.any { it.isSet })
+
+    /** Kullanıcının kotası: rolüne bağlı plan kotası, yoksa genel kota. */
+    private fun quotasFor(user: Long, role: String? = null): QuotaConfig {
+        if (roleQuotas.isEmpty()) return quotas
+        val r = role ?: db.query("SELECT \"role\" FROM ${quoteIdent(SystemCollections.USERS)} WHERE \"id\" = ?", listOf(user)).firstOrNull()?.get("role")?.toString()
+        return r?.let(roleQuotas::get) ?: quotas
+    }
+
+    fun recordLimit(c: CollectionConfig, q: QuotaConfig = quotas): Int? = c.ownerField?.let { q.collections[c.name] ?: q.records }
 
     fun records(c: CollectionConfig, user: Long): Long {
         val owner = c.ownerField ?: return 0
@@ -63,7 +75,7 @@ class QuotaService(
     /** Yeni kayıttan önce: sınır dolduysa 403. */
     fun checkRecords(c: CollectionConfig, user: Long) {
         if (!active) return
-        val limit = recordLimit(c) ?: return
+        val limit = recordLimit(c, quotasFor(user)) ?: return
         if (records(c, user) >= limit) {
             throw ApiException(403, tr("Kota doldu: '{0}' koleksiyonunda en çok {1} kaydınız olabilir", c.name, limit), mapOf("quota" to "records", "limit" to "$limit"))
         }
@@ -83,7 +95,7 @@ class QuotaService(
     /** Dosya yüklemeden önce: [adding] bayt eklenince sınır aşılıyorsa 413. */
     fun checkStorage(user: Long, adding: Long) {
         if (!active || adding <= 0) return
-        val limit = quotas.storageMb ?: return
+        val limit = quotasFor(user).storageMb ?: return
         val used = storageBytes(user)
         if (used + adding > limit * MB) {
             throw ApiException(
@@ -94,9 +106,9 @@ class QuotaService(
     }
 
     /** İstek başına bir kez (kullanıcı token'ı çözülünce): günlük sınır aşıldıysa 429. */
-    fun hit(user: Long) {
+    fun hit(user: Long, role: String? = null) {
         if (!active) return
-        val limit = quotas.dailyRequests ?: return
+        val limit = quotasFor(user, role).dailyRequests ?: return
         if (counter.hit(user) > limit) {
             throw ApiException(429, tr("Günlük istek kotası doldu ({0}); {1} itibarıyla sıfırlanır", limit, counter.resetsAt()), mapOf("quota" to "requests", "limit" to "$limit"))
         }
@@ -104,11 +116,12 @@ class QuotaService(
 
     /** `{records:{koleksiyon:{used, limit}}, storage:{usedBytes, limitBytes}, requests:{today, limit, resetsAt}}`; sınırsızda limit null. */
     fun usage(user: Long): JsonObject = buildJsonObject {
+        val quotas = quotasFor(user)
         put("records", buildJsonObject {
             for (c in config.collections.filter { it.ownerField != null }) {
                 put(c.name, buildJsonObject {
                     put("used", JsonPrimitive(records(c, user)))
-                    put("limit", recordLimit(c)?.let(::JsonPrimitive) ?: JsonNull)
+                    put("limit", recordLimit(c, quotas)?.let(::JsonPrimitive) ?: JsonNull)
                 })
             }
         })
