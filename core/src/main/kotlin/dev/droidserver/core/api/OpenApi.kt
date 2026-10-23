@@ -129,6 +129,22 @@ object OpenApi {
                 }
                 op("/collections/${c.name}/aggregate", "get", operation(tag, tr("Özet: sayı, toplam, ortalama, gruplama"), public(Rules.Op.LIST), params = aggParams,
                     responses = ok(obj("type" to str("object"), "description" to str(tr("{count, sum_alan, ...} veya {groups:[{key, count, ...}], truncated}")))), rule = c.rules[Rules.Op.LIST]))
+                if (c.sync != null) {
+                    val syncParams = buildJsonArray {
+                        add(query("since", "integer", tr("İmleç: önceki yanıtın next değeri (ilk eşitlemede 0)")))
+                        add(query("epoch", "string", tr("Önceki yanıtın epoch değeri; değiştiyse reset döner")))
+                        add(query("limit", "integer", tr("En çok kaç değişiklik (1-500, varsayılan 200)")))
+                    }
+                    op("/sync/${c.name}", "get", operation(tag, tr("Eşitleme: imleçten sonraki değişiklikler (liste kuralıyla)"), public(Rules.Op.LIST), params = syncParams,
+                        responses = ok(obj("type" to str("object"), "description" to str(tr("{epoch, reset, next, more, changes:[{id, version, action (upsert|delete), record}]}")))),
+                        rule = c.rules[Rules.Op.LIST]))
+                    op("/sync/${c.name}", "post", operation(tag, tr("Eşitleme: bekleyen değişiklikleri gönder (en çok 100; alan bazında çakışma: {0})", c.sync.conflict.name.lowercase()), public(Rules.Op.UPDATE),
+                        body = obj("required" to JsonPrimitive(true), "content" to obj("application/json" to obj("schema" to obj(
+                            "type" to str("object"),
+                            "description" to str(tr("{now, changes:[{op (create|update|delete), tempId, id, base, fields, times, time}]}")),
+                        )))),
+                        responses = ok(obj("type" to str("object"), "description" to str(tr("{results:[{status (ok|merged|conflict|gone|error), tempId, id, version, record, conflicts}]}"))))))
+                }
             }
             if (Rules.Op.CREATE in ops) {
                 op(base, "post", operation(tag, tr("Oluştur"), public(Rules.Op.CREATE), body = body(c), responses = ok(ref(c.name), "201"), rule = c.rules[Rules.Op.CREATE]))

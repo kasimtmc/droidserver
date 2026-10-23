@@ -1315,6 +1315,12 @@ async function showSchema() {
     const trash = el("input", { type: "checkbox", checked: !!c.trash, onchange: () => { setProp(c, "trash", trash.checked ? { days: Number(days.value) || 30 } : null); } });
     const days = el("input", { type: "number", min: "1", max: "3650", value: (c.trash && c.trash.days) || 30, size: "5", onchange: () => { if (c.trash) c.trash.days = Number(days.value); } });
     editor.append(el("div", { class: "row" }, el("label", {}, hist, T(" Geçmiş (sürüm: ")), keep, ")", el("label", {}, trash, T(" Çöp kutusu (gün: ")), days, ")"));
+    // Çevrimdışı eşitleme: SDK'lar yerel kopya tutar; çakışmada son yazan kazanır ya da uygulama çözer.
+    const syncOn = el("input", { type: "checkbox", checked: !!c.sync, onchange: () => { setProp(c, "sync", syncOn.checked ? { conflict: conflict.value, keepDays: Number(syncDays.value) || 30 } : null); } });
+    const conflict = el("select", { onchange: () => { if (c.sync) c.sync.conflict = conflict.value; } },
+      [["lww", T("son yazan kazanır")], ["manual", T("elle çöz")]].map(([v, t]) => el("option", { value: v, selected: (c.sync && c.sync.conflict) === v }, t)));
+    const syncDays = el("input", { type: "number", min: "1", max: "365", value: (c.sync && c.sync.keepDays) || 30, size: "4", onchange: () => { if (c.sync) c.sync.keepDays = Number(syncDays.value); } });
+    editor.append(el("div", { class: "row" }, el("label", {}, syncOn, T(" Çevrimdışı eşitleme")), conflict, el("label", {}, T("silme izi (gün): "), syncDays)));
 
     // Alanlar
     const rows = c.fields.map((f, i) => fieldRow(c, f, i));
@@ -1893,6 +1899,7 @@ async function replicaCard(cfg) {
       (s.takeoverAt ? "\n" + T("Otomatik devralma: ") + when(s.takeoverAt) : "")) : null,
     grid(...rows),
     el("p", { class: "muted" }, T("Bir telefonu kopya yapmak (ana sunucu adresi ve anahtarı) telefondaki sihirbazdan yapılır.")),
+    r.source && !r.primary ? await replicaTable() : null,
     saveRow(cfg),
     r.primary ? el("div", { class: "row" }, el("button", { class: "ghost danger", onclick: () => guard(out, async () => {
       if (!confirm(T("Bu kopya yazılabilir ana sunucu olsun mu? Eşitleme durur; son saniyelerdeki yazmalar kaybolabilir."))) return;
@@ -1900,6 +1907,20 @@ async function replicaCard(cfg) {
       clear(out); out.append(el("p", { class: "ok" }, d.message));
     }) }, T("Devral"))) : null,
     out));
+}
+
+// Ana sunucunun gördüğü kopyalar: adres, çevrimiçi mi, geride kalan değişiklik, konfigürasyon sürümü.
+async function replicaTable() {
+  const t = await optional(gp("replication.replicas", null, "/_replication/replicas"));
+  if (!t || !t.items.length) return el("p", { class: "muted" }, T("Henüz bağlanan kopya yok."));
+  return el("div", { class: "table-wrap" }, el("table", {},
+    el("thead", {}, el("tr", {}, [T("Kopya"), T("Durum"), T("Geride"), T("Sürüm"), T("Son temas")].map((h) => el("th", {}, h)))),
+    el("tbody", {}, t.items.map((x) => el("tr", {},
+      el("td", {}, x.url),
+      el("td", { class: x.online ? "" : "error" }, x.online ? T("bağlı") : T("bağlı değil")),
+      el("td", {}, x.behind === null ? "—" : String(x.behind)),
+      el("td", { class: x.version !== null && x.version !== t.version ? "error" : "" }, x.version === null ? "—" : "v" + x.version + (x.version !== t.version ? T(" (ana: v") + t.version + ")" : "")),
+      el("td", {}, when(x.lastSeen)))))));
 }
 
 async function aiCard() {

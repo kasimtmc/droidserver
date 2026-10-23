@@ -43,6 +43,7 @@ object SdkConfig {
                 rules = Rules(Rule.AUTH, Rule.AUTH, Rule.AUTH, Rule.AUTH, Rule.AUTH),
                 ownerField = "owner",
                 systemFields = mapOf("created_at" to SystemFieldConfig(name = "olusturulma")),
+                sync = dev.droidserver.core.config.SyncConfig(),
             ),
         ),
     )

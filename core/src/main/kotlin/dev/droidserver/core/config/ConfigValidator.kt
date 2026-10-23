@@ -58,6 +58,7 @@ object ConfigValidator {
             systemFieldRules(c.systemFields, ApiNames.COLLECTION_FIELDS, c.fields.map { it.name }, "collections[$ci].systemFields", "'${c.name}'", error)
             c.history?.let { if (it.keep !in 1..1000) error("collections[$ci].history.keep", tr("'{0}': kayıt başına 1-1000 sürüm tutulabilir", c.name)) }
             c.trash?.let { if (it.days !in 1..3650) error("collections[$ci].trash.days", tr("'{0}': çöp kutusu süresi 1-3650 gün olmalı", c.name)) }
+            c.sync?.let { if (it.keepDays !in 1..365) error("collections[$ci].sync.keepDays", tr("'{0}': silinenlerin izi 1-365 gün tutulmalı", c.name)) }
             c.retention?.let { r ->
                 val rp = "collections[$ci].retention"
                 if (r.days !in 1..3650) error("$rp.days", tr("'{0}': saklama süresi 1-3650 gün olmalı", c.name))
