@@ -11,13 +11,21 @@ import kotlinx.serialization.Serializable
  * kayıt olarak yazılır (otomasyonlar, webhook'lar ve canlı abonelik de tetiklenir). [events]'teki koleksiyonların kayıt
  * değişiklikleri `<eventPrefix>/<koleksiyon>/<create|update|delete>` konusuna yayınlanır. Kimlik: [username] +
  * [password] (tüm cihazlar için ortak; [devices] varken boş bırakılırsa kapalı) ve/veya [devices] (cihaz başına).
- * Düz TCP: yalnızca yerel ağda çalışır.
+ * Yalnızca yerel ağda çalışır. [tls] açıksa [tlsPort]'ta (8883) TLS: sertifika telefonun yerel kökünce imzalanır
+ * (cihazlara kök bir kez yüklenir); [plain] kapatılırsa düz [port] açılmaz.
  */
 @Serializable
 data class MqttConfig(
     val enabled: Boolean = false,
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val port: Int = 1883,
+    /** Düz (şifresiz) bağlantı [port]'ta; TLS açıkken kapatılabilir. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val plain: Boolean = true,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val tls: Boolean = false,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val tlsPort: Int = 8883,
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val username: String = "device",
     /** `secret:` referansı; kaydedince şifreli depoya taşınır. En az 8 karakter. */

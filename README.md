@@ -158,7 +158,7 @@ yer tutucu anahtar yerine yeni üretilmiş bir anahtarla). Sonrasında **Sunucu*
 | `payments` | Ödemeler: `providers` (`provider`: `stripe`/`iyzico`/`paddle`, `secretKey`, `apiKey`, `webhookSecret`, `clientToken` (`secret:`), `sandbox`, `enabled`), `publicUrl`, `plans` (`name`, `title`, `provider`, `price`, `role`, `quotas`), `statusField`, `merchant` (bkz. Ödemeler) |
 | `ai` | Yapay zekâ: `enabled`, `provider` (`claude`/`openai`/`gemini`), `url`, `apiKey` (`secret:`), `model`, `effort`, `access`, `dailyLimit`, `embeddings`, `semantic` (bkz. Yapay zekâ) |
 | `webdav` | Ağ sürücüsü: `enabled`, `path`, `username`, `password` (`secret:`), `readOnly`, `site`, `scripts`, `uploads`, `maxFileMb` (bkz. Ağ sürücüsü) |
-| `mqtt` | MQTT (IoT): `enabled`, `port` (1883), `username`, `password` (`secret:`), `routes` (`topic`, `collection`, `valueField`, `topicField`), `events`, `eventPrefix`, `maxClients`, `devices` (cihaz başına kimlik), `scenes`, `homeAssistant` (bkz. MQTT) |
+| `mqtt` | MQTT (IoT): `enabled`, `port` (1883), `plain`, `tls`, `tlsPort` (8883), `username`, `password` (`secret:`), `routes` (`topic`, `collection`, `valueField`, `topicField`), `events`, `eventPrefix`, `maxClients`, `devices` (cihaz başına kimlik), `scenes`, `homeAssistant` (bkz. MQTT) |
 | `sensors` | Sensör panosu: `collection`, `field`, `name`, `unit`, `deviceClass`, `min`, `max` (eşik uyarısı; bkz. MQTT → Ev otomasyonu) |
 | `replication` | Canlı kopya: `source`, `keepDays` (7), `replicaOf` (`url`, `key`, `intervalSec`), `failover` (`auto`, `afterSec` (120), `witness`, `failback`), `formerPrimary` (bkz. Canlı kopya) |
 
@@ -1777,8 +1777,15 @@ Telefonun kendi MQTT sunucusu vardır; ayrı bir broker gerekmez.
 - **Kimlik:** tüm cihazlar için ortak kullanıcı adı ve parola (parola boş bırakılırsa üretilir, şifreli depoda) ve/veya
   **cihaz başına kimlik** (`mqtt.devices`): her cihazın adı kullanıcı adıdır, parolası ayrıdır; birini silmek diğerlerini
   etkilemez. Cihaz listesi varken ortak giriş kapatılabilir (ortak parola boş). Durumda her bağlantının kimliği görünür.
-  Hatalı denemeler güvenlik duvarına sayılır. Bağlantı düz TCP'dir (varsayılan 1883) ve **yalnızca yerel ağda** çalışır:
-  internetten gelen bağlantılar reddedilir (ev ağı, telefonla aynı IPv6 ağı ve Tailscale kabul edilir).
+  Hatalı denemeler güvenlik duvarına sayılır. MQTT **yalnızca yerel ağda** çalışır: internetten gelen bağlantılar
+  reddedilir (ev ağı, telefonla aynı IPv6 ağı ve Tailscale kabul edilir).
+- **TLS (şifreli bağlantı):** `mqtt.tls` açıkken 8883'te (`tlsPort`) `mqtts://`. Telefon bir kez **yerel kök sertifika**
+  üretir; sunucu sertifikası bu kökle telefonun yerel IP adresleri için imzalanır ve adres değişince ya da bitişine 30
+  gün kalınca kendiliğinden yenilenir (aynı anahtarla). Kökü cihazlara bir kez yükleyin (MQTT ekranında **Kökü paylaş**,
+  panelde **Kök sertifikayı indir**, `GET /_mqtt/ca.pem`): mosquitto `--cafile droidserver-ca.pem -p 8883`, ESP32
+  `WiFiClientSecure.setCACert(...)`, Home Assistant'ta MQTT → Gelişmiş seçenekler → özel CA. IP adresiyle bağlanan
+  cihazlarda ad doğrulaması da geçer. Düz bağlantı (1883, şifresiz) varsayılan olarak açık kalır; TLS açıkken
+  kapatılabilir (`plain: false`). Durumda hangi cihazın TLS ile bağlı olduğu görünür.
 - **Mesajları kaydet:** konu süzgecine uyan mesaj koleksiyona kayıt olarak eklenir; otomasyonlar, webhook'lar ve canlı
   abonelik de tetiklenir. JSON nesnesinin alanları koleksiyonun alanlarına yazılır (bilinmeyenler atlanır); düz değer
   (`23.5`, `on`) değer alanına. Konu alanı süzgecin `+` bölümünü tutar (cihaz/oda adı).

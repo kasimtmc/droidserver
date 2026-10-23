@@ -950,10 +950,15 @@ oturtmasın), sonra panelin eksiklerini kapatma, sonra güvenlik, en son yeni ö
 ### Grup 2 — Güvenli bağlantılar ve ev otomasyonu
 
 **17.5 MQTT ve ağ sürücüsü için TLS**
-- [ ] MQTT'ye TLS dinleyicisi (8883), doğrudan erişimdeki sertifikayla (Let's Encrypt veya kendinden imzalı); düz 1883
+- [x] MQTT'ye TLS dinleyicisi (8883), doğrudan erişimdeki sertifikayla (Let's Encrypt veya kendinden imzalı); düz 1883
   isteğe bağlı kapatılabilir.
-  *Ertelendi:* MQTT yalnızca yerel ağda kalacağı için (karar aşağıda) cihazlara sertifika dağıtma yükü kazanca değmez;
-  kullanıcı isterse yerel ağ için eklenebilir.
+  *Karar (kullanıcı, 24 Ekim 2026):* doğrudan erişimin sertifikası yerine **yerel kök sertifika**: cihazlar telefona IP
+  adresiyle bağlandığı için o sertifikalar ad doğrulamasından geçmez. Düz 1883 varsayılan açık, kapatılabilir.
+  *Durum:* `mqtt.tls`, `tlsPort`, `plain` (konfigürasyon v22). `LocalCa`: kök (CA, 2049'a kadar) ve onunla imzalı
+  sunucu sertifikası (yerel IP'ler ve `localhost`, 397 gün, aynı anahtarla adres değişince ya da 30 gün kala yeniden
+  imzalanır; SKID/AKID, keyUsage, serverAuth: OpenSSL `-x509_strict` ve Python'un sıkı denetiminden geçer). Bağlam her
+  bağlantıda istenir. MQTT ekranında TLS bölümü (kök parmak izi, paylaş/kopyala), panelde ayarlar ve kök indirme
+  (`GET /_mqtt/ca.pem`), durumda TLS'li bağlantılar. MQTT yine yalnızca yerel ağda.
 - [x] Ağ sürücüsünün HTTPS adresi (doğrudan erişim/tünel) için talimat ve uygulamada ayrı adres.
   *Durum:* Ağ sürücüsü ekranında "İnternetten (HTTPS)" adresi ve kopyalama; adres hesabı `publicUrl()` (sorun giderici
   ile ortak).

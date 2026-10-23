@@ -2269,14 +2269,24 @@ async function mqttCard(cfg) {
   }) }, T("Gönder"));
   main.append(el("div", { class: "card" }, el("h3", {}, "MQTT (IoT)"),
     status && status.listening
-      ? el("p", {}, T("Açık · port ") + status.port + " · " + status.received + T(" mesaj alındı · ") + status.delivered + T(" iletildi · ") + status.failed + T(" hata · ") + status.retained + T(" tutulan mesaj"))
+      ? el("p", {}, T("Açık · port ") + [status.plain ? status.port : null, status.tls ? status.tlsPort + " (TLS)" : null].filter(Boolean).join(", ") + " · " + status.received + T(" mesaj alındı · ") + status.delivered + T(" iletildi · ") + status.failed + T(" hata · ") + status.retained + T(" tutulan mesaj"))
       : el("p", { class: "muted" }, T("Kapalı")),
     grid(
       line("", checkIn(m, "enabled", T("MQTT açık"))),
       line(T("Port"), numIn(m, "port", 1883)),
+      line("", checkIn(m, "tls", T("TLS (şifreli bağlantı)"))),
+      line(T("TLS portu"), numIn(m, "tlsPort", 8883)),
+      // Varsayılanı açık: yalnızca kapalıyken yazılır.
+      line("", el("label", {}, el("input", { type: "checkbox", checked: m.plain !== false, onchange: (e) => { if (e.target.checked) delete m.plain; else m.plain = false; } }), " " + T("Düz bağlantı da açık"))),
       line(T("Kullanıcı adı"), textIn(m, "username", { placeholder: "device" })),
       line(T("Yeni parola"), passwordIn(m))),
-    el("p", { class: "muted" }, T("Bağlantı şifresizdir (düz TCP) ve yalnızca yerel ağda çalışır: internetten gelen bağlantılar reddedilir.")),
+    el("p", { class: "muted" }, T("MQTT yalnızca yerel ağda çalışır: internetten gelen bağlantılar reddedilir. Düz bağlantı şifresizdir; TLS'te sertifika telefonun yerel kökünce imzalanır, kökü cihazlara bir kez yükleyin (mosquitto --cafile, ESP32 setCACert, Home Assistant özel CA).")),
+    status && status.tls ? el("p", {}, T("Kökün parmak izi: "), el("code", {}, status.caFingerprint), " ",
+      el("button", { class: "ghost", onclick: () => guard(out, async () => {
+        const res = await api(gp("mqtt.ca", null, "/_mqtt/ca.pem"), { raw: true });
+        if (!res.ok) throw new Error(res.statusText);
+        saveBlob(await res.blob(), "droidserver-ca.pem");
+      }) }, T("Kök sertifikayı indir"))) : null,
     el("h4", {}, T("Cihazlar")),
     el("p", { class: "muted" }, T("Her cihaza ayrı kullanıcı adı ve parola: birini silmek diğerlerini etkilemez.")),
     devices, el("div", { class: "row" }, newName, addDevice),
@@ -2293,7 +2303,7 @@ async function mqttCard(cfg) {
     saveRow(cfg),
     status && status.listening ? el("div", {},
       el("h4", {}, T("Bağlı cihazlar (") + status.clients.length + ")"),
-      el("ul", {}, status.clients.map((c) => el("li", {}, [c.id, c.address, c.user, c.subscriptions.join(", ")].filter(Boolean).join(" · ")))),
+      el("ul", {}, status.clients.map((c) => el("li", {}, [c.id, c.address, c.tls ? "TLS" : null, c.user, c.subscriptions.join(", ")].filter(Boolean).join(" · ")))),
       el("details", {}, el("summary", {}, T("Son mesajlar")), el("ul", {}, status.recent.map((r) => el("li", {}, when(r.at) + " · " + r.topic + " · " + r.result)))),
       el("h4", {}, T("Cihazlara mesaj gönder")), el("div", { class: "row" }, topic, payload, publish), out) : null));
   renderRoutes();
