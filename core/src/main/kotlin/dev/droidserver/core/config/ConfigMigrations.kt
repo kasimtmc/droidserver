@@ -29,6 +29,8 @@ import kotlinx.serialization.json.intOrNull
  *  v5 -> v6: koleksiyonların `publicRead` / `readOnly` bayrakları `rules`'a dönüşür (davranış aynı kalır):
  *            `publicRead` → list/view `public`, değilse `admin`; `readOnly` → create/update/delete `nobody`, değilse
  *            `admin`. İsteğe bağlı yeni alanlar: `auth.users`, `collections[].ownerField`.
+ *  v20 -> v21: Faz 18 Grup 4: `payments` (Stripe, iyzico, Paddle; `_payments`, `_subscriptions`, `_payment_events`
+ *            tabloları), `ai` otomasyon eyleminin yanına `payment`; mevcut alanlar değişmez.
  *  v19 -> v20: Faz 18 Grup 3: `pages` (kodsuz sayfalar), `dashboards` (panolar), yerel YZ sağlayıcısı ve paketler
  *            (`packages`); mevcut alanlar değişmez.
  *  v18 -> v19: Faz 18 Grup 2: `geo` alan tipi, `collections[].calendar` (takvim, `.ics`, CalDAV) ve `contacts` (CardDAV;
@@ -60,7 +62,7 @@ import kotlinx.serialization.json.intOrNull
  *            mevcut alanlar değişmez.
  */
 object ConfigMigrations {
-    const val CURRENT = 20
+    const val CURRENT = 21
 
     private val steps: Map<Int, (JsonObject, SecretSink?) -> JsonObject> = mapOf(
         1 to ::v1ToV2,
@@ -82,6 +84,7 @@ object ConfigMigrations {
         17 to { json: JsonObject, _: SecretSink? -> json }, // yalnızca isteğe bağlı alanlar eklendi
         18 to { json: JsonObject, _: SecretSink? -> json }, // yalnızca isteğe bağlı alanlar ve yeni alan tipi eklendi
         19 to { json: JsonObject, _: SecretSink? -> json }, // yalnızca isteğe bağlı alanlar eklendi
+        20 to { json: JsonObject, _: SecretSink? -> json }, // yalnızca isteğe bağlı alanlar eklendi
     )
 
     /** Kullanıcıya gösterilen değişiklikler: adım (vN -> vN+1) başına bir satır. */
@@ -116,6 +119,7 @@ object ConfigMigrations {
         17 to tr("Uygulamaların bağlantı yokken de çalışabilmesi için koleksiyon başına çevrimdışı eşitleme eklenir. Mevcut ayarlar değişmez."),
         18 to tr("Konum alanı, takvim (çakışma kuralı, takvim aboneliği, telefon takvimiyle eşitleme), kişiler ve görsel/video ayarları eklenir. Mevcut ayarlar değişmez."),
         19 to tr("Kodsuz sayfalar, panolar, telefonda çalışan yerel yapay zekâ ve paketler eklenir. Mevcut ayarlar değişmez."),
+        20 to tr("Ödemeler (Stripe, iyzico, Paddle) ve abonelikler eklenir. Mevcut ayarlar değişmez."),
     )
 
     /** [from] sürümünden güncel sürüme yükseltirken neler değişir; güncelse boş. */

@@ -13,6 +13,7 @@ enum class EndpointGroup(val title: String) {
     OAUTH(tr("Sosyal giriş")),
     PUSH(tr("Web push")),
     TEAMS(tr("Takımlar")),
+    PAYMENTS(tr("Ödemeler")),
 }
 
 /**
@@ -47,6 +48,9 @@ enum class Endpoint(val key: String, val method: String, val path: String, val t
     PACKAGES_PLAN("packages.plan", "POST", "/_packages/plan", tr("Paket: kurulum planı"), EndpointGroup.ADMIN),
     PACKAGES_INSTALL("packages.install", "POST", "/_packages/install", tr("Paket: kur"), EndpointGroup.ADMIN),
     PACKAGES_REMOVE("packages.remove", "DELETE", "/_packages/{name}", tr("Paket: kaldır"), EndpointGroup.ADMIN),
+    PAYMENTS_LIST("payments.list", "GET", "/_payments", tr("Ödemeler"), EndpointGroup.ADMIN),
+    PAYMENTS_CREATE("payments.create", "POST", "/_payments", tr("Ödeme bağlantısı oluştur"), EndpointGroup.ADMIN),
+    PAYMENTS_GET("payments.get", "GET", "/_payments/{id}", tr("Ödeme"), EndpointGroup.ADMIN),
     REPLICATION_REPLICAS("replication.replicas", "GET", "/_replication/replicas", tr("Kopyalar: gecikme ve son temas"), EndpointGroup.ADMIN),
     REPLICATION_ROLE("replication.role", "GET", "/_replication/role", tr("Kopya: sunucunun rolü"), EndpointGroup.ADMIN),
     REPLICATION_FENCE("replication.fence", "POST", "/_replication/fence", tr("Kopya: devredildin (kopyaya dön)"), EndpointGroup.ADMIN),
@@ -135,6 +139,10 @@ enum class Endpoint(val key: String, val method: String, val path: String, val t
     PUSH_SUBSCRIBE("push.subscribe", "POST", "/push/subscribe", tr("Abone ol"), EndpointGroup.PUSH),
     PUSH_UNSUBSCRIBE("push.unsubscribe", "POST", "/push/unsubscribe", tr("Aboneliği kaldır"), EndpointGroup.PUSH),
     PUSH_SEND("push.send", "POST", "/push/send", tr("Bildirim gönder (yönetici)"), EndpointGroup.PUSH),
+
+    PAYMENT_PLANS("payments.plans", "GET", "/payments/plans", tr("Abonelik planları"), EndpointGroup.PAYMENTS),
+    PAYMENT_SUBSCRIBE("payments.subscribe", "POST", "/payments/subscribe", tr("Abone ol (ödeme sayfası)"), EndpointGroup.PAYMENTS),
+    PAYMENT_SUBSCRIPTIONS("payments.subscriptions", "GET", "/payments/subscriptions", tr("Aboneliklerim"), EndpointGroup.PAYMENTS),
     ;
 
     companion object {
@@ -196,6 +204,8 @@ class ApiPaths(private val config: ServerConfig) {
         if (e in SMS_LOGIN_ENDPOINTS && !(users.smsLogin && config.phone.sms)) return null
         if (e in PASSKEY_ENDPOINTS && !(users.enabled && config.auth.passkeys.enabled)) return null
         if (e.group == EndpointGroup.TEAMS && !(users.enabled && users.teams.enabled)) return null
+        if (e.group == EndpointGroup.PAYMENTS && !(users.enabled && config.payments.enabled && config.payments.plans.isNotEmpty())) return null
+        if (e in PAYMENT_ADMIN_ENDPOINTS && !config.payments.enabled) return null
         val c = config.api.endpoints[e.key] ?: return e.path
         return if (!c.enabled) null else c.path?.takeIf { it.isNotBlank() } ?: e.path
     }
@@ -221,6 +231,7 @@ class ApiPaths(private val config: ServerConfig) {
             Endpoint.AUTH_PASSKEY_REGISTER_OPTIONS, Endpoint.AUTH_PASSKEY_REGISTER, Endpoint.AUTH_PASSKEYS, Endpoint.AUTH_PASSKEY_DELETE,
             Endpoint.AUTH_PASSKEY_LOGIN_OPTIONS, Endpoint.AUTH_PASSKEY_LOGIN,
         )
+        val PAYMENT_ADMIN_ENDPOINTS = setOf(Endpoint.PAYMENTS_LIST, Endpoint.PAYMENTS_CREATE, Endpoint.PAYMENTS_GET)
 
         private val SEGMENT = Regex("^([A-Za-z0-9_.~-]+|\\{[A-Za-z]+\\})$")
         private val PARAM = Regex("\\{([A-Za-z]+)\\}")

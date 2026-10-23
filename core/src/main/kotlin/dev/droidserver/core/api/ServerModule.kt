@@ -12,6 +12,9 @@ import dev.droidserver.core.apps.GitFetcher
 import dev.droidserver.core.config.GitProvider
 import dev.droidserver.core.config.GitSource
 import dev.droidserver.core.packages.PackageFile
+import dev.droidserver.core.payments.PaymentGateway
+import dev.droidserver.core.payments.PaymentGateways
+import dev.droidserver.core.payments.PaymentService
 import dev.droidserver.core.packages.Packages
 import io.ktor.server.request.receiveChannel
 import io.ktor.utils.io.jvm.javaio.toInputStream
@@ -25,6 +28,7 @@ import dev.droidserver.core.ai.AiImage
 import dev.droidserver.core.ai.AiMessage
 import dev.droidserver.core.ai.LocalAi
 import dev.droidserver.core.config.AiProvider
+import dev.droidserver.core.config.PaymentProvider
 import dev.droidserver.core.config.EmbeddingProvider
 import dev.droidserver.core.ai.ImageInsight
 import dev.droidserver.core.ai.AiHost
@@ -292,6 +296,8 @@ fun Application.droidServerModule(
     failover: FailoverPort? = null,
     /** MQTT durumu (uygulama ekranı; ServerEngine tutar). */
     mqttHost: MqttHost? = null,
+    /** Ödeme sağlayıcılarının istemcileri; testlerde sahte, normalde ayardan. */
+    paymentGateways: Map<PaymentProvider, PaymentGateway>? = null,
 ) {
     if (metrics != null) {
         install(MetricsPlugin) {
@@ -443,7 +449,7 @@ fun Application.droidServerModule(
             clientGuard.hit("user:${caller.id}", config.firewall.userRequestsPerMinute)?.let {
                 throw ApiException(429, tr("Kullanıcı başına dakika sınırı ({0}) aşıldı; {1} sn sonra tekrar deneyin", config.firewall.userRequestsPerMinute, it))
             }
-            quotas.hit(caller.id)
+            quotas.hit(caller.id, caller.role)
         }
         return caller
     }
@@ -795,6 +801,16 @@ fun Application.droidServerModule(
     scripts?.mail = mailer?.let { m -> m::custom }
     scripts?.push = push?.let { p -> { user, title, body, url -> p.sendToUser(user, p.message(title, body, url, null)) } }
 
+    // Ödemeler: sağlayıcının ödeme sayfası, imzalı bildirimler, bağlı kayda durum, abonelikte rol.
+    val payments = config.payments.takeIf { it.providers.isNotEmpty() }?.let { p ->
+        PaymentService(
+            db, p, paymentGateways ?: PaymentGateways.of(p), byName, services,
+            users?.let { RecordService(db, SystemCollections.users(config.auth.users), collections = config.schemaCollections()) },
+            { c, id, body -> updateRecord(byName.getValue(c), Caller.Admin, id, body) }, log,
+        )
+    }
+    scripts?.payments = payments?.takeIf { config.payments.enabled }?.let { svc -> { body -> writes.write { svc.create(body, "127.0.0.1") } } }
+
     if (config.automations.any { it.enabled }) {
         val engine = AutomationEngine(
             config.automations, config.collections, services, writes,
@@ -809,6 +825,13 @@ fun Application.droidServerModule(
                         aiHost.usage.record(reply.inputTokens, reply.outputTokens)
                         if (reply.refused) error(tr("YZ isteği reddetti"))
                         reply.text
+                    }
+                },
+                payment = payments?.takeIf { config.payments.enabled }?.let { svc ->
+                    { body ->
+                        val created = writes.write { svc.create(body, "127.0.0.1", writeBack = false) }
+                        val status = svc.statusField((body["collection"] as JsonPrimitive).content)
+                        (created["url"] as JsonPrimitive).content to listOfNotNull(status?.let { it to JsonPrimitive("pending") }).toMap()
                     }
                 },
             ),
@@ -840,6 +863,7 @@ fun Application.droidServerModule(
             formPages(config.name, config.forms, config.collections.associateBy { it.name }, services, writes, FormGuard(), ::changed)
         }
         if (config.dashboards.isNotEmpty()) dashboardPages(config.name, config.dashboards, dashboards)
+        if (payments != null) paymentPages(config.name, config.payments, payments, writes)
         if (config.pages.isNotEmpty()) {
             pagePages(config.name, config.pages, byName, services, users, PageHost(::resolve, { c, id, name, scope -> sendRecordFile(c, id, name, scope) }) { origin(it.request).key })
         }
@@ -1298,6 +1322,27 @@ fun Application.droidServerModule(
                 call.audit("package.remove", name)
                 call.respond(buildJsonObject { put("message", JsonPrimitive(message)) })
             }
+            if (payments != null) {
+                endpoint(paths, Endpoint.PAYMENTS_LIST) {
+                    requireAdmin(call.caller())
+                    val q = call.request.queryParameters
+                    val params = q.entries().filter { it.key !in setOf("page", "perPage") }.flatMap { (k, v) -> v.map { k to it } }
+                    call.respond(io { payments.list(q["page"]?.toIntOrNull() ?: 1, q["perPage"]?.toIntOrNull() ?: 50, params) })
+                }
+                endpoint(paths, Endpoint.PAYMENTS_CREATE) {
+                    requireAdmin(call.caller())
+                    val body = call.receive<JsonObject>()
+                    val ip = origin(call.request).key.takeIf { it != ClientGuard.LOCAL } ?: "127.0.0.1"
+                    val created = io { writes.write { payments.create(body, ip) } }
+                    call.audit("payment.create", (created["id"] as? JsonPrimitive)?.content.orEmpty())
+                    call.respond(HttpStatusCode.Created, created)
+                }
+                endpoint(paths, Endpoint.PAYMENTS_GET) {
+                    requireAdmin(call.caller())
+                    val id = call.parameters["id"]?.toLongOrNull() ?: throw ApiException(404, tr("Ödeme bulunamadı"))
+                    call.respond(io { payments.get(id) })
+                }
+            }
             // Pano verisi (panel); kutular görünümleri yönetici olarak çalıştırır.
             endpoint(paths, Endpoint.DASHBOARD) {
                 requireAdmin(call.caller())
@@ -1502,6 +1547,18 @@ fun Application.droidServerModule(
                 endpoint(paths, Endpoint.AUTH_USAGE) {
                     val id = requireUser(call.caller())
                     call.respond(io { quotas.usage(id) })
+                }
+                if (payments != null) {
+                    endpoint(paths, Endpoint.PAYMENT_PLANS) { call.respond(JsonObject(mapOf("items" to JsonArray(payments.plans())))) }
+                    endpoint(paths, Endpoint.PAYMENT_SUBSCRIBE) {
+                        val id = requireUser(call.caller())
+                        val plan = (call.receive<JsonObject>()["plan"] as? JsonPrimitive)?.content ?: throw ApiException(400, tr("Doğrulama hatası"), mapOf("plan" to tr("gerekli")))
+                        call.respond(io { payments.subscribe(id, plan) })
+                    }
+                    endpoint(paths, Endpoint.PAYMENT_SUBSCRIPTIONS) {
+                        val id = requireUser(call.caller())
+                        call.respond(JsonObject(mapOf("items" to JsonArray(io { payments.subscriptionsOf(id) }))))
+                    }
                 }
                 if (config.auth.users.teams.enabled) {
                     val teams = TeamService(db, config)

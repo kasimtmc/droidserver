@@ -154,6 +154,7 @@ with **Advanced (JSON)**; both share the same draft, and the draft is saved to `
 | `forms` | Public forms: `name` (URL `/forms/<name>`), `collection`, `title`, `fields`, `successMessage`, `redirect` … (see Forms) |
 | `pages` | No-code pages: `name` (`/pages/<name>`), `collection`, `title`, `fields`, `detailFields`, `filter`, `sort`, `perPage`, `layout` (`cards`/`table`), `detail`, `login`, `accent` (see Pages and dashboards) |
 | `dashboards` | Dashboards: `name`, `title`, `widgets: [{type: number\|chart\|table\|map, view, metric, chart, field, limit, width}]`, `shareToken` |
+| `payments` | Payments: `providers` (`provider`: `stripe`/`iyzico`/`paddle`, `secretKey`, `apiKey`, `webhookSecret`, `clientToken` (`secret:`), `sandbox`, `enabled`), `publicUrl`, `plans` (`name`, `title`, `provider`, `price`, `role`, `quotas`), `statusField`, `merchant` (see Payments) |
 | `ai` | AI: `enabled`, `provider` (`claude`/`openai`/`gemini`), `url`, `apiKey` (`secret:`), `model`, `effort`, `access`, `dailyLimit`, `embeddings`, `semantic` (see AI) |
 | `webdav` | Network drive: `enabled`, `path`, `username`, `password` (`secret:`), `readOnly`, `site`, `scripts`, `uploads`, `maxFileMb` (see Network drive) |
 | `mqtt` | MQTT (IoT): `enabled`, `port` (1883), `username`, `password` (`secret:`), `routes` (`topic`, `collection`, `valueField`, `topicField`), `events`, `eventPrefix`, `maxClients`, `devices` (per-device credentials), `scenes`, `homeAssistant` (see MQTT) |
@@ -1388,6 +1389,47 @@ first rows) and **map** (a location field in the view). Boxes are ordered by dra
 in the app; width is 1-3 columns. With a `shareToken`, `/dashboards/<name>?token=…` is shared read-only (no login, anyone
 with the address can view; charts are SVG, the map is tile images, no scripts). Admin data: `GET /api/_dashboards/<name>`.
 
+### Payments (Stripe, iyzico, Paddle)
+
+Server → **Payments** (`payments`) connects payment providers; you can enable more than one. The customer pays on
+**the provider's own checkout page**, so card details never pass through the phone. The result arrives as a signed
+notification (webhook) from the provider.
+
+| Provider | When | What you need |
+|---|---|---|
+| **Stripe** | International cards, Apple/Google Pay; subscriptions | Secret key (`sk_test_…` for testing), webhook signing secret (`whsec_…`) |
+| **iyzico** | Turkey: local cards, installments | API key and secret key, sandbox for testing; the buyer's name, ID number, phone, address |
+| **Paddle** | Tax and invoicing handled by Paddle (merchant of record); subscriptions | API key, notification secret, client-side token; default payment link `<address>/payments/paddle` |
+
+**Access is required:** notifications must reach the phone from the internet, so you need direct access or a
+Cloudflare Tunnel **with your own domain** (a quick tunnel's address changes on every start). The config check enforces
+this, and **Check** on the screen tests that the address responds. `publicUrl` is the server's HTTPS address. In the
+provider's dashboard, enter `<publicUrl>/payments/hook/<stripe|iyzico|paddle>` as the notification URL (the screen has a
+copy button).
+
+- **Link:** `POST /api/_payments` (admin) `{"amount": "149.90", "currency": "TRY", "description": "…",
+  "provider"?, "collection"?, "record"?, "email"?, "buyer"? (iyzico), "data"?}` → `{id, token, url, page, status, …}`.
+  `url` is the provider's checkout page; `page` (`/payments/<token>`) is the status page the buyer returns to (it asks
+  the provider if the notification is late, and offers a **receipt** once paid). From scripts: `ctx.payments.create({...})`;
+  the panel can also create links under Configuration → Payments. List: `GET /api/_payments?status=paid`.
+- **In automations**, the `payment` action: amount `{total}`, from a related record `{service.price}`, or a calculation
+  (`{product.price} * {quantity}`); the checkout URL goes to the chosen field and `{payment_url}` to later actions (email).
+  It runs on new records; on update the condition must include `payment_url[null]=true` (the link is created once).
+- **Status:** `pending`, `paid`, `failed`, `canceled`, `refunded`. If the linked record has a `payment_status` field
+  (`statusField`), the status is written there and automations, realtime subscribers and webhooks see it. A paid payment
+  never goes back (out-of-order events), and a repeated notification is ignored (`_payment_events`). With iyzico the
+  result is always fetched from iyzico; refunds are not reported automatically.
+- **Subscriptions** (Stripe, Paddle): plans (`plans`: name, title, the provider's price ID, role, optional quota). A user
+  goes to checkout with `POST /api/payments/subscribe {"plan"}`; while the subscription lasts they get the plan's role and
+  return to their previous role when it ends (the admin role is never changed). The plan's `quotas` replace the global
+  quota for users with that role. `GET /api/payments/plans`, `GET /api/payments/subscriptions`; `payments` in the SDKs.
+- **Receipt:** the provider's document if there is one (Stripe receipt, Paddle invoice), otherwise a simple PDF made by
+  the server (seller from `merchant`). It is not an invoice.
+- **Templates:** with payments on, the **Shop and orders** and **Appointments** templates get payments. For appointments
+  the link is created with the service's price when the request arrives (and emailed if email is on). For orders the
+  customer sends the total, so the link is created when you set the order to **onaylandı** (approved), and the customer
+  sees it under My orders. Customers cannot write the payment fields.
+
 ### GraphQL
 
 With Wizard → General → **GraphQL** on, `POST /api/graphql` (`{"query", "variables", "operationName"}`) works. The
@@ -2421,6 +2463,7 @@ tools/          package-postgres.sh, package-cloudflared.sh (component packages 
 - [x] **Outreach:** first-launch guide and sample project, offline in-app help, F-Droid metadata, reproducible builds, privacy policy
 - [x] **Offline sync:** per collection; in the SDKs (TS, Kotlin, Dart, Swift) a local copy, a pending-write queue, per-field last writer wins or manual resolution
 - [x] **Scaling with copies:** writes sent to a copy are forwarded to the primary, several copies and a copy table, read addresses and read-your-writes in the SDKs
+- [x] **Payments:** Stripe, iyzico and Paddle; hosted checkout, signed notifications (processed once), status on the record, payment links in automations, role and quota for subscriptions, PDF receipt, order and appointment templates with payments
 - [x] **Local AI on the phone:** llama.cpp from source, downloadable GGUF models (chat and embedding, SHA-256 verified), memory/heat checks and health alert, AI step in automations
 - [x] **Add-on and template packages:** collections, views, automations, forms, pages, dashboards, scripts and sample data in one file; plan before installing, update, removal, ECDSA signature; from a file, an address or GitHub
 - [x] **No-code pages and dashboards:** server-rendered list/detail pages from a collection (rules, login session, search, sorting), dashboards with number/chart/table/map boxes from views, shareable read-only address

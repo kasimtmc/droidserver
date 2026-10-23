@@ -1,4 +1,4 @@
-// DroidServer istemcisi: "SDK deneme" sunucusu için üretildi (konfigürasyon v20).
+// DroidServer istemcisi: "SDK deneme" sunucusu için üretildi (konfigürasyon v21).
 // Konfigürasyon değişince yeniden indirin: GET <API>/_sdk/{ts|kotlin|dart|swift} (yönetici) veya uygulama/panel.
 // Gerekenler: kotlinx-serialization-json (ve Kotlin serialization eklentisi). JVM ve Android'de çalışır.
 @file:Suppress("unused", "MemberVisibilityCanBePrivate", "PropertyName")
@@ -449,6 +449,20 @@ class Teams(
     fun removeMember(id: Long, user: Long) {
         client.request("DELETE", at(removeMember, "removeMember", id, user))
     }
+}
+
+/** Abonelikler: planlar, ödeme sayfası (rol ödeme bildirimi gelince verilir) ve kullanıcının abonelikleri. Yanıtlar JSON. */
+class Payments(private val client: DroidServerBase, private val plans: String?, private val subscribe: String?, private val subscriptions: String?) {
+    private fun at(p: String?, key: String) = p ?: throw DroidServerException(404, "Bu ödeme ucu kapalı: " + key)
+
+    /** `{items: [{name, title, provider, role}]}` */
+    fun plans(): JsonObject = client.request("GET", at(plans, "plans"))!!.jsonObject
+
+    /** `{plan, url}`: kullanıcıyı ödeme sayfasına ([url]) yönlendirin. */
+    fun subscribe(plan: String): JsonObject = client.request("POST", at(subscribe, "subscribe"), json = buildJsonObject { put("plan", JsonPrimitive(plan)) })!!.jsonObject
+
+    /** `{items: [{id, plan, provider, status, period_end, manage_url}]}` */
+    fun subscriptions(): JsonObject = client.request("GET", at(subscriptions, "subscriptions"))!!.jsonObject
 }
 
 class Auth(

@@ -21,7 +21,7 @@ class MissingSecretsException(val names: List<String>) :
  * `"secret:<ad>"` referansı tutabilir. Referanslar deploy anında çözülür; çekirdek sırların nerede ve nasıl
  * saklandığını bilmez, yalnızca `(ad) -> değer?` çözücüsünü ve [SecretSink]'i kullanır.
  *
- * Kaydederken depoya otomatik taşınanlar `auth` sırları, `database.password`, `database.fieldKey`, DuckDNS token'ı, SMTP parolası (`email.password`), Telegram bot token'ı (`alerts.telegram.botToken`) ve uygulamaların Git token'ı ile webhook sırrı ve YZ anahtarları (`ai.apiKey`, `ai.embeddings.apiKey`) WebDAV parolası (`webdav.password`) ve MQTT parolasıdır (`mqtt.password`); bileşen, uygulama ve ortak
+ * Kaydederken depoya otomatik taşınanlar `auth` sırları, `database.password`, `database.fieldKey`, DuckDNS token'ı, SMTP parolası (`email.password`), Telegram bot token'ı (`alerts.telegram.botToken`) ve uygulamaların Git token'ı ile webhook sırrı ve YZ anahtarları (`ai.apiKey`, `ai.embeddings.apiKey`) WebDAV parolası (`webdav.password`), MQTT parolası (`mqtt.password`) ve ödeme sağlayıcılarının anahtarlarıdır (`payments.providers[]`); bileşen, uygulama ve ortak
  * ortamdaki (`env`) hangi değerin sır olduğu bilinemez, oraya referansı sihirbaz (örn. tünel token'ı), Ortam ve sırlar
  * ekranı ([EnvFile.toConfig]) veya kullanıcı yazar.
  */
@@ -75,6 +75,9 @@ object ConfigSecrets {
             webdav = config.webdav.copy(password = value(config.webdav.password)),
             mqtt = config.mqtt.copy(password = value(config.mqtt.password), devices = config.mqtt.devices.map { it.copy(password = value(it.password)) }),
             ai = config.ai.copy(apiKey = value(config.ai.apiKey), embeddings = config.ai.embeddings?.let { it.copy(apiKey = value(it.apiKey)) }),
+            payments = config.payments.copy(
+                providers = config.payments.providers.map { it.copy(secretKey = value(it.secretKey), apiKey = value(it.apiKey), webhookSecret = value(it.webhookSecret)) },
+            ),
             apps = config.apps.map { a ->
                 a.copy(
                     env = a.env.mapValues { value(it.value) },
@@ -202,6 +205,17 @@ object ConfigSecrets {
                 e["apiKey"]?.stringOrNull()?.let { mapped["embeddings"] = JsonObject(e + ("apiKey" to JsonPrimitive(transform("embeddings_key", it)))) }
             }
             out["ai"] = JsonObject(mapped)
+        }
+        (json["payments"] as? JsonObject)?.let { payments ->
+            val providers = payments["providers"] as? JsonArray ?: return@let
+            out["payments"] = JsonObject(payments + ("providers" to JsonArray(providers.map { p ->
+                val o = p as? JsonObject ?: return@map p
+                val mapped = o.toMutableMap()
+                for ((field, kind) in listOf("secretKey" to "payment_secret", "apiKey" to "payment_key", "webhookSecret" to "payment_hook")) {
+                    o[field]?.stringOrNull()?.let { mapped[field] = JsonPrimitive(transform(kind, it)) }
+                }
+                JsonObject(mapped)
+            })))
         }
         (json["email"] as? JsonObject)?.let { email ->
             email["password"]?.stringOrNull()?.let { out["email"] = JsonObject(email + ("password" to JsonPrimitive(transform("email_password", it)))) }

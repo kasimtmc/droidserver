@@ -533,6 +533,26 @@ public struct RecordCollection<T: Decodable & Sendable, I: Encodable & Sendable>
     }
 }
 
+/// Abonelikler: planlar, ödeme sayfası (rol ödeme bildirimi gelince verilir) ve kullanıcının abonelikleri. Yanıtlar JSON.
+public struct Payments: Sendable {
+    let client: DroidServerBase
+    let plansPath: String?, subscribePath: String?, subscriptionsPath: String?
+
+    private func at(_ p: String?, _ key: String) throws -> String {
+        guard let p else { throw DroidServerError(404, "Bu ödeme ucu kapalı: \(key)") }
+        return p
+    }
+
+    /// `{items: [{name, title, provider, role}]}`
+    public func plans() async throws -> [String: JSONValue] { try await client.object("GET", try at(plansPath, "plans")) }
+
+    /// `{plan, url}`: kullanıcıyı ödeme sayfasına (`url`) yönlendirin.
+    public func subscribe(_ plan: String) async throws -> [String: JSONValue] { try await client.object("POST", try at(subscribePath, "subscribe"), ["plan": .string(plan)]) }
+
+    /// `{items: [{id, plan, provider, status, period_end, manage_url}]}`
+    public func subscriptions() async throws -> [String: JSONValue] { try await client.object("GET", try at(subscriptionsPath, "subscriptions")) }
+}
+
 /// Takımlar (`team` kuralı): kullanıcının takımları; üye ekleme, rol ve silme takım sahibinindir. Yanıtlar JSON.
 public struct Teams: Sendable {
     let client: DroidServerBase

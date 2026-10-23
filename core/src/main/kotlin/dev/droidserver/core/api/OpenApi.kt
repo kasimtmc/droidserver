@@ -347,6 +347,14 @@ object OpenApi {
                 op("/teams/{id}/members/{user}", "delete", operation(tag, tr("Üyeyi çıkar (sahip) veya takımdan ayrıl (kendisi)"), public = false, params = p("id", "user"),
                     responses = obj("204" to obj("description" to str(tr("Çıkarıldı"))))))
             }
+            if (config.payments.enabled && config.payments.plans.isNotEmpty()) {
+                val tag = tr("Ödemeler")
+                op("/payments/plans", "get", operation(tag, tr("Abonelik planları"), public = true, responses = ok(obj("type" to str("object"), "description" to str("{items: [{name, title, provider, role}]}")))))
+                op("/payments/subscribe", "post", operation(tag, tr("Abone ol: ödeme sayfasının adresi; rol ödeme bildirimi gelince verilir"), public = false,
+                    body = bodyOf("plan" to "string"), responses = ok(obj("type" to str("object"), "description" to str("{plan, url}")))))
+                op("/payments/subscriptions", "get", operation(tag, tr("Aboneliklerim"), public = false,
+                    responses = ok(obj("type" to str("object"), "description" to str("{items: [{id, plan, provider, status, period_end, manage_url}]}")))))
+            }
             if (config.email.enabled) {
                 val accepted = obj("202" to obj("description" to str(tr("Hesap varsa e-posta gönderildi"))))
                 op("$auth/request-verification", "post", operation(tr("Hesap"), tr("Doğrulama e-postası"), public = true, body = bodyOf("email" to "string"), responses = accepted))

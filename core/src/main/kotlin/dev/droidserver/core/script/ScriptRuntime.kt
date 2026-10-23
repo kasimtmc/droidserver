@@ -124,6 +124,10 @@ class ScriptRuntime private constructor(
     @Volatile
     var phone: PhoneService? = null
 
+    /** `ctx.payments.create({amount, currency, description, collection, record, ...})`: ödeme bağlantısı; ödemeler kapalıysa null. */
+    @Volatile
+    var payments: ((JsonObject) -> JsonObject)? = null
+
     /** `ctx.db`'yi HTTP katmanı bağlar (kayıt servisleri sunucuyla birlikte kurulur). */
     @Volatile
     var db: ScriptDb? = null
@@ -364,6 +368,12 @@ class ScriptRuntime private constructor(
         ScriptableObject.putProperty(device, "location", fn("location") { c, _ -> toJs(c, phoneCall("ctx.device.location") { phone("ctx.device").location() }) })
         ScriptableObject.putProperty(device, "status", fn("status") { c, _ -> toJs(c, phoneCall("ctx.device.status") { phone("ctx.device").status() }) })
         ScriptableObject.putProperty(ctx, "device", device)
+        val payments = cx.newObject(scope)
+        ScriptableObject.putProperty(payments, "create", fn("create") { c, a ->
+            val create = this.payments ?: throw ScriptException(503, tr("ctx.payments: ödemeler kapalı (Sunucu → Ödemeler)"))
+            toJs(c, create(obj(c, a, 0)))
+        })
+        ScriptableObject.putProperty(ctx, "payments", payments)
         return ctx
     }
 
@@ -378,7 +388,7 @@ class ScriptRuntime private constructor(
     companion object {
         private const val REPLY_MARK = "@reply"
         private val DEADLINE = Any()
-        private val RESERVED = setOf("collections", "files", "auth", "health", "realtime", "batch", "_schema", "_metrics", "_openapi.json", "_webhooks", "push", "_audit", "_firewall", "_alerts", "_jobs", "views", "_phone", "_apps", "_automations")
+        private val RESERVED = setOf("collections", "files", "auth", "health", "realtime", "batch", "_schema", "_metrics", "_openapi.json", "_webhooks", "push", "_audit", "_firewall", "_alerts", "_jobs", "views", "_phone", "_apps", "_automations", "payments", "_payments")
         private val PATH = Regex("^(/(:?[A-Za-z0-9_.~-]+))+$|^/$")
         private val METHODS = setOf("GET", "POST", "PUT", "PATCH", "DELETE")
         private val JOB_NAME = Regex("^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
