@@ -1101,6 +1101,8 @@ used. In the app: API explorer → Client SDK (share/save), in the panel: the AP
 ```bash
 curl -H "Authorization: Bearer <admin key>" -o droidserver.ts http://<phone>:8080/api/_sdk/ts
 curl -H "Authorization: Bearer <admin key>" -o DroidServerClient.kt "http://<phone>:8080/api/_sdk/kotlin?package=com.ornek.api"
+curl -H "Authorization: Bearer <admin key>" -o droidserver.dart http://<phone>:8080/api/_sdk/dart
+curl -H "Authorization: Bearer <admin key>" -o DroidServer.swift http://<phone>:8080/api/_sdk/swift
 ```
 
 ```ts
@@ -1114,6 +1116,36 @@ const stop = ds.subscribe(["todos"], (e) => console.log(e.action, e.record));
 The TypeScript client is dependency-free (`fetch`; browsers, Node 18+, React Native, Deno) and uses only syntax that works
 with type stripping. The Kotlin client works on the JVM and Android with `HttpURLConnection` and kotlinx.serialization
 (on the JVM the server accepts the `X-HTTP-Method-Override` header for PATCH). Since it contains the schema, `/_sdk` is admin-only.
+
+**Dart / Flutter** (`droidserver.dart`): needs only the Dart 3 SDK (`dart:io`); it runs on the Dart VM and Flutter Android,
+iOS and desktop, not on Flutter web. Records are classes with `fromJson`, inputs are classes with named parameters (a field
+whose name is a Dart reserved word gets a trailing `_`: `in` → `in_`). The realtime subscription is a `Stream`; cancelling
+the listener closes it. Call `close()` when done.
+
+```dart
+final ds = DroidServerClient('https://evim.duckdns.org/api', fallbackUrls: ['http://192.168.1.20:8080/api']);
+await ds.auth.login('ali@example.com', 'parola');
+final page = await ds.todos.list(const ListOptions(filter: {'done': 'false'}, sort: '-created_at'));
+await ds.todos.create(const TodosInput(title: 'Süt al'), files: {'image': [File('foto.jpg')]});
+final sub = ds.subscribe(['todos']).listen((e) => print('${e.action} ${e.record}'));
+```
+
+**Swift** (`DroidServer.swift`): Swift 5.9+ with async/await, no dependencies; Apple platforms and Linux
+(FoundationNetworking). It compiles without warnings in Swift 6 mode. Records are `Decodable` and inputs `Encodable`
+structs; JSON fields and team/account responses are `JSONValue`. The realtime subscription is an `AsyncStream`.
+
+```swift
+let ds = DroidServerClient("https://evim.duckdns.org/api")
+_ = try await ds.auth.login("ali@example.com", "parola")
+let page = try await ds.todos.list(ListOptions(sort: "-created_at", filter: ["done": "false"]))
+_ = try await ds.todos.create(TodosInput(title: "Süt al"), files: ["image": [URL(fileURLWithPath: "foto.jpg")]])
+for await e in ds.subscribe(["todos"]) { print(e.action, e.record) }
+```
+
+All four clients offer the same surface: CRUD and filters, file upload and file URLs, sign-in (two-step, e-mail and SMS
+codes), refreshing the token once on 401, teams, fallback addresses (`fallbackUrls`), the QR link text (`fromLink`) and the
+realtime subscription (resumes from the last event after a disconnect). The Dart and Swift clients are compiled and run
+against a real server in the tests.
 
 ### E-mail: verification and password reset
 

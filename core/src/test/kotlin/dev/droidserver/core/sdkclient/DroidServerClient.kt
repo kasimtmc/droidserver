@@ -1,5 +1,5 @@
 // DroidServer istemcisi: "SDK deneme" sunucusu için üretildi (konfigürasyon v17).
-// Konfigürasyon değişince yeniden indirin: GET <API>/_sdk/{ts|kotlin} (yönetici) veya uygulama/panel.
+// Konfigürasyon değişince yeniden indirin: GET <API>/_sdk/{ts|kotlin|dart|swift} (yönetici) veya uygulama/panel.
 // Gerekenler: kotlinx-serialization-json (ve Kotlin serialization eklentisi). JVM ve Android'de çalışır.
 @file:Suppress("unused", "MemberVisibilityCanBePrivate", "PropertyName")
 
