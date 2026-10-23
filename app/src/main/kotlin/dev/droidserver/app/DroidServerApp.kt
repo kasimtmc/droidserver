@@ -215,6 +215,8 @@ class AppGraph(context: Context, val profile: Profile, profiles: ProfileStore) {
         // Web paneli konfigürasyonu, logları ve yedekleri uygulamadaki gibi yönetir.
         engine.adminHost = AppAdminHost(context, configRepo, secrets, engine, logs, backups)
         engine.localAi = localModels
+        // MQTT TLS'in yerel kökü: HTTPS sertifikasıyla aynı klasör ve parola; kök ilk TLS bağlantısında üretilir.
+        engine.mqttCa = dev.droidserver.core.net.LocalCa(File(context.filesDir, "tls"), tlsPassword, log = logs::add)
         engine.appsHost = apps
         // Kopyada ana sunucunun konfigürasyonu değişince: paylaşılan kısmı alıp kaydet (sırlar şifreli depoya) ve yeniden deploy.
         engine.onPrimaryConfig = { primary, _ ->

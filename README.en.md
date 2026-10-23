@@ -157,7 +157,7 @@ with **Advanced (JSON)**; both share the same draft, and the draft is saved to `
 | `payments` | Payments: `providers` (`provider`: `stripe`/`iyzico`/`paddle`, `secretKey`, `apiKey`, `webhookSecret`, `clientToken` (`secret:`), `sandbox`, `enabled`), `publicUrl`, `plans` (`name`, `title`, `provider`, `price`, `role`, `quotas`), `statusField`, `merchant` (see Payments) |
 | `ai` | AI: `enabled`, `provider` (`claude`/`openai`/`gemini`), `url`, `apiKey` (`secret:`), `model`, `effort`, `access`, `dailyLimit`, `embeddings`, `semantic` (see AI) |
 | `webdav` | Network drive: `enabled`, `path`, `username`, `password` (`secret:`), `readOnly`, `site`, `scripts`, `uploads`, `maxFileMb` (see Network drive) |
-| `mqtt` | MQTT (IoT): `enabled`, `port` (1883), `username`, `password` (`secret:`), `routes` (`topic`, `collection`, `valueField`, `topicField`), `events`, `eventPrefix`, `maxClients`, `devices` (per-device credentials), `scenes`, `homeAssistant` (see MQTT) |
+| `mqtt` | MQTT (IoT): `enabled`, `port` (1883), `plain`, `tls`, `tlsPort` (8883), `username`, `password` (`secret:`), `routes` (`topic`, `collection`, `valueField`, `topicField`), `events`, `eventPrefix`, `maxClients`, `devices` (per-device credentials), `scenes`, `homeAssistant` (see MQTT) |
 | `sensors` | Sensor dashboard: `collection`, `field`, `name`, `unit`, `deviceClass`, `min`, `max` (threshold alerts; see MQTT → Home automation) |
 | `replication` | Live copy: `source`, `keepDays` (7), `replicaOf` (`url`, `key`, `intervalSec`), `failover` (`auto`, `afterSec` (120), `witness`, `failback`), `formerPrimary` (see Live copy) |
 | `components[].sharedEnv` | true: the component also receives the shared environment variables (its own `env` takes precedence) |
@@ -1800,9 +1800,16 @@ The phone has its own MQTT server; no separate broker is needed.
 - **Credentials:** a shared username and password for all devices (if the password is left empty one is generated,
   kept in encrypted storage) and/or **per-device credentials** (`mqtt.devices`): each device's name is its username and it
   has its own password; deleting one doesn't affect the others. With a device list, shared sign-in can be turned off (empty
-  shared password). The status shows each connection's identity. Failed attempts count towards the firewall. The connection is plain TCP (default 1883) and
-  works **on the local network only**: connections from the internet are rejected (the home network, the phone's IPv6
-  network and Tailscale are accepted).
+  shared password). The status shows each connection's identity. Failed attempts count towards the firewall. MQTT works **on the local network only**:
+  connections from the internet are rejected (the home network, the phone's IPv6 network and Tailscale are accepted).
+- **TLS (encrypted connection):** with `mqtt.tls` on, `mqtts://` on 8883 (`tlsPort`). The phone creates a **local root
+  certificate** once; the server certificate is signed by this root for the phone's local IP addresses and renewed
+  automatically (with the same key) when the address changes or 30 days before it expires. Install the root on devices
+  once (**Share root** on the MQTT screen, **Download root certificate** in the panel, `GET /_mqtt/ca.pem`): mosquitto
+  `--cafile droidserver-ca.pem -p 8883`, ESP32 `WiFiClientSecure.setCACert(...)`, in Home Assistant MQTT → Advanced
+  options → custom CA. Devices that connect by IP address pass the name check too. The plain connection (1883,
+  unencrypted) stays on by default and can be turned off while TLS is on (`plain: false`). The status shows which
+  devices are connected over TLS.
 - **Save messages:** a message matching a topic filter is added to the collection as a record; automations, webhooks
   and realtime subscriptions fire too. The fields of a JSON object are written to the collection's fields (unknown ones
   are skipped); a plain value (`23.5`, `on`) goes to the value field. The topic field holds the filter's `+` part

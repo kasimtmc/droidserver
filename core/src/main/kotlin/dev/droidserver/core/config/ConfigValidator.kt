@@ -830,6 +830,11 @@ object ConfigValidator {
         if (m.port !in 1..65_535) error("mqtt.port", tr("Port 1-65535 olmalı"))
         val taken = listOfNotNull(config.server.port, config.access.direct.port.takeIf { config.access.mode == AccessMode.DIRECT })
         if (m.port in taken) error("mqtt.port", tr("MQTT portu sunucunun portuyla aynı olamaz ({0})", m.port))
+        if (m.tls) {
+            if (m.tlsPort !in 1..65_535) error("mqtt.tlsPort", tr("Port 1-65535 olmalı"))
+            else if (m.tlsPort in taken || (m.plain && m.tlsPort == m.port)) error("mqtt.tlsPort", tr("MQTT TLS portu başka bir portla aynı olamaz ({0})", m.tlsPort))
+        }
+        if (!m.plain && !m.tls) error("mqtt.plain", tr("Düz bağlantıyı kapatmak için önce TLS'i açın"))
         if (!Regex("^[A-Za-z0-9._-]{1,32}$").matches(m.username)) error("mqtt.username", tr("Kullanıcı adı harf, rakam, . _ - olmalı (en çok 32)"))
         // Cihaz listesi varken ortak parola boş bırakılabilir (ortak girişi kapatır).
         if ((m.devices.isEmpty() || m.password.isNotEmpty()) && !ConfigSecrets.isRef(m.password) && m.password.length < 8) {
