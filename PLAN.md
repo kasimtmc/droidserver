@@ -936,6 +936,14 @@ oturtmasın), sonra panelin eksiklerini kapatma, sonra güvenlik, en son yeni ö
   secret ekleme ve iş akışını elle çalıştırma (`gh workflow run release.yml -f version=…`), mağaza açıklamaları,
   gizlilik politikası (harita karoları, yerel YZ indirmesi, ödeme sağlayıcıları) ve F-Droid açık konuları (model
   lisansları, özgür olmayan ağ hizmetleri) güncel.
+  *Durum (24 Ekim 2026):* 0.9.0 ve 0.9.1 yayınlandı (`dev.droidserver.app`). Ardından uygulama kimliği
+  **`com.plyg.droidserver`**, kod paketleri `com.plyg.droidserver.app` / `.core` oldu (kullanıcı kararı); Tasker, widget
+  ve servis eylemleri `com.plyg.droidserver.*`, llama.cpp JNI adları, üretilen SDK'ların test paketi, F-Droid taslağı
+  (`docs/fdroid/com.plyg.droidserver.yml`) buna göre. Yeni kimlik Android için ayrı uygulamadır: 0.9.x kendini ona
+  güncelleyemez (yedek al, kaldır, kur, geri yükle; Tasker profillerindeki eylem adları değişir). Bileşen binary'lerine
+  gömülen yollar (`tools/patch-termux-paths.py`, `tools/package-cloudflared.sh`) yeni kimliğe göre; eski kimlikle
+  paketlenmiş bileşenlerin geçici klasör yolu da çevrilmeye devam eder. Sınır: Termux yolu 35 bayt,
+  `/data/user/0/com.plyg.droidserver/t` tam 35; ikinci kullanıcı/iş profilinde (`/data/user/10/…`, 36) yol sığmaz.
 
 **17.4 Web panelini eşitleme**
 - [x] Panelde yalnızca uygulamada olan ekranlar: Takımlar, MQTT (durum, yönlendirmeler, komut), Canlı kopya ve devralma
@@ -1325,7 +1333,7 @@ kendi müşterisinden para alıyor). Gri alan: kendi uygulamalarınızda npm/pip
 - [ ] `full` (bugünkü, targetSdk 28, GitHub/F-Droid) ve `play` türleri; `BuildConfig` bayrakları (güncelleyici, SMS,
   bileşen kaynağı). Kaynak tek; türe özel manifest yalnızca izinler için.
 - [ ] Release iş akışı iki APK'yı da üretir (ya da `play` için AAB); `full` yayını değişmez.
-- Karar: Play'de aynı uygulama kimliği (`dev.droidserver.app`) mi, ayrı mı (`dev.droidserver.play`)? Play App Signing
+- Karar: Play'de aynı uygulama kimliği (`com.plyg.droidserver`) mi, ayrı mı (`com.plyg.droidserver.play`)? Play App Signing
   Google'ın anahtarıyla imzaladığı için iki kanal birbirinin üzerine güncellenemez; aynı kimlik telefonda karışıklık
   yaratır (önce kaldırmak gerekir). Öneri: ayrı kimlik.
 

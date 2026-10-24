@@ -11,7 +11,7 @@ Kullanım: python3 -I tools/patch-termux-paths.py <dosya>...   (değişen dosya 
 import sys
 
 OLD = b"/data/data/com.termux/files/usr/tmp"
-NEW = b"/data/data/dev.droidserver.app/t"
+NEW = b"/data/data/com.plyg.droidserver/t"
 NEW = b"/" * (len(OLD) - len(NEW)) + NEW
 assert len(NEW) == len(OLD)
 

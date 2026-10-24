@@ -92,7 +92,7 @@ std::string apply_template(const llama_model * model, const std::vector<llama_ch
 }  // namespace
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_dev_droidserver_app_ai_LlamaNative_load(JNIEnv * env, jobject, jstring path, jint n_ctx, jint n_threads, jboolean embeddings) {
+Java_com_plyg_droidserver_app_ai_LlamaNative_load(JNIEnv * env, jobject, jstring path, jint n_ctx, jint n_threads, jboolean embeddings) {
     std::call_once(backend_once, [] { llama_backend_init(); });
     const char * p = env->GetStringUTFChars(path, nullptr);
     llama_model_params mp = llama_model_default_params();
@@ -124,7 +124,7 @@ Java_dev_droidserver_app_ai_LlamaNative_load(JNIEnv * env, jobject, jstring path
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_dev_droidserver_app_ai_LlamaNative_free(JNIEnv *, jobject, jlong handle) {
+Java_com_plyg_droidserver_app_ai_LlamaNative_free(JNIEnv *, jobject, jlong handle) {
     auto * e = reinterpret_cast<Engine *>(handle);
     if (e == nullptr) return;
     llama_free(e->ctx);
@@ -133,7 +133,7 @@ Java_dev_droidserver_app_ai_LlamaNative_free(JNIEnv *, jobject, jlong handle) {
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_dev_droidserver_app_ai_LlamaNative_cancel(JNIEnv *, jobject, jlong handle) {
+Java_com_plyg_droidserver_app_ai_LlamaNative_cancel(JNIEnv *, jobject, jlong handle) {
     auto * e = reinterpret_cast<Engine *>(handle);
     if (e != nullptr) e->cancel = true;
 }
@@ -143,7 +143,7 @@ Java_dev_droidserver_app_ai_LlamaNative_cancel(JNIEnv *, jobject, jlong handle) 
  * 0: üretilen metin (UTF-8), 1: girdi token sayısı ve çıktı token sayısı ve bitiş ("stop"/"length"/"cancel") metni.
  */
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_dev_droidserver_app_ai_LlamaNative_complete(JNIEnv * env, jobject, jlong handle, jobjectArray roles, jobjectArray contents, jint max_tokens, jfloat temperature) {
+Java_com_plyg_droidserver_app_ai_LlamaNative_complete(JNIEnv * env, jobject, jlong handle, jobjectArray roles, jobjectArray contents, jint max_tokens, jfloat temperature) {
     auto * e = reinterpret_cast<Engine *>(handle);
     if (e == nullptr || e->embeddings) { throw_io(env, "not a chat model"); return nullptr; }
     e->cancel = false;
@@ -196,7 +196,7 @@ Java_dev_droidserver_app_ai_LlamaNative_complete(JNIEnv * env, jobject, jlong ha
 
 /** Metnin gömme vektörü (modelin havuzlamasıyla, L2 normalleştirilmiş). */
 extern "C" JNIEXPORT jfloatArray JNICALL
-Java_dev_droidserver_app_ai_LlamaNative_embed(JNIEnv * env, jobject, jlong handle, jbyteArray text) {
+Java_com_plyg_droidserver_app_ai_LlamaNative_embed(JNIEnv * env, jobject, jlong handle, jbyteArray text) {
     auto * e = reinterpret_cast<Engine *>(handle);
     if (e == nullptr || !e->embeddings) { throw_io(env, "not an embedding model"); return nullptr; }
     const llama_vocab * vocab = llama_model_get_vocab(e->model);
