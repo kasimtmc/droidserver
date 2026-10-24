@@ -1743,23 +1743,23 @@ the key, with a wrong key or while the bridge is off are ignored and logged as "
 
 | Action | What it does |
 |---|---|
-| `dev.droidserver.action.START` | Starts the server (does nothing without a configuration) |
-| `dev.droidserver.action.STOP` | Stops the server |
-| `dev.droidserver.action.DEPLOY` | Reloads the configuration and deploys |
+| `com.plyg.droidserver.action.START` | Starts the server (does nothing without a configuration) |
+| `com.plyg.droidserver.action.STOP` | Stops the server |
+| `com.plyg.droidserver.action.DEPLOY` | Reloads the configuration and deploys |
 
 In Tasker: Task → System → **Send Intent**. Action one of the above, Extra `token:<key>`, Package
-`dev.droidserver.app`, Class `dev.droidserver.app.service.TaskerReceiver`, Target **Broadcast Receiver**.
+`com.plyg.droidserver`, Class `com.plyg.droidserver.app.service.TaskerReceiver`, Target **Broadcast Receiver**.
 In MacroDroid: Action → Applications → **Send Intent** (same fields). To try it from a computer:
-`adb shell am broadcast -a dev.droidserver.action.STOP -n dev.droidserver.app/.service.TaskerReceiver --es token <key>`.
+`adb shell am broadcast -a com.plyg.droidserver.action.STOP -n com.plyg.droidserver/com.plyg.droidserver.app.service.TaskerReceiver --es token <key>`.
 
 **Events** are sent only to the apps selected in the settings (Tasker, MacroDroid, Automate, or added by package name):
 
 | Action | Extras |
 |---|---|
-| `dev.droidserver.event.STARTED` | `profile`, `port`, `url` (local network address) |
-| `dev.droidserver.event.STOPPED` | `profile` |
-| `dev.droidserver.event.FAILED` | `profile`, `reason` |
-| `dev.droidserver.event.ALERT` | `profile`, `kind`, `title`, `message`, `resolved`, `critical` (health alert; while the notification channel is on) |
+| `com.plyg.droidserver.event.STARTED` | `profile`, `port`, `url` (local network address) |
+| `com.plyg.droidserver.event.STOPPED` | `profile` |
+| `com.plyg.droidserver.event.FAILED` | `profile`, `reason` |
+| `com.plyg.droidserver.event.ALERT` | `profile`, `kind`, `title`, `message`, `resolved`, `critical` (health alert; while the notification channel is on) |
 
 In Tasker: Profile → Event → System → **Intent Received**, Action one of the above; values arrive as variables such as
 `%url` and `%title`. The key is kept in encrypted storage; after **Renew**, commands sent with the old key stop working.
@@ -2383,7 +2383,7 @@ adb shell settings put global settings_enable_monitor_phantom_procs false
 ## Project structure
 
 ```
-core/src/main/kotlin/dev/droidserver/core/
+core/src/main/kotlin/com/plyg/droidserver/core/
   config/      ServerConfig, ConfigValidator (errors with field paths), ConfigMigrations (version upgrades),
                ConfigSecrets (secret references), ConfigTemplates, ConfigSummary (access/CORS mode, summary),
                ConfigDiff (history diff, data loss warnings), FieldDefaults, DatabaseChoice (SQLite/Postgres)
@@ -2413,7 +2413,7 @@ core/src/test/  CoreTest, ComponentManagerTest, ConfigMigrationsTest, DeployOrch
                 for SQLite + PostgreSQL: DialectContractTest, SchemaPlanTest, DataCopierTest; PostgresResilienceTest
                 AccessConfigTest, DirectAccessTest (TLS endpoint, NAT-PMP/UPnP with a fake router), RequestGuardTest
                 (93 tests; TestDb manages embedded PostgreSQL)
-app/src/main/kotlin/dev/droidserver/app/
+app/src/main/kotlin/com/plyg/droidserver/app/
   DroidServerApp      dependency container (AppGraph), settings
   data/               AndroidSqlDriver, AndroidNetwork (network types, router address, DNS), ConfigRepository,
                       DraftStore, SecretStore, LogBuffer, NetUtil

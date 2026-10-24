@@ -15,15 +15,16 @@ sürümler birbirinin üzerine güncellenir.
 - Lisans: GPL-3.0-or-later (`LICENSE`).
 - Yerel YZ için llama.cpp (MIT) git alt modülü olarak kaynaktan derlenir (NDK + CMake, ağsız ve tekrarlanabilir);
   taslakta `submodules: true` ve `ndk` sürümü var.
-- `dev.droidserver.app.yml`: fdroiddata deposuna eklenecek meta verinin taslağı.
+- `com.plyg.droidserver.yml`: fdroiddata deposuna eklenecek meta verinin taslağı. Uygulama kimliği 0.9.1'den sonra
+  `dev.droidserver.app`'ten `com.plyg.droidserver`'e geçti; F-Droid'e ilk gönderim yeni kimlikle çıkan ilk sürümle yapılır.
 
 ## Gönderim adımları
 
 1. Aşağıdaki **açık konuları** kapatın.
-2. `v0.9.0` etiketini ve imzalı APK'yı yayınlayın (release.yml).
+2. Yeni kimlikle (`com.plyg.droidserver`) ilk sürümü ve imzalı APK'yı yayınlayın (release.yml).
 3. İmza sertifikasının SHA-256'sını alın: `apksigner verify --print-certs droidserver-0.9.0.apk` → `AllowedAPKSigningKeys`.
-4. <https://gitlab.com/fdroid/fdroiddata> deposunu çatallayın, `metadata/dev.droidserver.app.yml` olarak taslağı ekleyin,
-   `fdroid lint dev.droidserver.app` ve `fdroid build -v -l dev.droidserver.app` ile deneyin, birleştirme isteği açın.
+4. <https://gitlab.com/fdroid/fdroiddata> deposunu çatallayın, `metadata/com.plyg.droidserver.yml` olarak taslağı ekleyin,
+   `fdroid lint com.plyg.droidserver` ve `fdroid build -v -l com.plyg.droidserver` ile deneyin, birleştirme isteği açın.
 
 ## Açık konular (göndermeden önce karar gerekir)
 

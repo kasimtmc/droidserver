@@ -5,7 +5,7 @@
 # /etc/resolv.conf arar, o dosya Android'de yoktur. Termux derlemesi bionic libc'ye bağlıdır (cgo), böylece
 # GODEBUG=netdns=cgo ile adresleri Android'in kendi çözümleyicisiyle çözer (Özel DNS ve VPN ayarlarına uyar).
 # Saf Go çözümleyicisinin okuduğu resolv.conf yolu binary içinde Termux'u gösterir; bu betik onu uygulamanın
-# yazdığı dosyaya çevirir (/data/data/dev.droidserver.app/files/dns.conf, uygulama ağın DNS sunucularıyla doldurur).
+# yazdığı dosyaya çevirir (/data/data/com.plyg.droidserver/files/dns.conf, uygulama ağın DNS sunucularıyla doldurur).
 # Binary'ler bu makinede çalıştırılmaz.
 #
 # Kullanım: tools/package-cloudflared.sh [çıktı-klasörü]     (varsayılan: dist/)
@@ -25,7 +25,7 @@ esac
 # Termux yolu ve yerine yazılacak yol aynı uzunlukta olmalı (Go dizgelerinin uzunluğu binary'de ayrıca saklanır);
 # fazladan baştaki eğik çizgiler yolu değiştirmez.
 OLD_RESOLV="/data/data/com.termux/files/usr/etc/resolv.conf"
-NEW_RESOLV="/data/data/dev.droidserver.app/files/dns.conf"
+NEW_RESOLV="/data/data/com.plyg.droidserver/files/dns.conf"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
