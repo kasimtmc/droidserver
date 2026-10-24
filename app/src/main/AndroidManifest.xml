@@ -97,9 +97,9 @@
             android:exported="true"
             tools:ignore="ExportedReceiver">
             <intent-filter>
-                <action android:name="dev.droidserver.action.START" />
-                <action android:name="dev.droidserver.action.STOP" />
-                <action android:name="dev.droidserver.action.DEPLOY" />
+                <action android:name="com.plyg.droidserver.action.START" />
+                <action android:name="com.plyg.droidserver.action.STOP" />
+                <action android:name="com.plyg.droidserver.action.DEPLOY" />
             </intent-filter>
         </receiver>
 

@@ -1721,23 +1721,23 @@ verilir; anahtarsız, yanlış anahtarlı veya köprü kapalıyken gelen komut y
 
 | Action | Ne yapar |
 |---|---|
-| `dev.droidserver.action.START` | Sunucuyu başlatır (konfigürasyon yoksa bir şey yapmaz) |
-| `dev.droidserver.action.STOP` | Sunucuyu durdurur |
-| `dev.droidserver.action.DEPLOY` | Konfigürasyonu yeniden yükleyip deploy eder |
+| `com.plyg.droidserver.action.START` | Sunucuyu başlatır (konfigürasyon yoksa bir şey yapmaz) |
+| `com.plyg.droidserver.action.STOP` | Sunucuyu durdurur |
+| `com.plyg.droidserver.action.DEPLOY` | Konfigürasyonu yeniden yükleyip deploy eder |
 
 Tasker'da: Görev → Sistem → **Send Intent**. Action yukarıdakilerden biri, Extra `token:<anahtar>`, Package
-`dev.droidserver.app`, Class `dev.droidserver.app.service.TaskerReceiver`, Target **Broadcast Receiver**.
+`com.plyg.droidserver`, Class `com.plyg.droidserver.app.service.TaskerReceiver`, Target **Broadcast Receiver**.
 MacroDroid'de: Eylem → Uygulamalar → **Send Intent** (aynı alanlar). Bilgisayardan denemek için:
-`adb shell am broadcast -a dev.droidserver.action.STOP -n dev.droidserver.app/.service.TaskerReceiver --es token <anahtar>`.
+`adb shell am broadcast -a com.plyg.droidserver.action.STOP -n com.plyg.droidserver/com.plyg.droidserver.app.service.TaskerReceiver --es token <anahtar>`.
 
 **Olaylar** yalnızca ayarlarda seçilen uygulamalara (Tasker, MacroDroid, Automate veya paket adıyla eklenen) gönderilir:
 
 | Action | Ek değerler |
 |---|---|
-| `dev.droidserver.event.STARTED` | `profile`, `port`, `url` (yerel ağ adresi) |
-| `dev.droidserver.event.STOPPED` | `profile` |
-| `dev.droidserver.event.FAILED` | `profile`, `reason` |
-| `dev.droidserver.event.ALERT` | `profile`, `kind`, `title`, `message`, `resolved`, `critical` (sağlık uyarısı; bildirim kanalı açıkken) |
+| `com.plyg.droidserver.event.STARTED` | `profile`, `port`, `url` (yerel ağ adresi) |
+| `com.plyg.droidserver.event.STOPPED` | `profile` |
+| `com.plyg.droidserver.event.FAILED` | `profile`, `reason` |
+| `com.plyg.droidserver.event.ALERT` | `profile`, `kind`, `title`, `message`, `resolved`, `critical` (sağlık uyarısı; bildirim kanalı açıkken) |
 
 Tasker'da: Profil → Olay → Sistem → **Intent Received**, Action yukarıdakilerden biri; değerler `%url`, `%title` gibi
 değişkenlerle gelir. Anahtar şifreli depoda durur; **Yenile** ile değiştirince eskisiyle gelen komutlar çalışmaz.
@@ -2340,7 +2340,7 @@ adb shell settings put global settings_enable_monitor_phantom_procs false
 ## Proje yapısı
 
 ```
-core/src/main/kotlin/dev/droidserver/core/
+core/src/main/kotlin/com/plyg/droidserver/core/
   config/      ServerConfig, ConfigValidator (alan yollu hatalar), ConfigMigrations (sürüm dönüşümleri),
                ConfigSecrets (sır referansları), ConfigTemplates, ConfigSummary (erişim/CORS modu, özet),
                ConfigDiff (geçmiş farkı, veri kaybı uyarıları), FieldDefaults, DatabaseChoice (SQLite/Postgres)
@@ -2370,7 +2370,7 @@ core/src/test/  CoreTest, ComponentManagerTest, ConfigMigrationsTest, DeployOrch
                 SQLite + PostgreSQL için: DialectContractTest, SchemaPlanTest, DataCopierTest; PostgresResilienceTest
                 AccessConfigTest, DirectAccessTest (TLS ucu, NAT-PMP/UPnP sahte modemle), RequestGuardTest
                 (93 test; TestDb gömülü PostgreSQL'i yönetir)
-app/src/main/kotlin/dev/droidserver/app/
+app/src/main/kotlin/com/plyg/droidserver/app/
   DroidServerApp      bağımlılık kabı (AppGraph), ayarlar
   data/               AndroidSqlDriver, AndroidNetwork (ağ türleri, modem adresi, DNS), ConfigRepository,
                       DraftStore, SecretStore, LogBuffer, NetUtil

@@ -24,11 +24,11 @@ plugins {
 }
 
 android {
-    namespace = "dev.droidserver.app"
+    namespace = "com.plyg.droidserver.app"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "dev.droidserver.app"
+        applicationId = "com.plyg.droidserver"
         minSdk = 26
         // BİLİNÇLİ SEÇİM: targetSdk 28 -> indirilen native binary'ler uygulama klasöründen
         // çalıştırılabilir (Android 10+ W^X kısıtı uygulanmaz). Play Store'da yayınlanamaz.
