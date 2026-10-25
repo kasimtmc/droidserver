@@ -1,17 +1,13 @@
-<p>DroidServer, Android telefonu uygulamalarınız ve siteleriniz için bir arka uca çevirir. Her şey telefonda çalışır; bulut hesabı gerekmez.</p>
+DroidServer, Android telefonu uygulamalarınız ve siteleriniz için bir arka uca çevirir. Her şey telefonda çalışır; bulut hesabı gerekmez.
 
-<ul>
-<li><b>Veri ve API:</b> koleksiyonlar (SQLite veya PostgreSQL), kendiliğinden oluşan REST ve GraphQL API, canlı abonelik, arama, içe/dışa aktarma, konum ve harita, takvim (CalDAV) ve kişiler (CardDAV), istemci SDK'larında çevrimdışı eşitleme.</li>
-<li><b>Kullanıcılar ve kurallar:</b> hesaplar, roller, takımlar, iki adımlı doğrulama, passkey, sosyal giriş; koleksiyon başına erişim kuralları.</li>
-<li><b>Dosyalar ve site:</b> dosya alanları, küçük resimler, video akışı, statik site yayınlama, kodsuz sayfalar ve panolar, ağ sürücüsü (WebDAV).</li>
-<li><b>Otomasyon:</b> JavaScript script'leri, iş kuyruğu, kodsuz otomasyon kuralları, formlar, webhook'lar, MQTT (TLS dahil) ve Home Assistant.</li>
-<li><b>Yapay zekâ:</b> Claude, OpenAI veya Gemini vekili, kayıtlara soru ve anlamsal arama; ya da modeller telefonda (llama.cpp), veri dışarı çıkmadan.</li>
-<li><b>Ödemeler:</b> Stripe, iyzico ve Paddle ile ödeme bağlantısı, abonelik, iade ve makbuz; kart bilgisi telefondan geçmez.</li>
-<li><b>Paketler:</b> koleksiyon, kural, otomasyon, sayfa ve script'leri tek dosyada paylaşın; kurmadan önce ne değişeceği gösterilir.</li>
-<li><b>Yönetim:</b> sihirbaz, web paneli, komut satırı aracı, yedekler (isteğe bağlı şifreli bulut), denetim kaydı, sağlık uyarıları (bildirim, e-posta, Telegram) ve Telegram'dan komutlar.</li>
-<li><b>İnternetten erişim:</b> Cloudflare tüneli, Tailscale veya alan adınızla doğrudan erişim ve Let's Encrypt sertifikası.</li>
-</ul>
+• Veri ve API: koleksiyonlar (SQLite veya PostgreSQL), kendiliğinden oluşan REST ve GraphQL API, canlı abonelik, arama, içe/dışa aktarma, konum ve harita, takvim (CalDAV) ve kişiler (CardDAV), istemci SDK'larında çevrimdışı eşitleme.
+• Kullanıcılar ve kurallar: hesaplar, roller, takımlar, iki adımlı doğrulama, passkey, sosyal giriş; koleksiyon başına erişim kuralları.
+• Dosyalar ve site: dosya alanları, küçük resimler, video akışı, statik site yayınlama, kodsuz sayfalar ve panolar, ağ sürücüsü (WebDAV).
+• Otomasyon: JavaScript script'leri, iş kuyruğu, kodsuz otomasyon kuralları, formlar, webhook'lar, MQTT (TLS dahil) ve Home Assistant.
+• Yapay zekâ: Claude, OpenAI veya Gemini vekili, kayıtlara soru ve anlamsal arama; ya da modeller telefonda (llama.cpp), veri dışarı çıkmadan.
+• Ödemeler: Stripe, iyzico ve Paddle ile ödeme bağlantısı, abonelik, iade ve makbuz; kart bilgisi telefondan geçmez.
+• Paketler: koleksiyon, kural, otomasyon, sayfa ve script'leri tek dosyada paylaşın; kurmadan önce ne değişeceği gösterilir.
+• Yönetim: sihirbaz, web paneli, komut satırı aracı, yedekler (isteğe bağlı şifreli bulut), denetim kaydı, sağlık uyarıları (bildirim, e-posta, Telegram) ve Telegram'dan komutlar.
+• İnternetten erişim: Cloudflare tüneli, Tailscale veya alan adınızla doğrudan erişim ve Let's Encrypt sertifikası.
 
-<p>İsteğe bağlı yan servisler (PostgreSQL, Redis, Node.js, Python, cloudflared…) uygulama içinden indirilip yönetilir.</p>
-
-<p><b>Not:</b> targetSdk 28 bilinçli bir seçimdir: indirilen yan servislerin uygulama klasöründen çalışabilmesi için gerekir.</p>
+İsteğe bağlı yan servisler (PostgreSQL, Redis, Node.js, Python, Java, Cloudflare tüneli) Play'den modül olarak indirilir ve uygulamadan yönetilir.
