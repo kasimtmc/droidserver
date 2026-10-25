@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.plyg.droidserver.app.AppGraph
+import com.plyg.droidserver.app.BuildConfig
 import com.plyg.droidserver.app.ui.common.ListRow
 import com.plyg.droidserver.app.ui.common.RowGroup
 import com.plyg.droidserver.app.ui.common.ScreenScaffold
@@ -99,8 +100,11 @@ fun SettingsScreen(g: AppGraph, onBack: () -> Unit) {
             SectionHeader(tr("Tasker ve otomasyon"))
             AutomationSection(g)
 
-            SectionHeader(tr("Güncelleme"))
-            UpdateCard(g)
+            // Play sürümünde güncellemeyi Play yapar.
+            if (BuildConfig.SELF_UPDATE) {
+                SectionHeader(tr("Güncelleme"))
+                UpdateCard(g)
+            }
         }
     }
 }

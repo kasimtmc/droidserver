@@ -55,8 +55,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.plyg.droidserver.app.AppGraph
+import com.plyg.droidserver.app.BuildConfig
 import com.plyg.droidserver.app.ui.common.ErrorText
 import com.plyg.droidserver.app.ui.common.ScreenScaffold
+import com.plyg.droidserver.app.ui.common.WarningText
 import com.plyg.droidserver.app.ui.common.saveConfigChange
 import com.plyg.droidserver.app.ui.wizard.WizardViewModel
 import com.plyg.droidserver.core.components.ComponentPackage
@@ -174,6 +176,9 @@ fun ComponentsScreen(g: AppGraph, wizard: WizardViewModel) {
             }
         }
         LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (!BuildConfig.COMPONENT_DOWNLOADS) item {
+                WarningText(tr("Bu sürümde bileşenler henüz kurulamıyor: Play sürümünde Play'den gelecekler. Liste bilgi için gösteriliyor."))
+            }
             item {
                 AnimatedVisibility(showRepo) {
                     SoftCard {

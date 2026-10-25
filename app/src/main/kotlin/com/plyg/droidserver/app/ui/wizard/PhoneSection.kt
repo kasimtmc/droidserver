@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
+import com.plyg.droidserver.app.BuildConfig
 import com.plyg.droidserver.app.ui.common.ErrorText
 import com.plyg.droidserver.app.ui.common.WarningText
 import com.plyg.droidserver.core.config.PhoneConfig
@@ -51,11 +52,12 @@ internal fun PhoneSection(vm: WizardViewModel, draft: ServerConfig) {
         style = MaterialTheme.typography.bodySmall,
     )
 
-    Toggle(tr("SMS gönderme"), tr("Doğrulama kodu, sipariş bildirimi gibi; operatör ücretine tabidir."), phone.sms) { on ->
+    // Play sürümünde SIM'den doğrudan SMS yok (SEND_SMS izni istenmez); başka sürümden gelen açık ayar kapatılabilsin.
+    if (BuildConfig.SIM_SMS || phone.sms) Toggle(tr("SMS gönderme"), tr("Doğrulama kodu, sipariş bildirimi gibi; operatör ücretine tabidir."), phone.sms) { on ->
         set { it.copy(sms = on) }
         if (on && !granted(Manifest.permission.SEND_SMS)) launcher.launch(smsPermission)
-    }
-    if (phone.sms) {
+    } else Text(tr("Bu sürümde SMS, SIM kartından doğrudan gönderilemez."), style = MaterialTheme.typography.bodySmall)
+    if (BuildConfig.SIM_SMS && phone.sms) {
         if (!granted(Manifest.permission.SEND_SMS)) PermissionWarning(tr("SMS izni verilmedi.")) { launcher.launch(smsPermission) }
         var limit by rememberSaveable { mutableStateOf(phone.smsDailyLimit.toString()) }
         OutlinedTextField(

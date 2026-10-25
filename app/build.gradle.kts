@@ -30,14 +30,35 @@ android {
     defaultConfig {
         applicationId = "com.plyg.droidserver"
         minSdk = 26
-        // BİLİNÇLİ SEÇİM: targetSdk 28 -> indirilen native binary'ler uygulama klasöründen
-        // çalıştırılabilir (Android 10+ W^X kısıtı uygulanmaz). Play Store'da yayınlanamaz.
-        targetSdk = 28
         versionCode = versionCodeOf(appVersion)
         versionName = appVersion
         // Yerel YZ (llama.cpp) yalnızca bu ABI'ler için derlenir; paketlenen diğer kitaplıklar (tüm ABI'ler) etkilenmez,
         // uygulama 32 bit telefonlara da kurulur (yerel YZ orada yok).
         externalNativeBuild { cmake { abiFilters += listOf("arm64-v8a", "x86_64"); arguments += listOf("-DCMAKE_BUILD_TYPE=Release") } }
+    }
+
+    // Dağıtım kanalları (bkz. PLAN Faz 19). Kimlik ve imza ikisinde aynı; kanala göre açılıp kapanan özellikler BuildConfig'te.
+    flavorDimensions += "channel"
+    productFlavors {
+        // GitHub sürümü. BİLİNÇLİ SEÇİM: targetSdk 28 -> indirilen native binary'ler uygulama klasöründen
+        // çalıştırılabilir (Android 10+ W^X kısıtı uygulanmaz). Bu yüzden Play Store'da yayınlanamaz.
+        create("full") {
+            dimension = "channel"
+            isDefault = true
+            targetSdk = 28
+            buildConfigField("boolean", "SELF_UPDATE", "true")
+            buildConfigField("boolean", "SIM_SMS", "true")
+            buildConfigField("boolean", "COMPONENT_DOWNLOADS", "true")
+        }
+        // Play Store sürümü: güncel hedef API; uygulama içi güncelleyici, doğrudan SIM ile SMS ve bileşen indirme yok
+        // (izinleri src/play/AndroidManifest.xml kaldırır).
+        create("play") {
+            dimension = "channel"
+            targetSdk = 36
+            buildConfigField("boolean", "SELF_UPDATE", "false")
+            buildConfigField("boolean", "SIM_SMS", "false")
+            buildConfigField("boolean", "COMPONENT_DOWNLOADS", "false")
+        }
     }
 
     ndkVersion = "29.0.14206865"
@@ -75,7 +96,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 
     packaging {
         resources {
@@ -92,7 +116,7 @@ android {
     testOptions { unitTests.isIncludeAndroidResources = true }
 
     lint {
-        // targetSdk 28 Play Store dışı dağıtım için kasıtlı.
+        // GitHub sürümünde targetSdk 28 kasıtlı (Play sürümü güncel hedefi kullanır).
         disable += setOf("ExpiredTargetSdkVersion", "OldTargetApi")
     }
 }
@@ -129,7 +153,7 @@ dependencies {
     testImplementation(kotlin("test-junit"))
     testImplementation(libs.sqlite.jdbc)
 
-    // Ekran görüntüsü testleri (JVM'de, Robolectric ile çizilir): ./gradlew :app:testDebugUnitTest -Pscreenshots
+    // Ekran görüntüsü testleri (JVM'de, Robolectric ile çizilir): ./gradlew :app:testFullDebugUnitTest -Pscreenshots
     testImplementation(platform(libs.compose.bom))
     testImplementation(libs.compose.ui.test.junit4)
     testImplementation(libs.robolectric)
@@ -142,5 +166,6 @@ tasks.withType<Test>().configureEach {
     val shots = project.hasProperty("screenshots")
     systemProperty("ds.screenshots", shots.toString())
     systemProperty("roborazzi.test.record", shots.toString())
-    systemProperty("ds.screenshotDir", rootProject.file("build/screenshots").absolutePath)
+    // play türünün görüntüleri ayrı klasöre (iki tür birlikte koşunca üst üste yazılmasın).
+    systemProperty("ds.screenshotDir", rootProject.file(if ("Play" in name) "build/screenshots/play" else "build/screenshots").absolutePath)
 }

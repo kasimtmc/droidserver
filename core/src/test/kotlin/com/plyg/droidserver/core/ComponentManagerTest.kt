@@ -434,6 +434,16 @@ class ComponentManagerTest {
     }
 
     @Test
+    fun `indirme kapaliysa paket kurulmaz`() {
+        val root = Files.createTempDirectory("ds-noindir").toFile()
+        val mgr = ComponentManager(root, "arm64-v8a", downloads = false)
+        val pkg = ComponentPackage(id = "pg", version = "1", builds = mapOf("arm64-v8a" to ComponentPackage.Build("http://127.0.0.1:1/x.zip", "00")))
+        val e = assertFailsWith<IllegalStateException> { mgr.install(pkg) }
+        assertTrue("Play" in e.message.orEmpty(), e.message)
+        assertTrue(root.resolve("packages").listFiles().isNullOrEmpty(), "hiçbir şey indirilmez ve açılmaz")
+    }
+
+    @Test
     fun `kilit sahibi program adiyla taninir`() {
         val n = "\u0000"
         assertTrue(runsProgram("/data/user/0/com.plyg.droidserver/files/packages/pg/16/bin/postgres${n}-D$n/data/pg$n", "postgres"))

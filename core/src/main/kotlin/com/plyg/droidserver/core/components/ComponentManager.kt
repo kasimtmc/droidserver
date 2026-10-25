@@ -158,6 +158,12 @@ class ComponentManager(
      * girer (initdb "selecting default max_connections" adımında takılır). null: binary'lere dokunulmaz.
      */
     private val tmpDir: String? = null,
+    /**
+     * Paketler indirilip uygulama klasöründen çalıştırılabilir mi. Play sürümünde hayır (API 29+ uygulama klasöründen
+     * çalıştırmayı engeller, Play de dışarıdan çalıştırılabilir kod indirmeyi yasaklar); bileşenler orada Play'in
+     * modülleriyle gelecek (PLAN Faz 19, Grup 2).
+     */
+    private val downloads: Boolean = true,
     private val log: (String) -> Unit = ::println,
 ) : ComponentAdmin {
     private companion object {
@@ -221,6 +227,7 @@ class ComponentManager(
         else ConfigJson.decodeFromString<List<InstalledComponent>>(registry.readText()).associateBy { it.id }
 
     fun install(pkg: ComponentPackage) {
+        if (!downloads) throw IllegalStateException(tr("Bu sürümde bileşenler henüz kurulamıyor: Play sürümünde Play'den gelecekler"))
         val build = pkg.builds[abi] ?: error(tr("{0}: '{1}' mimarisi için derleme yok", pkg.id, abi))
         log("${pkg.id} ${pkg.version} indiriliyor…")
         val bytes = download(build.url)
