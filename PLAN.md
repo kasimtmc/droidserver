@@ -1108,6 +1108,7 @@ oturtmasın), sonra panelin eksiklerini kapatma, sonra güvenlik, en son yeni ö
   kabul etmez; ayrı sürüm targetSdk yükseltilene kadar ertelendi.
   *Güncelleme (24 Ekim 2026):* Play sürümü Faz 19'da planlandı (ayrı yapı türü, güncel targetSdk, bileşenler Play
   Feature Delivery ile; SMS için karar orada).
+  *Güncelleme (25 Ekim 2026):* F-Droid bırakıldı; dağıtım GitHub ve Play (bkz. Faz 19).
 
 ### Kabul (her grup)
 - `:core:test`, `:app:testDebugUnitTest`, `:app:lintDebug` temiz (yalnızca bilinen uyarılar).
@@ -1305,93 +1306,130 @@ başlar (panel eşitleme ve güvenli bağlantılar bunların temelidir). Dört g
 
 ## Faz 19 — Play Store sürümü (planlandı)
 
-Amaç: uygulamayı özelliklerden vazgeçmeden Google Play'de de yayınlamak. GitHub/F-Droid sürümü olduğu gibi kalır
-(targetSdk 28, her şey açık); Play için ayrı bir **yapı türü** (product flavor) eklenir. Kod tek; fark derleme
-seçenekleri, birkaç izin ve bileşenlerin nasıl geldiği. 0.9.x cihaz testlerinden sonra başlar. Not: aşağıdaki Play
-kuralları Haziran 2026'daki haline göre yazıldı; başlamadan önce güncelleri denetlenmeli (hedef SDK alt sınırı, izin
-politikaları).
+Amaç: uygulamayı özelliklerden vazgeçmeden Google Play'de yayınlamak. GitHub sürümü olduğu gibi kalır (targetSdk 28,
+her şey açık); Play için ayrı bir **yapı türü** (product flavor). Kod tek; fark derleme seçenekleri, birkaç izin,
+SMS'in nasıl gittiği ve bileşenlerin nasıl geldiği.
 
-**Play'in bugünkü APK'yı reddedeceği yerler**
+**Kararlar (kullanıcı, 25 Ekim 2026)**
+- **F-Droid bırakıldı;** dağıtım GitHub ve Play. (`docs/fdroid/` kayıt için duruyor.)
+- **Kimlik ve imza:** Play'de de `com.plyg.droidserver`; GitHub sürümünü imzalayan anahtar Play App Signing'e yüklenir
+  ("kendi anahtarını kullan"). İki kanal aynı imzayı taşır, kanal değiştiren kullanıcının verisi kalır. Sürüm kodları
+  iki kanalda aynı şemayla (`1.2.3 → 1020399`) ve tek kaynaktan.
+- **Bileşenler:** ilk Play sürümünde hepsi (PostgreSQL, Redis, cloudflared, Node.js, Python, OpenJDK).
+- **SMS:** Play'de `SEND_SMS` **asla** yok (aşağıda 19.5). İstisna başvurusu yapılmaz; izin olmadığı için izin beyan
+  formu da gerekmez.
+- **Ön plan servisi:** `specialUse` kalır (alt tür: yerel ağ sunucusu). `remoteMessaging` / `dataSync` kullanılmaz:
+  ilki mesajlaşma uygulamaları için tanımlı (yanlış beyan ret ve hesap uyarısı riski), ikincisinin Android 15'te günlük
+  6 saat sınırı var.
+- **Beyanlar dürüst:** uygulama "sunucu" olarak tanıtılır; SIM ile gönderimde SMS'i kullanıcının kendi SMS uygulamasından
+  gönderdiği mağaza açıklaması, gizlilik politikası ve veri güvenliği formunda açıkça yazılır.
+- **Ekran kapalıyken konum:** Play sürümünde `ctx.device.location` yalnızca uygulama açıkken çalışır (arka plan konumu
+  izni istenmez); kabul edildi.
 
-| Engel | Play kuralı | Play sürümünde çözüm | Kayıp |
-|---|---|---|---|
-| targetSdk 28 | Yeni uygulama ~1 yıllık hedef SDK ister (2025'te 35; 2026 sonunda büyük olasılıkla 36) | `play` türünde güncel targetSdk | Yok (aşağıdaki işleri doğurur) |
-| İndirilen ikililer (bileşen kataloğu, uygulama çalışma ortamları) | targetSdk 29+ uygulama klasöründen çalıştırmayı engeller (W^X); Play dışından çalıştırılabilir kod indirmek yasak | İkililer yerel kitaplık (`lib*.so`) olarak paketlenir: Play Feature Delivery'nin isteğe bağlı modülleri ("İndir ve kur" korunur) | Yok; en büyük iş |
-| Uygulama içi güncelleyici, `REQUEST_INSTALL_PACKAGES` | Play dışından kendini güncelleme yasak; izin kısıtlı | `play` türünde güncelleyici ve izin yok; güncellemeyi Play yapar | Fiilen yok |
-| `SEND_SMS` (SMS ile giriş, `ctx.sms`) | Kısıtlı izin: yalnızca varsayılan SMS uygulaması veya onaylı istisna | Karar gerekiyor (aşağıda) | Kendi hattından otomatik SMS |
-| Ekran kapalıyken konum (`ctx.device.location`) | targetSdk 34+'ta konum okuyan ön plan servisi `location` türü ve beyan ister | Servise `location` türü (yalnızca konum açıkken), Play Console'da gerekçe | Büyük olasılıkla yok; inceleme riski |
-| Ön plan servisi `specialUse`, pil iyileştirmesi muafiyeti | Beyan ve gerekçe (gerekirse video) | Console beyanı; muafiyet izni yerine ayarlar ekranına yönlendirme | Yok |
+**Play kuralları (resmî sayfalardan, 25 Ekim 2026)**
+- 31 Ağustos 2026'dan beri yeni uygulamalar ve güncellemeler **API 36**'yı hedeflemeli (Play Console'dan 1 Kasım 2026'ya
+  kadar uzatma istenebilir).
+- Varsayılan SMS uygulaması olmayanlara `SEND_SMS` yalnızca istisnalarla (ör. "Device automation"); Play sürümü bu
+  izni kullanmadığı için gerekmiyor.
+- Kişisel geliştirici hesaplarında üretimden önce en az 12 test kullanıcısıyla 14 gün kapalı test (şirket hesabında
+  yok); başvurmadan önce güncel hali denetlenmeli.
+
+**Play'in bugünkü APK'yı reddedeceği yerler ve çözümler**
+
+| Engel | Play kuralı | Play sürümünde çözüm |
+|---|---|---|
+| targetSdk 28 | API 36 zorunlu | `play` türünde targetSdk 36 |
+| İndirilen ikililer (bileşenler, çalışma ortamları) | API 29+ uygulama klasöründen çalıştırmayı engeller (W^X); Play dışından çalıştırılabilir kod indirmek yasak | Yerel kitaplık (`lib*.so`) olarak Play Feature Delivery modülleri |
+| Uygulama içi güncelleyici, `REQUEST_INSTALL_PACKAGES` | Play dışından güncelleme yasak | `play` türünde yok |
+| `SEND_SMS` | Kısıtlı izin | Yok; SMS sağlayıcısı ve SIM + kullanıcı onayı (19.5) |
+| Arka planda konum | Arka plan konumu izni çok sıkı | Yalnızca uygulama açıkken |
+| Ön plan servisi, pil muafiyeti | Tür beyanı ve gerekçe | `specialUse` beyanı; muafiyet izni yerine ayarlar ekranına yönlendirme |
+| Kendi uygulamalarınızdaki npm/pip yerel eklentileri (`.node`, `.so`) | İndirilmiş çalıştırılabilir kod | `play` türünde bu dosyaları içeren uygulama çalıştırılmaz (açıklamalı hata) |
 
 Sorun olmayanlar: JavaScript script'leri, paketler ve şablonlar (yorumlanan kod), yerel YZ (llama.cpp APK'da derleniyor,
-modeller veri), ödemeler (Play'in ödeme kuralı uygulamanın kendi dijital satışları için; burada kullanıcının sunucusu
-kendi müşterisinden para alıyor). Gri alan: kendi uygulamalarınızda npm/pip'in indirdiği yerel eklentiler (`.node`,
-`.so`) indirilmiş çalıştırılabilir kod sayılabilir; saf JS/Python uygulamalar sorunsuz.
+modeller veri), ödemeler (Play'in ödeme kuralı uygulamanın kendi dijital satışları için).
 
-### Grup 1 — İki yapı türü ve güncel targetSdk
+### Grup 1 — İki yapı türü ve API 36
 
 **19.1 Yapı türleri**
-- [ ] `full` (bugünkü, targetSdk 28, GitHub/F-Droid) ve `play` türleri; `BuildConfig` bayrakları (güncelleyici, SMS,
-  bileşen kaynağı). Kaynak tek; türe özel manifest yalnızca izinler için.
-- [ ] Release iş akışı iki APK'yı da üretir (ya da `play` için AAB); `full` yayını değişmez.
-- Karar: Play'de aynı uygulama kimliği (`com.plyg.droidserver`) mi, ayrı mı (`com.plyg.droidserver.play`)? Play App Signing
-  Google'ın anahtarıyla imzaladığı için iki kanal birbirinin üzerine güncellenemez; aynı kimlik telefonda karışıklık
-  yaratır (önce kaldırmak gerekir). Öneri: ayrı kimlik.
+- [ ] `full` (bugünkü, targetSdk 28, GitHub) ve `play` türleri; `BuildConfig` bayrakları (güncelleyici, doğrudan SIM,
+  bileşen kaynağı, yerel eklenti engeli). Kaynak tek; türe özel manifest yalnızca izinler ve servis türü için.
+- [ ] `play` manifestinde `SEND_SMS` ve `REQUEST_INSTALL_PACKAGES` açıkça kaldırılır (`tools:node="remove"`); birleştirilmiş
+  manifestte bu izinlerden biri varsa derlemeyi düşüren test (bir kütüphane geri getirirse fark edilsin).
+- [ ] Release iş akışı: `full` APK'yı GitHub'a (bugünkü gibi), `play` AAB'yi Play'e (servis hesabı anahtarı secret'ta).
 
-**19.2 targetSdk geçişi (`play` türünde)**
-- [ ] Güncel targetSdk'nın davranış değişiklikleri: bildirim izni, ön plan servisi türleri ve başlatma kısıtları,
-  kesin alarmlar, paket görünürlüğü (Tasker, Tailscale), kapsamlı depolama (SAF zaten kullanılıyor), `exported`
-  bileşenler, kenardan kenara görünüm (Compose), dinamik kod yükleme kısıtları.
+**19.2 API 36 uyumu (`play` türünde)**
+- [ ] Android 14–16 davranışları: ön plan servisi türü ve açılışta başlatma kısıtları (`specialUse` açılışta
+  başlatılabilir), bildirim izni, paket görünürlüğü (Tasker, Tailscale), kapsamlı depolama (SAF zaten kullanılıyor),
+  `exported` bileşenler, kenardan kenara görünüm (Compose), dinamik kod yükleme kısıtları, kesin alarmlar.
 - [ ] Sorun gidericinin bulguları türe göre (targetSdk 28'e özgü açıklamalar `play`'de gizlenir).
 - [ ] Lint ve ekran görüntüsü testleri iki türde.
 
 ### Grup 2 — Bileşenlerin Play'e uygun paketlenmesi
 
-**19.3 İkililer yerel kitaplık olarak**
-- [ ] Her bileşenin ana programı ve yardımcıları `lib<ad>.so` adıyla `jniLibs`'e (arm64-v8a, x86_64); çalıştırma
-  `nativeLibraryDir`'den. Veri dosyaları (Postgres `share/`, Python standart kitaplığı, Node modülleri) varlık olarak
-  uygulama klasörüne açılır.
-- [ ] Postgres (initdb, pg_ctl, postgres), Redis, cloudflared, Node.js, Python, OpenJDK için Android derleme betikleri
-  (NDK; mümkünse Termux paketlerinden) ve sürüm sabitleme (sha256).
-- [ ] `ComponentManager` iki kaynağı destekler: indirme (`full`) ve kurulu modül (`play`); bileşen tanımı (komut,
-  ortam, hazır olma denetimi) aynı kalır.
+**19.3 Önce deneme (cihazda)**
+- [ ] En basit bileşenle (cloudflared, tek dosya) isteğe bağlı modülden kurulan yerel kitaplığın API 36'da çalıştırılabildiğini
+  gerçek cihazda kanıtla (`nativeLibraryDir`, `extractNativeLibs`). Çalışmazsa yöntem değiştirilir (ör. kurulum anında
+  modülün kitaplığını uygulamanın yerel kitaplık klasöründen çalıştırma yolları).
 
-**19.4 Play Feature Delivery**
+**19.4 İkililer yerel kitaplık olarak, Play Feature Delivery**
+- [ ] Her bileşenin programları `lib<ad>.so` adıyla (arm64-v8a, x86_64); veri dosyaları (Postgres `share/`, Python standart
+  kitaplığı, Node modülleri) varlık olarak uygulama klasörüne açılır. Termux yolu düzeltmesi aynen uygulanır.
 - [ ] Bileşen başına isteğe bağlı modül (`:components:postgres` …); Bileşenler ekranında "İndir ve kur" modülü
-  `SplitInstallManager` ile kurar, kaldırır, ilerlemeyi gösterir.
-- [ ] Boyut: temel APK küçük kalır (llama.cpp dahil ~25 MB hedef); modüller ayrı.
-- Karar: hangi bileşenler Play'de olsun (önerilen: hepsi; OpenJDK büyükse sonraya).
+  `SplitInstallManager` ile kurar, kaldırır, ilerlemeyi gösterir. `ComponentManager` iki kaynağı destekler: indirme
+  (`full`) ve kurulu modül (`play`); bileşen tanımı (komut, ortam, hazır olma denetimi) aynı kalır.
+- [ ] Boyut: OpenJDK (~150 MB) modül sınırına sığıyor mu denetlenir; sığmazsa bölünür ya da sonraki sürüme kalır.
+- [ ] Kendi uygulamalarınız: `play`'de uygulama klasöründe `.so`/`.node` varsa çalıştırılmaz, nedeni ekranda ve logda.
 
-### Grup 3 — İzinler ve politika uyumu
+### Grup 3 — SMS ve politika uyumu
 
-**19.5 SMS**
-- [ ] Karar gerekiyor:
-  1. `play`'de SMS ile giriş ve `ctx.sms` kapalı (en az risk).
-  2. SMS sağlayıcısı (Twilio, Netgsm, İleti Merkezi…) üzerinden gönderme: özellik kalır, kendi hattı yerine sağlayıcı
-     hesabı ve ücreti (her iki türe de eklenebilir).
-  3. Play'e istisna başvurusu (sonuç belirsiz; reddedilirse 1'e döner).
-  Öneri: 1 + 2 (sağlayıcı seçeneği iki türde de, telefon hattı yalnızca `full`'da).
+**19.5 SMS: üç yol**
 
-**19.6 Konum, ön plan servisi, pil**
-- [ ] Ön plan servisi: `specialUse` (sunucu) + konum açıksa `location` türü; Play Console beyan metinleri ve kısa video.
-- [ ] Pil iyileştirmesi muafiyeti: `play`'de izin yerine ayarlar ekranına yönlendirme (sorun giderici bunu zaten
-  anlatıyor).
-- [ ] Veri güvenliği formu (Data safety) ve gizlilik politikası `play` türüne göre (güncelleyici yok, SMS durumu).
+| Yol | GitHub | Play |
+|---|---|---|
+| Doğrudan SIM (otomatik, `SEND_SMS`) | ✓ (bugünkü) | — |
+| SMS sağlayıcısı (Netgsm, İleti Merkezi, Twilio; otomatik) | ✓ | ✓ (A) |
+| SIM + kullanıcı onayı (bildirim → `ACTION_SENDTO` → SMS uygulaması) | ✓ | ✓ (B) |
+
+- [ ] **SMS sağlayıcısı (A):** `phone.sms.provider` (Netgsm, İleti Merkezi, Twilio), anahtarlar şifreli depoda; SMS ile
+  giriş, `ctx.sms.send` ve otomasyonlar bunu kullanır. Sahte sağlayıcı sunucusuyla testler.
+- [ ] **SIM + kullanıcı onayı (B):**
+  - Açık bilgilendirme (prominent disclosure): ayar açılırken tam sayfa; kabul edilmeden açılmaz. Metin: "Bu uygulama
+    yerel bir sunucudur. Sunucuya gelen doğrulama ve giriş istekleri, sizin onayınızla telefonunuzun SMS uygulamasından
+    SMS göndermenizi isteyebilir." + hangi verinin (telefon numarası, kod) ne için kullanıldığı + nasıl kapatılacağı.
+  - Kuyruk: istekler sırayla; tek bildirim kuyruğun başını gösterir ("+905…'e kod — 1/3"), düğmeler **Gönder** ve
+    **Atla**. Gönder, `FLAG_ACTIVITY_NEW_TASK`'lı `ACTION_SENDTO` (`smsto:` + metin) ile SMS uygulamasını açar; istek
+    "SMS uygulamasına devredildi" sayılır (Intent sonucu bildirmez), sıradaki bildirime gelir. Servis arka plandan doğrudan
+    ekran açmaz (Android 10+ engeller); ekran yalnızca kullanıcının bildirime dokunmasıyla açılır. Tam ekran bildirim ve
+    ekran üstü pencere kullanılmaz (kısıtlı izinler).
+  - İstek, giriş kodunun süresi dolunca kuyruktan düşer; aynı numaraya bekleyen kod varsa yenisi onun yerine geçer;
+    kuyruk en çok 20; numara başına sınırlar bugünkü SMS sınırıyla aynı.
+  - Kilit ekranında kod ve numara gizli (`VISIBILITY_PRIVATE` + herkese açık sürümü).
+  - `ctx.sms.send` bu kipte hemen `{status: "awaiting_user"}` döner; ayarlar ekranında "her SMS'te telefonun başında
+    onay gerekir" uyarısı.
+- [ ] Seçim: Play'de A, B ya da ikisi; ikisi açıksa önce sağlayıcı, olmazsa onaylı SIM. GitHub'da üçü.
+
+**19.6 Konum, ön plan servisi, pil, beyanlar**
+- [ ] `specialUse` alt tür açıklaması (`PROPERTY_SPECIAL_USE_FGS_SUBTYPE`); Play Console beyan metni ve kısa video taslağı.
+- [ ] Konum `play`'de yalnızca uygulama açıkken; kapalıyken API açıklamalı hata döner.
+- [ ] Pil iyileştirmesi muafiyeti: `play`'de izin yerine ayarlar ekranına yönlendirme.
+- [ ] Veri güvenliği formu ve gizlilik politikası `play` türüne göre (güncelleyici yok, SMS yolları, konum).
 
 ### Grup 4 — Mağaza ve yayın
 
-**19.7 Play Console**
+**19.7 Play Console (kullanıcı) ve iş akışı**
+- [ ] Kullanıcı: geliştirici hesabı (bir kerelik ücret, kimlik doğrulama), imza anahtarının Play App Signing'e yüklenmesi,
+  kapalı test kullanıcıları, ön plan servisi beyanı ve videosu.
 - [ ] Mağaza kaydı: başlık, açıklamalar (fastlane metinlerinden), ekran görüntüleri, içerik derecelendirmesi, hedef
-  kitle, reklam yok beyanı, uygulama erişimi (inceleyici için test hesabı/talimat).
-- [ ] Kapalı test kanalı (yeni kişisel geliştirici hesaplarında üretim öncesi 12+ test kullanıcısıyla 14 gün kapalı
-  test şartı var; güncel hali denetlenmeli), sonra üretim.
-- [ ] Release iş akışında `play` AAB'sini Play'e yükleme (servis hesabı anahtarı GitHub secret'ında; kullanıcıda).
+  kitle, reklam yok beyanı, uygulama erişimi (inceleyici için talimat).
+- [ ] Release iş akışında `play` AAB'sinin kapalı test kanalına yüklenmesi; üretime geçiş elle.
 
 ### Kabul (her grup)
 - İki tür de `:core:test`, `:app:testDebugUnitTest` (iki tür), `:app:lintDebug` temiz; `full` türünün davranışı ve APK'sı
   değişmez (mevcut testler aynen geçer).
-- `play` türünde bileşenler modülden kurulup çalışır (Postgres ile uçtan uca test cihazda); SMS kararına göre uçlar ve
-  ekranlar tutarlı (kapalıysa sihirbazda görünmez, API 503 yerine 404).
-- README (TR/EN) "Dağıtım" ve "Neden targetSdk 28?" bölümleri iki kanala göre; cihaz testi adımları (`play` türü).
+- `play` birleştirilmiş manifestinde `SEND_SMS` ve `REQUEST_INSTALL_PACKAGES` yok (test).
+- `play` türünde bileşenler modülden kurulup çalışır (Postgres ile uçtan uca, cihazda); SMS'in üç yolu testli.
+- README (TR/EN) "Dağıtım", "Neden targetSdk 28?" ve SMS bölümleri iki kanala göre; cihaz testi adımları (`play`).
 
 ## Açık sorular (karar verilmesi gerekenler)
 
