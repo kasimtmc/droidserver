@@ -1438,9 +1438,9 @@ modeller veri), ödemeler (Play'in ödeme kuralı uygulamanın kendi dijital sat
 | SMS sağlayıcısı (Netgsm, İleti Merkezi, Twilio; otomatik) | ✓ | ✓ (A) |
 | SIM + kullanıcı onayı (bildirim → `ACTION_SENDTO` → SMS uygulaması) | ✓ | ✓ (B) |
 
-- [ ] **SMS sağlayıcısı (A):** `phone.sms.provider` (Netgsm, İleti Merkezi, Twilio), anahtarlar şifreli depoda; SMS ile
+- [x] **SMS sağlayıcısı (A):** `phone.sms.provider` (Netgsm, İleti Merkezi, Twilio), anahtarlar şifreli depoda; SMS ile
   giriş, `ctx.sms.send` ve otomasyonlar bunu kullanır. Sahte sağlayıcı sunucusuyla testler.
-- [ ] **SIM + kullanıcı onayı (B):**
+- [x] **SIM + kullanıcı onayı (B):**
   - Açık bilgilendirme (prominent disclosure): ayar açılırken tam sayfa; kabul edilmeden açılmaz. Metin: "Bu uygulama
     yerel bir sunucudur. Sunucuya gelen doğrulama ve giriş istekleri, sizin onayınızla telefonunuzun SMS uygulamasından
     SMS göndermenizi isteyebilir." + hangi verinin (telefon numarası, kod) ne için kullanıldığı + nasıl kapatılacağı.
@@ -1454,13 +1454,34 @@ modeller veri), ödemeler (Play'in ödeme kuralı uygulamanın kendi dijital sat
   - Kilit ekranında kod ve numara gizli (`VISIBILITY_PRIVATE` + herkese açık sürümü).
   - `ctx.sms.send` bu kipte hemen `{status: "awaiting_user"}` döner; ayarlar ekranında "her SMS'te telefonun başında
     onay gerekir" uyarısı.
-- [ ] Seçim: Play'de A, B ya da ikisi; ikisi açıksa önce sağlayıcı, olmazsa onaylı SIM. GitHub'da üçü.
+- [x] Seçim: Play'de A, B ya da ikisi; ikisi açıksa önce sağlayıcı, olmazsa onaylı SIM. GitHub'da üçü.
+
+- Durum: konfigürasyon v23: `phone.smsProvider` (`type`, `user`, `secret` şifreli depoda, `sender`) ve `phone.smsSim`
+  (`direct` varsayılan, `confirm`, `off`; `off` sağlayıcı ister). `PhoneService` önce sağlayıcıyı dener, başarısızsa
+  SIM yoluna düşer (nedeni denetim kaydında); onaylı kipte kuyruğa ekler ve `{sent: false, status: "awaiting_user",
+  via: "confirm"}` döner, kuyruğa giren de günlük sınırdan düşer. Sağlayıcılar `SmsProviders`: Netgsm REST v2
+  (`/sms/rest/v2/send`, Basic, `code` "00"), İleti Merkezi (`/v1/send-sms/json`, anahtar + paneldeki hash, `iys: "0"`
+  işlemsel), Twilio (`Messages.json`, `MG…` ise Messaging Service); sahte HTTP sunucusuyla testli, gerçek hesapla
+  denenmedi. SMS ile giriş kodu kuyrukta 10 dk yaşar ve aynı numaradaki eskisinin yerine geçer.
+  - Onaylı kuyruk (app, `SmsConfirm.kt`): bellekte, en çok 20; tek bildirim (yüksek önem, `VISIBILITY_PRIVATE` +
+    herkese açık sürüm, zaman aşımı), "SMS'i gönder" görünmez bir etkinlikle `ACTION_SENDTO` + `FLAG_ACTIVITY_NEW_TASK`
+    açar, "Atla" yayınla düşürür. Bildirim izni yoksa istek açıklamalı hatayla reddedilir. Açık bilgilendirme tam sayfa,
+    kabulü uygulama ayarında. Android 16 telefonda denendi: API iki istek → bildirim "1/2", Gönder → Google Mesajlar
+    açıldı, sıradaki "1/1". SIM'li Xiaomi'de (Android 16, Play debug) uçtan uca: istek → bildirim → Mesajlar'da numara
+    ve metin hazır → kullanıcı gönderdi, SMS geldi.
+  - Sihirbaz: SIM yolu (doğrudan yalnızca GitHub'da), sağlayıcı seçimi ve alanları; Play'de SMS açılınca SIM kapalı
+    başlar (kullanıcı onaylı kipi ya da sağlayıcıyı kendisi seçer).
 
 **19.6 Konum, ön plan servisi, pil, beyanlar**
-- [ ] `specialUse` alt tür açıklaması (`PROPERTY_SPECIAL_USE_FGS_SUBTYPE`); Play Console beyan metni ve kısa video taslağı.
-- [ ] Konum `play`'de yalnızca uygulama açıkken; kapalıyken API açıklamalı hata döner.
-- [ ] Pil iyileştirmesi muafiyeti: `play`'de izin yerine ayarlar ekranına yönlendirme.
-- [ ] Veri güvenliği formu ve gizlilik politikası `play` türüne göre (güncelleyici yok, SMS yolları, konum).
+- [x] `specialUse` alt tür açıklaması (`PROPERTY_SPECIAL_USE_FGS_SUBTYPE`); Play Console beyan metni ve kısa video taslağı.
+- [x] Konum `play`'de yalnızca uygulama açıkken; kapalıyken API açıklamalı hata döner.
+- [x] Pil iyileştirmesi muafiyeti: `play`'de izin yerine ayarlar ekranına yönlendirme.
+- [x] Veri güvenliği formu ve gizlilik politikası `play` türüne göre (güncelleyici yok, SMS yolları, konum).
+- Durum: alt tür açıklaması İngilizce ve Console beyanıyla aynı; beyan metni, video taslağı, kısıtlı izin tablosu ve
+  veri güvenliği yanıtları `docs/play-console.md`'de (gönderimde Play'in o günkü sorularıyla karşılaştırılacak). Konum:
+  Android 10+'ı hedefleyen sürümde uygulama ekranda değilse açıklamalı hata (sihirbazda not). Pil: izin `play`
+  manifestinden kalktı (`PlayManifestTest`), muafiyet istekleri tek yardımcıda: izin varsa doğrudan pencere, yoksa
+  Android'in pil listesi ve yönerge. Gizlilik politikası (TR/EN) iki sürümü ayrı anlatıyor.
 
 ### Grup 4 — Mağaza ve yayın
 

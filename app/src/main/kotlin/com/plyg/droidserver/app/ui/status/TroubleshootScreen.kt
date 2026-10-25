@@ -50,6 +50,7 @@ import com.plyg.droidserver.app.data.publicUrl
 import com.plyg.droidserver.app.data.ServiceRestart
 import com.plyg.droidserver.app.service.ServerService
 import com.plyg.droidserver.app.ui.common.ScreenScaffold
+import com.plyg.droidserver.app.ui.common.openBatteryExemption
 import com.plyg.droidserver.core.config.AccessMode
 import com.plyg.droidserver.core.config.ConfigSecrets
 import com.plyg.droidserver.core.config.ConfigValidator
@@ -129,11 +130,10 @@ private fun fixLabel(fix: Fix) = when (fix) {
 }
 
 /** Android ayarlarıyla çözülenler burada; uygulama içi gezinme [onFix]'e. Pil muafiyeti bir sunucu için gerekli. */
-@SuppressLint("BatteryLife")
 private fun handle(ctx: Context, fix: Fix, onFix: (Fix) -> Unit) {
     val intent = when (fix) {
         Fix.START_SERVER -> { ServerService.start(ctx); null }
-        Fix.BATTERY_SETTINGS -> Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, "package:${ctx.packageName}".toUri())
+        Fix.BATTERY_SETTINGS -> { openBatteryExemption(ctx); null }
         Fix.APP_SETTINGS -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${ctx.packageName}".toUri())
         Fix.DEVELOPER_SETTINGS -> Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
         Fix.NOTIFICATION_SETTINGS -> Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName)

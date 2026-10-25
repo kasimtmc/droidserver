@@ -21,7 +21,7 @@ class MissingSecretsException(val names: List<String>) :
  * `"secret:<ad>"` referansı tutabilir. Referanslar deploy anında çözülür; çekirdek sırların nerede ve nasıl
  * saklandığını bilmez, yalnızca `(ad) -> değer?` çözücüsünü ve [SecretSink]'i kullanır.
  *
- * Kaydederken depoya otomatik taşınanlar `auth` sırları, `database.password`, `database.fieldKey`, DuckDNS token'ı, SMTP parolası (`email.password`), Telegram bot token'ı (`alerts.telegram.botToken`) ve uygulamaların Git token'ı ile webhook sırrı ve YZ anahtarları (`ai.apiKey`, `ai.embeddings.apiKey`) WebDAV parolası (`webdav.password`), MQTT parolası (`mqtt.password`) ve ödeme sağlayıcılarının anahtarlarıdır (`payments.providers[]`); bileşen, uygulama ve ortak
+ * Kaydederken depoya otomatik taşınanlar `auth` sırları, `database.password`, `database.fieldKey`, DuckDNS token'ı, SMTP parolası (`email.password`), Telegram bot token'ı (`alerts.telegram.botToken`) ve uygulamaların Git token'ı ile webhook sırrı ve YZ anahtarları (`ai.apiKey`, `ai.embeddings.apiKey`) WebDAV parolası (`webdav.password`), MQTT parolası (`mqtt.password`), ödeme sağlayıcılarının anahtarları (`payments.providers[]`) ve SMS sağlayıcısının gizli anahtarıdır (`phone.smsProvider.secret`); bileşen, uygulama ve ortak
  * ortamdaki (`env`) hangi değerin sır olduğu bilinemez, oraya referansı sihirbaz (örn. tünel token'ı), Ortam ve sırlar
  * ekranı ([EnvFile.toConfig]) veya kullanıcı yazar.
  */
@@ -75,6 +75,7 @@ object ConfigSecrets {
             webdav = config.webdav.copy(password = value(config.webdav.password)),
             mqtt = config.mqtt.copy(password = value(config.mqtt.password), devices = config.mqtt.devices.map { it.copy(password = value(it.password)) }),
             ai = config.ai.copy(apiKey = value(config.ai.apiKey), embeddings = config.ai.embeddings?.let { it.copy(apiKey = value(it.apiKey)) }),
+            phone = config.phone.copy(smsProvider = config.phone.smsProvider?.let { it.copy(secret = value(it.secret)) }),
             payments = config.payments.copy(
                 providers = config.payments.providers.map { it.copy(secretKey = value(it.secretKey), apiKey = value(it.apiKey), webhookSecret = value(it.webhookSecret)) },
             ),
@@ -216,6 +217,11 @@ object ConfigSecrets {
                 }
                 JsonObject(mapped)
             })))
+        }
+        (json["phone"] as? JsonObject)?.let { phone ->
+            val provider = phone["smsProvider"] as? JsonObject ?: return@let
+            val secret = provider["secret"]?.stringOrNull() ?: return@let
+            out["phone"] = JsonObject(phone + ("smsProvider" to JsonObject(provider + ("secret" to JsonPrimitive(transform("sms_secret", secret))))))
         }
         (json["email"] as? JsonObject)?.let { email ->
             email["password"]?.stringOrNull()?.let { out["email"] = JsonObject(email + ("password" to JsonPrimitive(transform("email_password", it)))) }

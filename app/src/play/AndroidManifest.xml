@@ -7,6 +7,8 @@
     <!-- Lint kaldırma satırını izin isteği sanıyor; telefon donanımı ana manifestte zaten isteğe bağlı. -->
     <uses-permission android:name="android.permission.SEND_SMS" tools:node="remove"
         tools:ignore="PermissionImpliesUnsupportedChromeOsHardware" />
+    <!-- Play bu izni yalnızca belirli uygulama türlerine verir; muafiyet için Android'in pil listesi açılır. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" tools:node="remove" />
     <!-- Güncellemeyi Play yapar. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
 

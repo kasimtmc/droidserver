@@ -136,6 +136,12 @@ object ConfigValidator {
                 if (smsDailyLimit !in 1..500) error("phone.smsDailyLimit", tr("Günlük SMS sınırı 1-500 olmalı"))
                 if (smsPrefixes.isEmpty()) error("phone.smsPrefixes", tr("En az bir izinli önek girin (örn. +90)"))
                 smsPrefixes.filter { !PhoneService.PREFIX.matches(it) }.forEach { error("phone.smsPrefixes", tr("Önek + ve rakamlardan oluşmalı (örn. +90): '{0}'", it)) }
+                if (smsSim == SmsSim.OFF && smsProvider == null) error("phone.smsSim", tr("SIM'den gönderim kapalıyken bir SMS sağlayıcısı seçin"))
+                smsProvider?.let { p ->
+                    if (p.user.isBlank()) error("phone.smsProvider.user", tr("Sağlayıcının kullanıcı kodu / anahtarı gerekli"))
+                    if (p.secret.isBlank()) error("phone.smsProvider.secret", tr("Sağlayıcının parolası / gizli anahtarı gerekli"))
+                    if (p.sender.isBlank()) error("phone.smsProvider.sender", tr("Gönderen (onaylı başlık ya da numara) gerekli"))
+                }
             }
         }
         config.realtime.channels.forEachIndexed { i, ch ->
