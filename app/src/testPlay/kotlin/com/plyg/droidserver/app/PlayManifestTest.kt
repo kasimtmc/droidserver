@@ -2,9 +2,11 @@ package com.plyg.droidserver.app
 
 import android.content.pm.PackageManager
 import androidx.test.core.app.ApplicationProvider
+import com.plyg.droidserver.app.data.componentModules
 import com.plyg.droidserver.app.ui.TestDroidServerApp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,6 +40,6 @@ class PlayManifestTest {
         assertEquals(36, app.applicationInfo.targetSdkVersion)
         assertFalse(BuildConfig.SELF_UPDATE)
         assertFalse(BuildConfig.SIM_SMS)
-        assertFalse(BuildConfig.COMPONENT_DOWNLOADS)
+        assertNotNull("bileşenler Play modülleriyle gelir", componentModules(app))
     }
 }

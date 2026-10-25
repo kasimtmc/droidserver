@@ -1384,9 +1384,22 @@ modeller veri), ödemeler (Play'in ödeme kuralı uygulamanın kendi dijital sat
 ### Grup 2 — Bileşenlerin Play'e uygun paketlenmesi
 
 **19.3 Önce deneme (cihazda)**
-- [ ] En basit bileşenle (cloudflared, tek dosya) isteğe bağlı modülden kurulan yerel kitaplığın API 36'da çalıştırılabildiğini
+- [x] En basit bileşenle (cloudflared, tek dosya) isteğe bağlı modülden kurulan yerel kitaplığın API 36'da çalıştırılabildiğini
   gerçek cihazda kanıtla (`nativeLibraryDir`, `extractNativeLibs`). Çalışmazsa yöntem değiştirilir (ör. kurulum anında
   modülün kitaplığını uygulamanın yerel kitaplık klasöründen çalıştırma yolları).
+- Durum: çalışıyor. Redmi Note 9 Pro, Android 16 (API 36, arm64): `play` AAB'sinden yalnızca temel APK'lar kuruldu,
+  `:components:cloudflared` modülü uygulama açıkken Play'in yaptığı gibi mevcut kuruluma eklendi
+  (`adb install-multiple -p --dont-kill`). Android `libcloudflared.so`'yu uygulamanın kitaplık klasörüne çalıştırma
+  izniyle açtı; sihirbazın kur düğmesi modülü tanıdı, paket klasörüne bağlantı kurdu; deploy'da cloudflared uygulamanın
+  kendi sürecinden (`untrusted_app`, targetSdk 36) başladı ve hızlı tünel internetten HTTP 200 döndü. Uygulama yeniden
+  kurulunca kod klasörü değişti, bağlantılar yenisine çevrildi ve tünel yine çalıştı. Play'in kendi indirmesi
+  (`SplitInstallManager`) Play Console'a yükleme gerektirdiği için iç test kanalında denenecek (Grup 4); kurulum yolu
+  aynı (PackageInstaller, mevcut kuruluma ekleme).
+  - Yapı: `tools/play-components.py` depodaki paketi indirip sha256'yı doğrular, programları
+    `build/play-components/<id>/jniLibs/<abi>/lib<ad>.so` olarak, paket tanımlarını Play kataloğu olarak yazar (katalog
+    uygulamayla gelir, modüldeki programla aynı sürüm). Play'in ABI'leri arm64-v8a, armeabi-v7a, x86_64 (bütün modüller
+    aynı ABI'leri desteklemeli; depoda x86 derlemesi yok). `ComponentManager(moduleLibDir = …)` indirmez, programlara
+    sembolik bağlantı kurar ve her kullanımda bağlantıyı güncel kitaplık klasörüne çevirir.
 
 **19.4 İkililer yerel kitaplık olarak, Play Feature Delivery**
 - [ ] Her bileşenin programları `lib<ad>.so` adıyla (arm64-v8a, x86_64); veri dosyaları (Postgres `share/`, Python standart

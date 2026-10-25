@@ -57,7 +57,9 @@ Gereksinimler: JDK 17+, Android SDK (platform 37), NDK 29.0.14206865 ve CMake 4.
 Manager'dan). Depoyu alt modülüyle alın: `git clone --recurse-submodules …` (sonradan: `git submodule update --init`).
 
 İki yapı türü vardır: `full` (GitHub sürümü, targetSdk 28, her şey açık) ve `play` (Play Store sürümü, targetSdk 36;
-uygulama içi güncelleyici, SIM'den doğrudan SMS ve bileşen indirme yok). Kimlik ve imza ikisinde aynıdır.
+uygulama içi güncelleyici ve SIM'den doğrudan SMS yok; bileşenler indirilmez, Play modülleriyle gelir). Kimlik ve imza
+ikisinde aynıdır. Play paketinden (AAB) önce bileşen modüllerinin programları hazırlanır: `tools/play-components.py`
+bileşen deposundaki paketleri indirip sha256'yı doğrular ve `build/play-components` altına yazar.
 
 ```bash
 ./gradlew :core:test           # çekirdek testleri (bilgisayarda, gerçek SQLite + PostgreSQL + HTTP)
@@ -65,6 +67,7 @@ uygulama içi güncelleyici, SIM'den doğrudan SMS ve bileşen indirme yok). Kim
 ./gradlew :app:assembleFullDebug   # app/build/outputs/apk/full/debug/app-full-debug.apk
 ./gradlew :app:assemblePlayDebug   # app/build/outputs/apk/play/debug/app-play-debug.apk
 adb install -r app/build/outputs/apk/full/debug/app-full-debug.apk
+python3 tools/play-components.py && ./gradlew :app:bundlePlayRelease  # app/build/outputs/bundle/playRelease/app-play-release.aab
 ```
 
 Veritabanı testleri SQLite ve PostgreSQL için parametriktir. PostgreSQL, `io.zonky.test:embedded-postgres`
@@ -2323,7 +2326,8 @@ Android 10+ ile hedeflenen uygulamalar, yazılabilir klasörlerden (`filesDir`) 
 `targetSdk 28` bu kısıtı kaldırır; Termux da aynı yöntemi kullanır. Bedeli: Play Store'a yüklenemez ve
 Android 14+ kurulumda "eski sürüm için tasarlandı" uyarısı gösterir. Uygulama Android 8.0'dan (`minSdk 26`)
 güncel sürümlere kadar kurulabilir. Bu yüzden GitHub sürümü (`full` türü) 28'de kalır; Play sürümü (`play` türü)
-Play'in istediği güncel hedefi kullanır ve bileşenleri indirmez (Play'in modülleriyle gelecekler, `PLAN.md` Faz 19).
+Play'in istediği güncel hedefi kullanır ve bileşenleri indirmez: programlar isteğe bağlı Play modülleriyle
+uygulamanın yerel kitaplık klasörüne (`lib<ad>.so`) kurulur ve oradan çalışır (`PLAN.md` Faz 19).
 
 ## Bilinen Android kısıtları ve çözümleri
 
