@@ -6,7 +6,8 @@ An app that turns an Android device into a backend server configured to the user
 A Kotlin + Ktor + SQLite core runs inside the app; side services such as PostgreSQL, Redis and cloudflared
 can optionally be downloaded and managed.
 
-> **Distribution:** outside the Play Store (APK / GitHub Releases / F-Droid). `targetSdk = 28` is a deliberate choice;
+> **Distribution:** GitHub Releases (APK). A Play Store build is planned as a separate build flavor (`PLAN.md`, phase 19).
+> In the GitHub build `targetSdk = 28` is a deliberate choice;
 > the reason is explained below.
 
 ## Architecture
@@ -1543,7 +1544,7 @@ The model is loaded into memory on the first request and released after 5 idle m
 temperature are checked before loading: if they are not enough the request returns `503` and a **health alert** is sent
 ("Local AI could not run"). Answers are slower and simpler than cloud models and drain the battery while running.
 llama.cpp is built into the app from source (CPU only, arm64-v8a and x86_64; about 6 MB per ABI in the APK); 32-bit phones
-have no local AI. Following F-Droid's rules, closed and prebuilt runtimes such as Gemini Nano (AICore) are not used.
+have no local AI. Everything is built from source, so closed and prebuilt runtimes such as Gemini Nano (AICore) are not used.
 
 ```json
 "ai": { "enabled": true, "provider": "local", "model": "qwen2.5-0.5b-instruct-q4_k_m",
@@ -2195,13 +2196,13 @@ The **debug** build installed from Android Studio is signed with a different key
 it (the card says so). To switch to a release build, back up and export from Backups, uninstall the app, install the APK
 from the release page and restore the backup.
 
-## F-Droid and privacy
+## Privacy and reproducible builds
 
-The F-Droid metadata is in `fastlane/metadata/android/` (title, descriptions, changelog, screenshots); the submission steps
-and open questions are in `docs/fdroid/README.md`. The release build is set up to be reproducible (the build machine's Git
+The store metadata is in `fastlane/metadata/android/` (title, descriptions, changelog, screenshots). The F-Droid release was
+dropped (`docs/fdroid/` is kept for the record). The release build is set up to be reproducible (the build machine's Git
 info and Google's encrypted dependency block are not written into the APK): two clean builds from the same source give a
-byte-identical APK. Privacy policy and permission rationale: [PRIVACY.en.md](PRIVACY.en.md). License: GPL-3.0-or-later ([LICENSE](LICENSE)). There is no Play Store build
-while targetSdk stays at 28 (see Why targetSdk 28?).
+byte-identical APK. Privacy policy and permission rationale: [PRIVACY.en.md](PRIVACY.en.md). License: GPL-3.0-or-later ([LICENSE](LICENSE)). A Play Store build is planned
+as a separate build flavor (targetSdk 36); why the GitHub build stays at 28: see Why targetSdk 28?
 
 ## Publishing a release
 
