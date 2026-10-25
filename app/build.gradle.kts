@@ -2,7 +2,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 // Sürüm: `-PappVersion=1.2.3` (yayın iş akışı etiketten verir). versionCode sürümden türetilir ve her yeni sürümde
 // büyür: 1.2.3 → 1020399, 1.3.0-beta.2 → 1030002 (ön sürümler aynı sürümün kararlısından küçük). Alt sürüm ve yama < 100.
-val appVersion: String = providers.gradleProperty("appVersion").orNull ?: "0.9.2"
+val appVersion: String = providers.gradleProperty("appVersion").orNull ?: "0.9.3"
 
 fun versionCodeOf(version: String): Int {
     val m = Regex("""^(\d+)\.(\d+)\.(\d+)(?:-[A-Za-z]*\.?(\d+)?)?$""").matchEntire(version)
@@ -22,6 +22,10 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
 }
+
+// Play sürümünün bileşen modülleri (settings.gradle.kts'teki liste). android { } dışında: içeride rootProject dıştaki
+// Project'ten çözülür, IDE "şüpheli alıcı" diye uyarır.
+val componentModules = rootProject.project(":components").childProjects.keys.map { ":components:$it" }
 
 android {
     namespace = "com.plyg.droidserver.app"
@@ -62,7 +66,7 @@ android {
     }
 
     // Play sürümünün bileşenleri: her biri isteğe bağlı Play modülü (yalnızca programlar; bkz. tools/play-components.py).
-    dynamicFeatures += rootProject.project(":components").childProjects.keys.map { ":components:$it" }
+    dynamicFeatures += componentModules
 
     ndkVersion = "29.0.14206865"
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "4.1.2" } }
