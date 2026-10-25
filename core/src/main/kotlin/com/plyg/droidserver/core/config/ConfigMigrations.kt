@@ -29,6 +29,8 @@ import kotlinx.serialization.json.intOrNull
  *  v5 -> v6: koleksiyonların `publicRead` / `readOnly` bayrakları `rules`'a dönüşür (davranış aynı kalır):
  *            `publicRead` → list/view `public`, değilse `admin`; `readOnly` → create/update/delete `nobody`, değilse
  *            `admin`. İsteğe bağlı yeni alanlar: `auth.users`, `collections[].ownerField`.
+ *  v22 -> v23: Faz 19: SMS yolları (`phone.smsSim`: doğrudan, kullanıcı onaylı ya da kapalı; `phone.smsProvider`:
+ *            Netgsm, İleti Merkezi, Twilio); mevcut alanlar değişmez (SIM'den doğrudan gönderim varsayılan kalır).
  *  v21 -> v22: MQTT TLS (`mqtt.tls`, `mqtt.tlsPort`, `mqtt.plain`; yerel kökle imzalı sertifika); mevcut alanlar
  *            değişmez.
  *  v20 -> v21: Faz 18 Grup 4: `payments` (Stripe, iyzico, Paddle; `_payments`, `_subscriptions`, `_payment_events`
@@ -64,7 +66,7 @@ import kotlinx.serialization.json.intOrNull
  *            mevcut alanlar değişmez.
  */
 object ConfigMigrations {
-    const val CURRENT = 22
+    const val CURRENT = 23
 
     private val steps: Map<Int, (JsonObject, SecretSink?) -> JsonObject> = mapOf(
         1 to ::v1ToV2,
@@ -88,6 +90,7 @@ object ConfigMigrations {
         19 to { json: JsonObject, _: SecretSink? -> json }, // yalnızca isteğe bağlı alanlar eklendi
         20 to { json: JsonObject, _: SecretSink? -> json }, // yalnızca isteğe bağlı alanlar eklendi
         21 to { json: JsonObject, _: SecretSink? -> json }, // yalnızca isteğe bağlı alanlar eklendi
+        22 to { json: JsonObject, _: SecretSink? -> json }, // yalnızca isteğe bağlı alanlar eklendi
     )
 
     /** Kullanıcıya gösterilen değişiklikler: adım (vN -> vN+1) başına bir satır. */
@@ -124,6 +127,7 @@ object ConfigMigrations {
         19 to tr("Kodsuz sayfalar, panolar, telefonda çalışan yerel yapay zekâ ve paketler eklenir. Mevcut ayarlar değişmez."),
         20 to tr("Ödemeler (Stripe, iyzico, Paddle) ve abonelikler eklenir. Mevcut ayarlar değişmez."),
         21 to tr("MQTT için TLS (8883) eklenir. Mevcut ayarlar değişmez."),
+        22 to tr("SMS sağlayıcısı (Netgsm, İleti Merkezi, Twilio) ve her SMS'i telefonun sahibine onaylatarak SIM'den gönderme seçeneği eklenir. Mevcut ayarlar değişmez."),
     )
 
     /** [from] sürümünden güncel sürüme yükseltirken neler değişir; güncelse boş. */

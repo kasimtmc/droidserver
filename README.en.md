@@ -479,8 +479,8 @@ sign in with `POST /auth/login-code {email, code}`, and the e-mail counts as ver
 also includes a `?email=…&code=…` link to your client's page.
 
 **Sign-in by SMS** (`auth.users.smsLogin`; Wizard → Users → Sign-in by SMS): users sign in with their phone number,
-without a password. The code is sent as an SMS from the server phone's own SIM (your carrier may charge for it), so Phone
-features → **Send SMS** must be on; allowed country codes and the daily SMS limit from there apply.
+without a password. The code is sent through the SMS way set in Phone features (provider, SIM or confirmed SIM), so
+Phone features → **Send SMS** must be on; allowed country codes and the daily SMS limit from there apply.
 
 ```bash
 POST /api/auth/request-sms-code {"phone":"+905551234567"}   # 202; if an account exists, a 6-digit code is sent by SMS (10 min)
@@ -1703,14 +1703,25 @@ Wizard → General → **Phone features** (`phone`): each is turned on separatel
 
 - **Sending SMS**: verification codes, order notifications. Sent only to numbers starting with allowed country codes
   (default `+90`) and with a daily limit (default 20; 429 when exceeded); every send is written to the audit log (number
-  masked, text not stored). Your carrier's SMS charges apply.
-- **Location**: the phone's last known location (does not start GPS separately).
+  masked, text not stored). There are three ways (`phone.smsProvider`, `phone.smsSim`); a provider is tried first if
+  set, then the SIM:
+  - **SMS provider**: Netgsm, İleti Merkezi or Twilio; automatic, at the provider's rates. The secret key is kept in
+    encrypted storage.
+  - **Directly from the SIM** (`direct`, GitHub version only): with the SMS permission, at your carrier's rates.
+  - **From the SIM with your confirmation** (`confirm`, also in the Play version): a notification appears for each SMS;
+    tapping "Send SMS" opens your SMS app with the number and text and you send it (Skip drops it). Requests wait in
+    order (at most 20); sign-in codes expire after 10 minutes, others after 30; a new sign-in code to the same number
+    replaces the old one. A prominent disclosure is shown when you choose it. In this mode `ctx.sms.send` returns
+    `{status: "awaiting_user"}` right away.
+- **Location**: the phone's last known location (does not start GPS separately). The Play version doesn't request
+  background location; the location is only read while DroidServer is on screen, otherwise the API returns an
+  explanatory error.
 - **Device status**: battery, temperature, charging, free storage, memory.
 
 ```js
 routerAdd("POST", "/otp", (req, ctx) => {
   const code = String(Math.floor(100000 + Math.random() * 900000));
-  ctx.sms.send(req.body.phone, "Doğrulama kodunuz: " + code);   // {sent, today, remaining}
+  ctx.sms.send(req.body.phone, "Doğrulama kodunuz: " + code);   // {sent, status, via, today, remaining}
   return { ok: true };
 }, "public");
 const where = ctx.device.location();   // {available, latitude, longitude, accuracyM, at}
