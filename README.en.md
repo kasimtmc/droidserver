@@ -2542,3 +2542,5 @@ tools/          package-postgres.sh, package-cloudflared.sh (component packages 
 - [x] **No-code pages and dashboards:** server-rendered list/detail pages from a collection (rules, login session, search, sorting), dashboards with number/chart/table/map boxes from views, shareable read-only address
 - [x] **Calendar and contacts:** overlap rule (per resource), `.ics` subscription (with a secret address), two-way sync with the phone's calendar and address book via CalDAV and CardDAV
 - [x] **Location:** `geo` field, `near` (nearest first) and `box` filters, OpenStreetMap map in the panel and the app, picking a location on the map or from the phone
+- [x] **Play version groundwork:** separate build flavor (targetSdk 36), components as on-demand Play modules, SMS provider (Netgsm, İleti Merkezi, Twilio) and confirmed SIM, 16 KB page support, automatic upload to Play, store listing
+- [ ] **Release on Google Play:** internal and closed testing, production ([docs/play-yayin.md](docs/play-yayin.md))

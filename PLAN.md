@@ -54,8 +54,9 @@ onay kutuları güncel.
 | 15 | Ortam ve sırlar, kendi uygulamalarınız, bileşen kataloğu, Git'ten deploy | 14 | L |
 | UI | Arayüz yenileme (tema, sunucu ekranı, durum panosu, boş durumlar, web paneli) | 15 | L |
 | 16 | Otomasyon, formlar, GraphQL, YZ; hızlı ayar/widget, SMS girişi, Tasker, WebDAV; devralma, takımlar, CLI, MQTT | UI | XXL |
-| 17 | Sağlamlaştırma ve yayın, panel eşitleme, güvenli bağlantılar, ev otomasyonu, geliştirici ve veri araçları, iletişim kanalları, yaygınlaştırma | 16 | XXL (planlandı) |
-| 18 | Çevrimdışı istemci eşitleme, kopyalarla ölçek, konum ve takvim, medya, sayfa ve pano yapıcı, eklenti paketleri, yerel YZ, ödemeler | 17 | XXL (planlandı) |
+| 17 | Sağlamlaştırma ve yayın, panel eşitleme, güvenli bağlantılar, ev otomasyonu, geliştirici ve veri araçları, iletişim kanalları, yaygınlaştırma | 16 | XXL |
+| 18 | Çevrimdışı istemci eşitleme, kopyalarla ölçek, konum ve takvim, medya, sayfa ve pano yapıcı, eklenti paketleri, yerel YZ, ödemeler | 17 | XXL |
+| 19 | Play Store sürümü: iki yapı türü, bileşenler Play modülü olarak, SMS yolları, politika uyumu, mağaza ve yükleme | 18 | XL |
 
 Faz 2 ve Faz 3 birbirinden bağımsızdır; Faz 1'den sonra paralel yürüyebilir.
 
@@ -553,7 +554,8 @@ Ktor'un CIO motoru sunucu tarafında TLS desteklemediği için TLS uygulamadaki 
 - [x] GitHub Actions (`release.yml`): `:core:test`, `:app:testDebugUnitTest`, `:app:assembleRelease`, imzalama (anahtar
   secrets'ta), `apksigner verify`, Release'e APK + sha256 yükleme. Sürüm adı/kodu etiketten (`-PappVersion`).
 - [x] Bileşen deposu (`components.json` + zip'ler) için ayrı bir iş akışı (`components.yml`, Faz 3'te eklendi).
-- [ ] İlk imzalı sürümün yayınlanması (anahtar ve secrets kullanıcıda).
+- [x] İlk imzalı sürümün yayınlanması (anahtar ve secrets kullanıcıda).
+  *Durum (26 Ekim 2026):* 0.9.0, 0.9.1, 0.9.2 ve 0.9.3 imzalı olarak yayınlandı (ayrıntı 17.3).
 
 ---
 
@@ -887,7 +889,7 @@ Her alt fazda README (TR/EN), çeviriler ve cihaz testi adımları güncellendi;
 
 ---
 
-## Faz 17 — Sağlamlaştırma, panel eşitleme, güvenli bağlantılar, ev otomasyonu ve araçlar (planlandı)
+## Faz 17 — Sağlamlaştırma, panel eşitleme, güvenli bağlantılar, ev otomasyonu ve araçlar
 
 Kullanıcı seçimi: sekiz başlığın hepsi. Faz 16'daki gibi dört gruba bölünür; her grup ayrı PR. Her alt fazda README
 (TR/EN), çeviriler (`en.json`, `panel-en.json`) ve cihaz testi adımları güncellenir, grup sonunda cihaz testi paketi
@@ -918,14 +920,19 @@ oturtmasın), sonra panelin eksiklerini kapatma, sonra güvenlik, en son yeni ö
   olayı.
   *Durum:* `AlertKind.RESTART` eklendi (START_STICKY ile yeniden başlatmada; çökme uyarısı varsa onun yerine gelmez),
   Loglar'a ve sorun gidericiye de düşer. Ölçüm cihaz testi f17b3'te (kullanıcı); f17b1-f17b2 yeni denetimler için.
-- [ ] Hedef SDK güncellemesi ve lint uyarılarının (WakelockTimeout dahil) gözden geçirilmesi.
+- [x] Hedef SDK güncellemesi ve lint uyarılarının (WakelockTimeout dahil) gözden geçirilmesi.
   *Durum:* lint temiz (0 hata, 0 uyarı; önceden var olan 1 Compose ipucu). WakelockTimeout bilinçli olarak bastırıldı:
   süreli kilit uzun yedekte veya bakım döngüsü durursa sunucuyu uyutur. Hedef SDK açık karar: 29+ indirilen bileşenlerin
   çalıştırılmasını (W^X) engeller; bkz. 17.14 Play Store sorusu.
+  *Durum (26 Ekim 2026):* Faz 19'da çözüldü: GitHub sürümü (`full`) targetSdk 28'de kalır, Play sürümü (`play`)
+  targetSdk 36; lint iki türde de temiz.
 
 **17.3 İlk imzalı sürüm**
 - [ ] Release iş akışının uçtan uca denenmesi (imza anahtarı ve GitHub secrets kullanıcıda), sürüm notu şablonu,
   uygulama içi güncellemenin gerçek sürümle doğrulanması.
+  *Durum (26 Ekim 2026):* iş akışı dört sürümde uçtan uca çalıştı (0.9.0–0.9.3; 0.9.3 Play AAB'sini de üretir). Kalan
+  (kullanıcı): uygulama içi güncellemenin gerçek sürümle denenmesi (cihaz testi g2; örn. 0.9.2 kurulu telefonda
+  0.9.3'e güncelleme).
 - Karar: sürüm numaralandırması (0.x mi 1.0 mı) ve ilk sürümde hangi özelliklerin "deneysel" işaretleneceği.
   *Karar (kullanıcı, 23 Ekim 2026):* ilk sürüm **0.9.0**; cihaz testinde henüz denenmemiş her özellik "deneysel"
   (test geçtikçe listeden çıkar), targetSdk 28'de kalır.
@@ -1115,7 +1122,7 @@ oturtmasın), sonra panelin eksiklerini kapatma, sonra güvenlik, en son yeni ö
 - Yeni her uç OpenAPI'de, gerekiyorsa SDK'da (golden güncel); yeni her ekran için ekran görüntüsü testi.
 - README (TR/EN) bölümü, konfigürasyon tablosu satırı, yol haritası maddesi; cihaz testi adımları ve güncel paket.
 
-## Faz 18 — Çevrimdışı ve ölçek, konum/takvim/medya, kodsuz sayfalar, paketler, yerel YZ, ödemeler (planlandı)
+## Faz 18 — Çevrimdışı ve ölçek, konum/takvim/medya, kodsuz sayfalar, paketler, yerel YZ, ödemeler
 
 Kullanıcı seçimi: sekiz başlığın hepsi; ödemelerde Stripe ve iyzico'ya ek olarak Paddle. Faz 17 bittikten sonra
 başlar (panel eşitleme ve güvenli bağlantılar bunların temelidir). Dört grup, her grup ayrı PR; her alt fazda README
@@ -1304,7 +1311,7 @@ başlar (panel eşitleme ve güvenli bağlantılar bunların temelidir). Dört g
 - Ödemelerde sağlayıcıların test/sandbox ortamına karşı sahte webhook testleri (gerçek ödeme yok).
 - README (TR/EN) bölümü, konfigürasyon tablosu satırı, yol haritası maddesi; cihaz testi adımları ve güncel paket.
 
-## Faz 19 — Play Store sürümü (planlandı)
+## Faz 19 — Play Store sürümü
 
 Amaç: uygulamayı özelliklerden vazgeçmeden Google Play'de yayınlamak. GitHub sürümü olduğu gibi kalır (targetSdk 28,
 her şey açık); Play için ayrı bir **yapı türü** (product flavor). Kod tek; fark derleme seçenekleri, birkaç izin,
