@@ -57,11 +57,16 @@ The `core` module has no Android dependency; all business logic is tested on a c
 Requirements: JDK 17+, Android SDK (platform 37), NDK 29.0.14206865 and CMake 4.1.2 (for local AI; from the Android
 Studio SDK Manager). Clone with the submodule: `git clone --recurse-submodules …` (later: `git submodule update --init`).
 
+There are two build flavors: `full` (the GitHub build, targetSdk 28, everything on) and `play` (the Play Store build,
+targetSdk 36; no in-app updater, no direct SMS from the SIM and no component downloads). Both have the same ID and
+signature.
+
 ```bash
 ./gradlew :core:test           # core tests (on a computer, real SQLite + PostgreSQL + HTTP)
-./gradlew :app:testDebugUnitTest  # wizard ViewModel tests (JVM, no emulator needed)
-./gradlew :app:assembleDebug   # app/build/outputs/apk/debug/app-debug.apk
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:testFullDebugUnitTest :app:testPlayDebugUnitTest  # app tests (JVM, no emulator needed)
+./gradlew :app:assembleFullDebug   # app/build/outputs/apk/full/debug/app-full-debug.apk
+./gradlew :app:assemblePlayDebug   # app/build/outputs/apk/play/debug/app-play-debug.apk
+adb install -r app/build/outputs/apk/full/debug/app-full-debug.apk
 ```
 
 Database tests are parameterized for SQLite and PostgreSQL. PostgreSQL is started as a real server via
@@ -2362,7 +2367,9 @@ warning for this class in the pgjdbc jar is suppressed in `app/lint.xml` for tha
 Apps targeting Android 10+ cannot execute binaries from writable folders (`filesDir`) (W^X).
 `targetSdk 28` lifts this restriction; Termux uses the same approach. The cost: it cannot be published on the Play Store,
 and Android 14+ shows a "built for an older version" warning on install. The app can be installed on Android 8.0
-(`minSdk 26`) up to current versions.
+(`minSdk 26`) up to current versions. So the GitHub build (`full` flavor) stays at 28; the Play build (`play` flavor)
+uses the current target Play requires and does not download components (they will come as Play modules, `PLAN.md`
+phase 19).
 
 ## Known Android limitations and workarounds
 

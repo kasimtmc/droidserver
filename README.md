@@ -56,11 +56,15 @@ sorunu dahil) çalışan sunucuya dokunulmaz.
 Gereksinimler: JDK 17+, Android SDK (platform 37), NDK 29.0.14206865 ve CMake 4.1.2 (yerel YZ için; Android Studio SDK
 Manager'dan). Depoyu alt modülüyle alın: `git clone --recurse-submodules …` (sonradan: `git submodule update --init`).
 
+İki yapı türü vardır: `full` (GitHub sürümü, targetSdk 28, her şey açık) ve `play` (Play Store sürümü, targetSdk 36;
+uygulama içi güncelleyici, SIM'den doğrudan SMS ve bileşen indirme yok). Kimlik ve imza ikisinde aynıdır.
+
 ```bash
 ./gradlew :core:test           # çekirdek testleri (bilgisayarda, gerçek SQLite + PostgreSQL + HTTP)
-./gradlew :app:testDebugUnitTest  # sihirbaz ViewModel testleri (JVM, emülatör gerekmez)
-./gradlew :app:assembleDebug   # app/build/outputs/apk/debug/app-debug.apk
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:testFullDebugUnitTest :app:testPlayDebugUnitTest  # uygulama testleri (JVM, emülatör gerekmez)
+./gradlew :app:assembleFullDebug   # app/build/outputs/apk/full/debug/app-full-debug.apk
+./gradlew :app:assemblePlayDebug   # app/build/outputs/apk/play/debug/app-play-debug.apk
+adb install -r app/build/outputs/apk/full/debug/app-full-debug.apk
 ```
 
 Veritabanı testleri SQLite ve PostgreSQL için parametriktir. PostgreSQL, `io.zonky.test:embedded-postgres`
@@ -2318,7 +2322,8 @@ adreste reddedilir; uzak sunucu için `sslmode=verify-full` kullanın. (pgjdbc j
 Android 10+ ile hedeflenen uygulamalar, yazılabilir klasörlerden (`filesDir`) binary çalıştıramaz (W^X).
 `targetSdk 28` bu kısıtı kaldırır; Termux da aynı yöntemi kullanır. Bedeli: Play Store'a yüklenemez ve
 Android 14+ kurulumda "eski sürüm için tasarlandı" uyarısı gösterir. Uygulama Android 8.0'dan (`minSdk 26`)
-güncel sürümlere kadar kurulabilir.
+güncel sürümlere kadar kurulabilir. Bu yüzden GitHub sürümü (`full` türü) 28'de kalır; Play sürümü (`play` türü)
+Play'in istediği güncel hedefi kullanır ve bileşenleri indirmez (Play'in modülleriyle gelecekler, `PLAN.md` Faz 19).
 
 ## Bilinen Android kısıtları ve çözümleri
 
