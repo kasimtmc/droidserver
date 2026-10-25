@@ -3,7 +3,10 @@
     {
       "id": "cloudflared",
       "version": "2026.10.0",
-      "description": "Cloudflare Tunnel (Termux derlemesi; tools/package-cloudflared.sh ile paketlenir): sunucuyu port açmadan internete HTTPS ile yayınlar",
+      "description": "Cloudflare tüneli: sunucuyu router'da port açmadan internete HTTPS ile yayınlar. Sihirbaz → Erişim'den yönetilir.",
+      "descriptions": {
+        "en": "Cloudflare Tunnel: publishes the server to the internet over HTTPS without opening a port on the router. Managed from Wizard → Access."
+      },
       "builds": {
         "arm64-v8a": {
           "url": "https://ornek-sunucunuz.com/components/cloudflared-2026.10.0-arm64-v8a.zip",
@@ -27,7 +30,10 @@
     {
       "id": "postgres",
       "version": "18.6",
-      "description": "PostgreSQL (Termux derlemesi; tools/package-postgres.sh ile paketlenir). Yalnızca 127.0.0.1'i dinler.",
+      "description": "PostgreSQL veritabanı: eşzamanlı yazma ve büyük veri için. Yalnızca telefonun içinden erişilir (127.0.0.1); Sihirbaz → Veritabanı'ndan yönetilir.",
+      "descriptions": {
+        "en": "PostgreSQL database: for concurrent writes and large data. Reachable only from the phone itself (127.0.0.1); managed from Wizard → Database."
+      },
       "builds": {
         "arm64-v8a": {
           "url": "https://ornek-sunucunuz.com/components/postgres-18.6-arm64-v8a.zip",
@@ -113,7 +119,10 @@
     {
       "id": "redis",
       "version": "8.10.2",
-      "description": "Redis (Termux derlemesi; tools/package-termux.sh redis): bellek içi anahtar-değer deposu, önbellek ve kuyruk. Yalnızca 127.0.0.1:6379'u dinler; parolası ortak ortamdaki REDIS_PASSWORD'dür (katalogdan çalıştırınca üretilir).",
+      "description": "Redis: bellek içi anahtar-değer deposu, önbellek ve kuyruk. Yalnızca telefonun içinden erişilir (127.0.0.1:6379); parolası ortak ortamdaki REDIS_PASSWORD (çalıştırınca üretilir).",
+      "descriptions": {
+        "en": "Redis: in-memory key-value store, cache and queue. Reachable only from the phone itself (127.0.0.1:6379); its password is REDIS_PASSWORD in the shared environment (generated when you run it)."
+      },
       "kind": "service",
       "builds": {
         "arm64-v8a": {
@@ -156,7 +165,10 @@
     {
       "id": "nodejs",
       "version": "24.18.0.1",
-      "description": "Node.js LTS ve npm (Termux derlemesi; tools/package-termux.sh nodejs). Uygulamalar ekranında örn. \"node server.js\"; kurulum komutu örn. \"npm ci --omit=dev\".",
+      "description": "Node.js LTS ve npm: kendi JavaScript sunucunuz için. Uygulamalar ekranında başlatma komutu örn. \"node server.js\", kurulum komutu örn. \"npm ci --omit=dev\".",
+      "descriptions": {
+        "en": "Node.js LTS and npm: for your own JavaScript server. On the Apps screen the start command is e.g. \"node server.js\" and the setup command e.g. \"npm ci --omit=dev\"."
+      },
       "kind": "runtime",
       "builds": {
         "arm64-v8a": {
@@ -184,7 +196,10 @@
     {
       "id": "python",
       "version": "3.14.6.1",
-      "description": "Python 3 ve pip (Termux derlemesi; tools/package-termux.sh python). Uygulamalar ekranında örn. \"python3 app.py\"; bağımlılıklar için kurulum komutu örn. \"pip install -r requirements.txt --target .deps\" ve PYTHONPATH=.deps.",
+      "description": "Python 3 ve pip: kendi Python sunucunuz için. Uygulamalar ekranında başlatma komutu örn. \"python3 app.py\"; bağımlılıklar için kurulum komutu örn. \"pip install -r requirements.txt --target .deps\" ve PYTHONPATH=.deps.",
+      "descriptions": {
+        "en": "Python 3 and pip: for your own Python server. On the Apps screen the start command is e.g. \"python3 app.py\"; for dependencies the setup command is e.g. \"pip install -r requirements.txt --target .deps\" with PYTHONPATH=.deps."
+      },
       "kind": "runtime",
       "builds": {
         "arm64-v8a": {
@@ -213,7 +228,10 @@
     {
       "id": "openjdk",
       "version": "21.0.12",
-      "description": "OpenJDK 21 (Termux derlemesi; tools/package-termux.sh openjdk): Java, Kotlin ve diğer JVM sunucuları için, örn. \"java -jar app.jar\". Bellek için komuta -Xmx256m gibi bir sınır ekleyin.",
+      "description": "OpenJDK 21: Java, Kotlin ve diğer JVM sunucuları için, örn. \"java -jar app.jar\". Bellek için komuta -Xmx256m gibi bir sınır ekleyin.",
+      "descriptions": {
+        "en": "OpenJDK 21: for Java, Kotlin and other JVM servers, e.g. \"java -jar app.jar\". Add a memory limit such as -Xmx256m to the command."
+      },
       "kind": "runtime",
       "builds": {
         "arm64-v8a": {

@@ -67,6 +67,7 @@ import com.plyg.droidserver.core.config.ConfigDefaults
 import com.plyg.droidserver.core.config.ConfigSecrets
 import com.plyg.droidserver.core.config.EnvFile
 import com.plyg.droidserver.core.config.PostgresDefaults
+import com.plyg.droidserver.core.i18n.I18n
 import com.plyg.droidserver.core.i18n.tr
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -266,7 +267,7 @@ fun ComponentsScreen(g: AppGraph, wizard: WizardViewModel) {
                             inst != null -> Pill(tr("Kurulu"))
                         }
                     }
-                    pkg.description.takeIf { it.isNotBlank() }?.let {
+                    pkg.description(I18n.lang.code).takeIf { it.isNotBlank() }?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
                     }
                     if (inst != null && !pkg.isRuntime && id !in managed) {
