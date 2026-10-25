@@ -968,8 +968,45 @@ data class PhoneConfig(
     val location: Boolean = false,
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val status: Boolean = false,
+    /** SIM'den gönderim: doğrudan (GitHub sürümü), her SMS'te kullanıcı onayıyla ya da hiç (yalnızca sağlayıcı). */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val smsSim: SmsSim = SmsSim.DIRECT,
+    /** SMS sağlayıcısı (otomatik, operatör üzerinden); verilirse önce o denenir, olmazsa SIM yolu. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val smsProvider: SmsProviderConfig? = null,
 ) {
     val any: Boolean get() = sms || location || status
+}
+
+@Serializable
+enum class SmsSim {
+    /** `SEND_SMS` izniyle, onaysız (Play sürümünde yok). */
+    @SerialName("direct") DIRECT,
+    /** Kuyruğa girer; telefonun sahibi bildirimden "Gönder" deyince SMS uygulaması açılır. */
+    @SerialName("confirm") CONFIRM,
+    @SerialName("off") OFF,
+}
+
+/**
+ * SMS sağlayıcısı. [user]: Netgsm kullanıcı kodu, İleti Merkezi API anahtarı, Twilio Account SID; [secret] (şifreli
+ * depoda): Netgsm parolası, İleti Merkezi API gizli anahtarı, Twilio Auth Token; [sender]: onaylı başlık (Netgsm,
+ * İleti Merkezi) ya da Twilio gönderen numarası / Messaging Service SID. [baseUrl] yalnızca test için.
+ */
+@Serializable
+data class SmsProviderConfig(
+    val type: SmsProviderType,
+    val user: String,
+    val secret: String,
+    val sender: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val baseUrl: String? = null,
+)
+
+@Serializable
+enum class SmsProviderType(val title: String) {
+    @SerialName("netgsm") NETGSM("Netgsm"),
+    @SerialName("iletimerkezi") ILETIMERKEZI("İleti Merkezi"),
+    @SerialName("twilio") TWILIO("Twilio"),
 }
 
 /**

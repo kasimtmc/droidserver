@@ -1,10 +1,8 @@
 package com.plyg.droidserver.app.ui.status
 
 import android.annotation.SuppressLint
-import android.content.Intent
 import android.os.Build
 import android.os.PowerManager
-import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,7 +27,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import com.plyg.droidserver.app.AppGraph
 import com.plyg.droidserver.app.BuildConfig
 import com.plyg.droidserver.app.ui.common.ListRow
@@ -37,6 +34,7 @@ import com.plyg.droidserver.app.ui.common.RowGroup
 import com.plyg.droidserver.app.ui.common.ScreenScaffold
 import com.plyg.droidserver.app.ui.common.SectionHeader
 import com.plyg.droidserver.app.ui.common.SoftCard
+import com.plyg.droidserver.app.ui.common.openBatteryExemption
 import com.plyg.droidserver.app.ui.theme.ThemeSettings
 import com.plyg.droidserver.core.i18n.tr
 
@@ -92,7 +90,7 @@ fun SettingsScreen(g: AppGraph, onBack: () -> Unit) {
                     Icons.Default.BatterySaver, tr("Pil optimizasyonu"),
                     subtitle = if (exempt) tr("Muaf: Android sunucuyu arka planda durdurmaz") else tr("Açık: Android sunucuyu durdurabilir; muaf tutmak için dokunun"),
                     onClick = if (exempt) null else ({
-                        ctx.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, "package:${ctx.packageName}".toUri()))
+                        openBatteryExemption(ctx)
                     }),
                 )
             }

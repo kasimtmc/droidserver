@@ -102,7 +102,7 @@ class RelationHttpTest {
         assertEquals(OnDelete.RESTRICT, FieldConfig("a", FieldType.RELATION, required = true, collection = "x").effectiveOnDelete)
         assertEquals(OnDelete.SET_NULL, FieldConfig("a", FieldType.RELATION, collection = "x").effectiveOnDelete)
 
-        assertEquals(22, ConfigMigrations.CURRENT)
+        assertEquals(23, ConfigMigrations.CURRENT)
         val json = ServerConfig(collections = listOf(authors, posts)).toJson()
         assertTrue("\"relation\"" in json && "\"collection\": \"authors\"" in json, json)
         assertTrue("onDelete" !in json, "belirtilmeyen davranış dosyaya yazılmaz")

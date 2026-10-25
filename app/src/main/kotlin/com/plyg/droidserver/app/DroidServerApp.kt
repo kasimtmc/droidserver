@@ -312,6 +312,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("autoUpdateCheck", true)
         set(v) = prefs.edit { putBoolean("autoUpdateCheck", v) }
 
+    /** Onaylı SMS'in açık bilgilendirmesi kabul edildi (kabul edilmeden o kip seçilemez; bkz. PhoneSection). */
+    var smsConfirmDisclosure: Boolean
+        get() = prefs.getBoolean("smsConfirmDisclosure", false)
+        set(v) = prefs.edit { putBoolean("smsConfirmDisclosure", v) }
+
     /** İlk açılış rehberi görüldü (atlandı veya bitirildi). */
     var onboardingDone: Boolean
         get() = prefs.getBoolean("onboardingDone", false)

@@ -68,9 +68,10 @@
             android:name=".service.ServerService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
+            <!-- Play incelemesi için (İngilizce): docs/play-console.md'deki beyanla aynı. -->
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Kullanicinin kendi cihazinda barindirdigi HTTP sunucusu" />
+                android:value="Self-hosted server: an HTTP/API server the user runs on their own phone for their own apps and devices. It must keep answering requests from other devices while the screen is off; it runs only after the user starts it and shows a persistent notification with a stop action." />
         </service>
 
         <receiver
@@ -84,6 +85,19 @@
 
         <receiver
             android:name=".service.UpdateReceiver"
+            android:exported="false" />
+
+        <!-- Onaylı SMS (bkz. SmsConfirm.kt): bildirimdeki Gönder SMS uygulamasını açar, Atla isteği düşürür. -->
+        <activity
+            android:name=".service.SmsSendActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay" />
+
+        <receiver
+            android:name=".service.SmsSkipReceiver"
             android:exported="false" />
 
         <!-- Bildirim panelindeki hızlı ayar kutucuğu: sunucuyu aç/kapat. -->

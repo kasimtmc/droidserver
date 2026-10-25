@@ -474,7 +474,7 @@ ve kurduktan sonra kapatamaz. Telefonunu kaybeden kullanıcı için uygulamadaki
 istemcinizin sayfasına `?email=…&code=…` bağlantısı da eklenir.
 
 **SMS ile giriş** (`auth.users.smsLogin`; Sihirbaz → Kullanıcılar → SMS ile giriş): kullanıcı telefon numarasıyla
-parolasız girer. Kod sunucu telefonunun kendi SIM'inden SMS olarak gider (operatör ücreti size yansır), bu yüzden
+parolasız girer. Kod Telefon özelliklerindeki SMS yoluyla gider (sağlayıcı, SIM ya da onaylı SIM), bu yüzden
 Telefon özellikleri → **SMS gönderme** açık olmalı; izinli ülke kodları ve günlük SMS sınırı oradan geçerlidir.
 
 ```bash
@@ -1680,14 +1680,23 @@ Sihirbaz → Genel → **Telefon özellikleri** (`phone`): her biri ayrı açıl
 
 - **SMS gönderme**: doğrulama kodu, sipariş bildirimi. Yalnızca izinli ülke kodlarıyla başlayan numaralara (varsayılan
   `+90`) ve günlük sınırla (varsayılan 20; aşılınca 429) gönderilir; her gönderim denetim kaydına yazılır (numara
-  maskeli, metin yazılmaz). Operatörünüzün SMS ücreti uygulanır.
-- **Konum**: telefonun son bilinen konumu (GPS'i ayrıca çalıştırmaz).
+  maskeli, metin yazılmaz). Üç yol vardır (`phone.smsProvider`, `phone.smsSim`); sağlayıcı varsa önce o denenir,
+  olmazsa SIM yolu:
+  - **SMS sağlayıcısı**: Netgsm, İleti Merkezi ya da Twilio; otomatik, sağlayıcının ücretiyle. Gizli anahtar şifreli
+    depoda tutulur.
+  - **SIM'den doğrudan** (`direct`, yalnızca GitHub sürümü): SMS izniyle, operatörünüzün ücretiyle.
+  - **SIM'den onayınızla** (`confirm`, Play sürümünde de): her SMS için bildirim çıkar; "SMS'i gönder"e dokununca SMS
+    uygulamanız numara ve metinle açılır, SMS'i siz gönderirsiniz (Atla ile düşer). İstekler sırayla bekler (en çok
+    20), giriş kodları 10 dakikada, diğerleri 30 dakikada düşer; aynı numaraya yeni giriş kodu eskisinin yerine geçer.
+    Seçerken açık bilgilendirme gösterilir. Bu kipte `ctx.sms.send` hemen `{status: "awaiting_user"}` döner.
+- **Konum**: telefonun son bilinen konumu (GPS'i ayrıca çalıştırmaz). Play sürümünde arka planda konum izni istenmez;
+  konum yalnızca DroidServer ekrandayken okunur, değilse API açıklamalı hata döner.
 - **Cihaz durumu**: pil, sıcaklık, şarj, boş depolama, bellek.
 
 ```js
 routerAdd("POST", "/otp", (req, ctx) => {
   const code = String(Math.floor(100000 + Math.random() * 900000));
-  ctx.sms.send(req.body.phone, "Doğrulama kodunuz: " + code);   // {sent, today, remaining}
+  ctx.sms.send(req.body.phone, "Doğrulama kodunuz: " + code);   // {sent, status, via, today, remaining}
   return { ok: true };
 }, "public");
 const where = ctx.device.location();   // {available, latitude, longitude, accuracyM, at}
