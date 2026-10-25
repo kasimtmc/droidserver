@@ -1490,7 +1490,19 @@ modeller veri), ödemeler (Play'in ödeme kuralı uygulamanın kendi dijital sat
   kapalı test kullanıcıları, ön plan servisi beyanı ve videosu.
 - [ ] Mağaza kaydı: başlık, açıklamalar (fastlane metinlerinden), ekran görüntüleri, içerik derecelendirmesi, hedef
   kitle, reklam yok beyanı, uygulama erişimi (inceleyici için talimat).
-- [ ] Release iş akışında `play` AAB'sinin kapalı test kanalına yüklenmesi; üretime geçiş elle.
+- [x] Release iş akışında `play` AAB'sinin kapalı test kanalına yüklenmesi; üretime geçiş elle.
+- Durum (bizim taraf hazır; Console adımları kullanıcıda): `release.yml` `PLAY_SERVICE_ACCOUNT_JSON` varsa AAB'yi
+  yükler (`r0adkll/upload-google-play`, commit'e sabit): kararlı sürüm kapalı test (alpha), ön sürüm dahili test; ilk
+  paket Console'dan elle (Play ilk paketi API'den almaz). Adım adım rehber `docs/play-yayin.md` (hesap, Play Uygulama
+  İmzalama için PEPK, ilk paket, mağaza kaydı, uygulama içeriği ve inceleyici talimatı, servis hesabı, kapalı test).
+  - Mağaza kaydı: fastlane metinleri Play için düz metne çevrildi (Play HTML listeyi göstermez), targetSdk notu
+    çıktı, bileşenlerin Play modülüyle geldiği yazıldı; 512×512 simge ve 1024×500 öne çıkan görsel (TR/EN, kaynakları
+    `fastlane/graphics/*.svg`); ekran görüntüleri `play` türünden, Play'in en çok 2:1 oranı için 1290×2580.
+  - 16 KB sayfa: Play, Android 15+ hedefleyen uygulamada 64 bit kitaplıkların 16 KB hizalı olmasını ister. Taramada
+    tek aykırı Termux'un `libandroid-spawn.so`'su çıktı (OpenJDK, depodaki güncel 0.3 de 4 KB). Uygulama kendi
+    `libandroid-spawn.so`'sunu derler (`android_spawn.c`: OpenJDK'nın kullandığı tek işlev `posix_spawn`; Android 9+
+    sistemin kendisine iletir, 8'de `vfork` + `execve`), modül eşlemesi onu gösterir; `tools/play-components.py`
+    64 bit ELF'te 16 KB'den küçük hizayı derlemede reddeder. Xiaomi'de (Android 16) Java'dan `ProcessBuilder` çalıştı.
 
 ### Kabul (her grup)
 - İki tür de `:core:test`, `:app:testFullDebugUnitTest`, `:app:testPlayDebugUnitTest`, `:app:lintFullDebug`, `:app:lintPlayDebug` temiz; `full` türünün davranışı ve APK'sı

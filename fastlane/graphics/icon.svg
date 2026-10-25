@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 24 24">
+  <!-- Play mağaza simgesi (512×512, tam kare; Play köşeleri kendisi yuvarlar). Uygulama simgesi: res/drawable/ic_server.xml -->
+  <rect width="24" height="24" fill="#2E7D32"/>
+  <g transform="translate(4.2 4.2) scale(0.65)">
+    <path fill="#FFFFFF" fill-rule="evenodd" d="M4,3h16a1,1 0,0 1,1 1v6a1,1 0,0 1,-1 1H4a1,1 0,0 1,-1 -1V4a1,1 0,0 1,1 -1zM4,13h16a1,1 0,0 1,1 1v6a1,1 0,0 1,-1 1H4a1,1 0,0 1,-1 -1v-6a1,1 0,0 1,1 -1zM7,6.5a1,1 0,1 0,0 2a1,1 0,1 0,0 -2zM7,16.5a1,1 0,1 0,0 2a1,1 0,1 0,0 -2z"/>
+  </g>
+</svg>

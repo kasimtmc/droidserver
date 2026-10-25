@@ -49,6 +49,8 @@ data class ComponentPackage(
     val id: String,
     val version: String,
     val description: String = "",
+    /** Dil kodu (`en`) -> açıklama; arayüz o dildeyse [description] yerine gösterilir. */
+    val descriptions: Map<String, String> = emptyMap(),
     /** ABI -> indirme (arm64-v8a, armeabi-v7a, x86_64). */
     val builds: Map<String, Build>,
     /** Çalıştırma izni verilecek dosyalar (zip izin bitlerini korumaz). */
@@ -86,6 +88,9 @@ data class ComponentPackage(
     data class Build(val url: String, val sha256: String)
 
     val isRuntime: Boolean get() = kind == KIND_RUNTIME
+
+    /** Arayüz dilindeki açıklama (yoksa varsayılan, Türkçe). */
+    fun description(lang: String): String = descriptions[lang] ?: description
 
     companion object {
         const val KIND_SERVICE = "service"

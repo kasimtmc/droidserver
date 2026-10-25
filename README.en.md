@@ -6,7 +6,8 @@ An app that turns an Android device into a backend server configured to the user
 A Kotlin + Ktor + SQLite core runs inside the app; side services such as PostgreSQL, Redis and cloudflared
 can optionally be downloaded and managed.
 
-> **Distribution:** GitHub Releases (APK). A Play Store build is planned as a separate build flavor (`PLAN.md`, phase 19).
+> **Distribution:** GitHub Releases (APK, `full` flavor) and Google Play (`play` flavor; publishing steps in
+> [docs/play-yayin.md](docs/play-yayin.md), in Turkish).
 > In the GitHub build `targetSdk = 28` is a deliberate choice;
 > the reason is explained below.
 
@@ -2217,11 +2218,16 @@ from the release page and restore the backup.
 
 ## Privacy and reproducible builds
 
-The store metadata is in `fastlane/metadata/android/` (title, descriptions, changelog, screenshots). The F-Droid release was
-dropped (`docs/fdroid/` is kept for the record). The release build is set up to be reproducible (the build machine's Git
+The Play store listing is in `fastlane/metadata/android/` (title, descriptions, icon, feature graphic, screenshots; graphic
+sources in `fastlane/graphics/`). The F-Droid release was dropped (`docs/fdroid/` is kept for the record). The release build is set up to be reproducible (the build machine's Git
 info and Google's encrypted dependency block are not written into the APK): two clean builds from the same source give a
-byte-identical APK. Privacy policy and permission rationale: [PRIVACY.en.md](PRIVACY.en.md). License: GPL-3.0-or-later ([LICENSE](LICENSE)). A Play Store build is planned
-as a separate build flavor (targetSdk 36); why the GitHub build stays at 28: see Why targetSdk 28?
+byte-identical APK. Privacy policy and permission rationale: [PRIVACY.en.md](PRIVACY.en.md). License: GPL-3.0-or-later ([LICENSE](LICENSE)).
+
+**Play version:** the same workflow also builds the `play` AAB (Artifacts) and, if the `PLAY_SERVICE_ACCOUNT_JSON` secret is
+set, uploads it to Play: stable releases to closed testing (alpha), pre-releases to internal testing; promotion to
+production is done by hand in Play Console. First upload, Play App Signing, store listing, declarations and the service
+account: [docs/play-yayin.md](docs/play-yayin.md) and [docs/play-console.md](docs/play-console.md) (in Turkish, with the
+English texts for Console). Why the GitHub build stays at 28: see Why targetSdk 28?
 
 ## Publishing a release
 
@@ -2284,7 +2290,8 @@ Placeholders: `${PKG}` the package folder, `${DATA}` the component's persistent 
 environment variable; in `tasks[].stdin` also `${sqlstr:NAME}`: the environment variable's SQL string value (dollar-quoted).
 
 Placeholders also work in the command (e.g. Redis `--requirepass ${env:REDIS_PASSWORD}`). Optional fields:
-`kind` (`service` by default; `runtime`: not a process but a runtime used by apps), `paths` (folders added to PATH in the
+`descriptions` (language code → description, e.g. `{"en": "…"}`; shown instead of `description` when the UI is in that
+language), `kind` (`service` by default; `runtime`: not a process but a runtime used by apps), `paths` (folders added to PATH in the
 runtime, e.g. `${PKG}/bin`), `secrets` (secrets the component needs: when run from the catalog, they are generated and
 added to encrypted storage if missing from the shared environment).
 

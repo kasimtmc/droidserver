@@ -6,7 +6,8 @@ Android cihazı, kullanıcının tercihlerine göre yapılandırılan bir arka u
 Kotlin + Ktor + SQLite çekirdeği uygulamanın içinde çalışır; PostgreSQL, Redis, cloudflared gibi
 yan servisler isteğe bağlı olarak indirilip yönetilir.
 
-> **Dağıtım:** GitHub Releases (APK). Play Store sürümü ayrı bir yapı türüyle planlanıyor (`PLAN.md`, Faz 19).
+> **Dağıtım:** GitHub Releases (APK, `full` türü) ve Google Play (`play` türü; yayın adımları
+> [docs/play-yayin.md](docs/play-yayin.md)).
 > GitHub sürümünde `targetSdk = 28` bilinçli bir seçimdir, aşağıda nedeni açıklanıyor.
 
 ## Mimari
@@ -2175,11 +2176,15 @@ APK'yı kurun ve yedeği geri yükleyin.
 
 ## Gizlilik ve tekrarlanabilir derleme
 
-Mağaza meta verisi `fastlane/metadata/android/` altındadır (başlık, açıklamalar, sürüm notu, ekran görüntüleri). F-Droid
-yayını bırakıldı (`docs/fdroid/` kayıt için duruyor). Yayın derlemesi tekrarlanabilir olacak şekilde ayarlıdır
+Play mağaza kaydı `fastlane/metadata/android/` altındadır (başlık, açıklamalar, simge, öne çıkan görsel, ekran
+görüntüleri; görsel kaynakları `fastlane/graphics/`). F-Droid yayını bırakıldı (`docs/fdroid/` kayıt için duruyor). Yayın derlemesi tekrarlanabilir olacak şekilde ayarlıdır
 (APK'ya derleme ortamının Git bilgisi ve Google'ın şifreli bağımlılık bloğu yazılmaz): aynı kaynaktan iki temiz derleme
-bayt bayt aynı APK'yı verir. Gizlilik politikası ve izin gerekçeleri: [PRIVACY.md](PRIVACY.md). Lisans: GPL-3.0-or-later ([LICENSE](LICENSE)). Play Store sürümü
-ayrı bir yapı türüyle (targetSdk 36) planlanıyor; GitHub sürümünün neden 28'de kaldığı: Neden targetSdk 28?
+bayt bayt aynı APK'yı verir. Gizlilik politikası ve izin gerekçeleri: [PRIVACY.md](PRIVACY.md). Lisans: GPL-3.0-or-later ([LICENSE](LICENSE)).
+
+**Play sürümü:** aynı iş akışı `play` AAB'sini de üretir (Artifacts) ve `PLAY_SERVICE_ACCOUNT_JSON` secret'ı varsa Play'e
+yükler: kararlı sürüm kapalı test (alpha), ön sürüm dahili test kanalına; üretime geçiş Play Console'dan elle. İlk paket,
+Play Uygulama İmzalama, mağaza kaydı, beyanlar ve servis hesabı: [docs/play-yayin.md](docs/play-yayin.md) ve
+[docs/play-console.md](docs/play-console.md). GitHub sürümünün neden 28'de kaldığı: Neden targetSdk 28?
 
 ## Sürüm yayınlama
 
@@ -2240,7 +2245,8 @@ Yer tutucular: `${PKG}` paket klasörü, `${DATA}` bileşenin kalıcı veri klas
 `tasks[].stdin` içinde ayrıca `${sqlstr:AD}`: ortam değişkeninin SQL metin değeri (dolar tırnaklı).
 
 Yer tutucular komutta da geçerlidir (örn. Redis `--requirepass ${env:REDIS_PASSWORD}`). İsteğe bağlı alanlar:
-`kind` (`service` varsayılan; `runtime`: süreç değil, uygulamaların kullandığı çalışma ortamı), `paths` (çalışma
+`descriptions` (dil kodu → açıklama, örn. `{"en": "…"}`; arayüz o dildeyse `description` yerine), `kind` (`service`
+varsayılan; `runtime`: süreç değil, uygulamaların kullandığı çalışma ortamı), `paths` (çalışma
 ortamında PATH'e eklenen klasörler, örn. `${PKG}/bin`), `secrets` (bileşenin ihtiyaç duyduğu sırlar: katalogdan
 çalıştırılınca ortak ortamda yoksa üretilip şifreli depoya eklenir).
 
