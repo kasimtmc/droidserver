@@ -1,5 +1,6 @@
 package com.plyg.droidserver.app.ui.components
 
+import android.app.Activity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
@@ -55,10 +56,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.plyg.droidserver.app.AppGraph
-import com.plyg.droidserver.app.BuildConfig
 import com.plyg.droidserver.app.ui.common.ErrorText
 import com.plyg.droidserver.app.ui.common.ScreenScaffold
-import com.plyg.droidserver.app.ui.common.WarningText
 import com.plyg.droidserver.app.ui.common.saveConfigChange
 import com.plyg.droidserver.app.ui.wizard.WizardViewModel
 import com.plyg.droidserver.core.components.ComponentPackage
@@ -105,6 +104,23 @@ fun ComponentsScreen(g: AppGraph, wizard: WizardViewModel) {
         busy = false
     }
 
+    /** Kurar (Play sürümünde önce modülü Play'den indirir; ilerleme bilgi satırında), sonra [then]. */
+    fun install(pkg: ComponentPackage, then: () -> Unit = {}) = scope.launch {
+        busy = true
+        error = null
+        val ok = runCatching {
+            withContext(Dispatchers.IO) { g.supervisor.stop(pkg.id) }
+            g.installComponent(ctx as? Activity, pkg) { notice = it }
+        }.onFailure {
+            error = it.message
+            g.logs.add("Bileşen hatası: ${it.message}")
+        }.isSuccess
+        notice = null
+        installed = g.components.installed()
+        busy = false
+        if (ok) then()
+    }
+
     fun setService(id: String, change: (ComponentConfig?) -> ComponentConfig?) = scope.launch {
         val errors = saveConfigChange(ctx, g, wizard, deploy = true, scope = listOf("components")) { c ->
             val current = c.components.firstOrNull { it.id == id }
@@ -139,8 +155,8 @@ fun ComponentsScreen(g: AppGraph, wizard: WizardViewModel) {
     }
 
     LaunchedEffect(Unit) {
-        if (url.isNotBlank() && packages.isEmpty()) {
-            runCatching { withContext(Dispatchers.IO) { g.components.fetchManifest(url).packages } }
+        if ((g.modules != null || url.isNotBlank()) && packages.isEmpty()) {
+            runCatching { withContext(Dispatchers.IO) { g.componentCatalog(url) } }
                 .onSuccess { packages = it }
                 .onFailure { error = tr("Depo yüklenemedi: {0}", it.message) }
         }
@@ -158,10 +174,13 @@ fun ComponentsScreen(g: AppGraph, wizard: WizardViewModel) {
         tr("Bileşenler"),
         subtitle = tr("{0} kurulu", installed.size),
         actions = {
-            IconButton(enabled = !busy && url.isNotBlank(), onClick = { io { packages = g.components.fetchManifest(url).packages } }) {
-                Icon(Icons.Default.Refresh, contentDescription = tr("Depoyu yenile"))
+            // Play sürümünde katalog uygulamayla gelir; depo adresi yok.
+            if (g.modules == null) {
+                IconButton(enabled = !busy && url.isNotBlank(), onClick = { io { packages = g.componentCatalog(url) } }) {
+                    Icon(Icons.Default.Refresh, contentDescription = tr("Depoyu yenile"))
+                }
+                IconButton(onClick = { showRepo = !showRepo }) { Icon(Icons.Default.Tune, contentDescription = tr("Bileşen deposu")) }
             }
-            IconButton(onClick = { showRepo = !showRepo }) { Icon(Icons.Default.Tune, contentDescription = tr("Bileşen deposu")) }
         },
     ) { modifier ->
         val all = (packages.map { it.id } + installed.keys).distinct()
@@ -176,9 +195,6 @@ fun ComponentsScreen(g: AppGraph, wizard: WizardViewModel) {
             }
         }
         LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (!BuildConfig.COMPONENT_DOWNLOADS) item {
-                WarningText(tr("Bu sürümde bileşenler henüz kurulamıyor: Play sürümünde Play'den gelecekler. Liste bilgi için gösteriliyor."))
-            }
             item {
                 AnimatedVisibility(showRepo) {
                     SoftCard {
@@ -191,7 +207,7 @@ fun ComponentsScreen(g: AppGraph, wizard: WizardViewModel) {
                             tr("Paketler indirilince sha256 ile doğrulanır. Servisler (örn. Redis) \"Çalıştır\" ile sunucuyla birlikte başlar; çalışma ortamları (Node.js, Python, Java) Uygulamalar ekranındaki uygulamalar içindir. PostgreSQL sihirbazın Veritabanı, tünel Erişim adımından yönetilir."),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Button(enabled = !busy && url.isNotBlank(), onClick = { io { packages = g.components.fetchManifest(url).packages } }) { Text(tr("Depoyu yenile")) }
+                        Button(enabled = !busy && url.isNotBlank(), onClick = { io { packages = g.componentCatalog(url) } }) { Text(tr("Depoyu yenile")) }
                     }
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -217,7 +233,7 @@ fun ComponentsScreen(g: AppGraph, wizard: WizardViewModel) {
                         else -> tr("Başka bir süzgeç seçin.")
                     },
                     action = if (all.isEmpty() && !loading) tr("Yeniden dene") else null,
-                    onAction = { io { packages = g.components.fetchManifest(url).packages } },
+                    onAction = { io { packages = g.componentCatalog(url) } },
                 )
             }
             items(shown, key = { it.first }) { (id, pkg) ->
@@ -271,23 +287,17 @@ fun ComponentsScreen(g: AppGraph, wizard: WizardViewModel) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (inst == null && !pkg.isRuntime && id !in managed && pkg.builds.isNotEmpty()) {
                             Button(enabled = !busy, onClick = {
-                                scope.launch {
-                                    busy = true
-                                    val ok = withContext(Dispatchers.IO) { runCatching { g.components.install(pkg) }.onFailure { error = it.message }.isSuccess }
-                                    installed = g.components.installed()
-                                    busy = false
-                                    if (ok) enable(id, pkg)
-                                }
+                                install(pkg) { enable(id, pkg) }
                             }) { Text(tr("Kur ve çalıştır")) }
                         }
                         if (packages.any { it.id == id } && (inst == null || g.components.updateAvailable(pkg))) {
                             val primary = inst == null && (pkg.isRuntime || id in managed)
-                            val onClick = { io { g.supervisor.stop(id); g.components.install(pkg) } }
+                            val onClick = { install(pkg) }
                             if (primary) Button(enabled = !busy, onClick = { onClick() }) { Text(tr("Kur")) }
                             else OutlinedButton(enabled = !busy, onClick = { onClick() }) { Text(if (inst == null) tr("Yalnızca kur") else tr("Güncelle")) }
                         }
                         if (inst != null) {
-                            TextButton(enabled = !busy, onClick = { io { g.supervisor.stop(id); g.components.uninstall(id) } }) { Text(tr("Kaldır (veriyi koru)")) }
+                            TextButton(enabled = !busy, onClick = { io { g.supervisor.stop(id); g.uninstallComponent(id) } }) { Text(tr("Kaldır (veriyi koru)")) }
                         }
                     }
                 }

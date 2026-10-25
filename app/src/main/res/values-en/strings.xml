@@ -3,4 +3,6 @@
     <string name="widget_description">Server status, address and an on/off button</string>
     <string name="scene_widget_description">Run MQTT scenes with a single tap</string>
     <string name="scene_widget_label">DroidServer scenes</string>
+    <!-- Play modülü adı (Play indirme onayında görünür). -->
+    <string name="component_cloudflared">Cloudflare Tunnel</string>
 </resources>

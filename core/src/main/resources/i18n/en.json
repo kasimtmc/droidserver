@@ -692,8 +692,6 @@
  "Bu sürüm farklı bir anahtarla imzalanmış, kurulu uygulamanın üzerine kurulamaz. Uygulamayı Android Studio'dan (debug) kurduysanız güncellemeler buradan gelmez. Yayın sürümüne geçmek için: Yedekler'den yedek alıp dışa aktarın, uygulamayı kaldırın, sürüm sayfasındaki APK'yı kurun ve yedeği geri yükleyin.": "This version is signed with a different key and cannot be installed over the installed app. If you installed the app from Android Studio (debug), updates do not come from here. To switch to the release build: back up and export from Backups, uninstall the app, install the APK from the release page and restore the backup.",
  "Bu sürümde SMS, SIM kartından doğrudan gönderilemez": "In this version SMS can't be sent directly from the SIM card",
  "Bu sürümde SMS, SIM kartından doğrudan gönderilemez.": "In this version SMS can't be sent directly from the SIM card.",
- "Bu sürümde bileşenler henüz kurulamıyor: Play sürümünde Play'den gelecekler": "Components can't be installed in this version yet: in the Play version they will come from Play",
- "Bu sürümde bileşenler henüz kurulamıyor: Play sürümünde Play'den gelecekler. Liste bilgi için gösteriliyor.": "Components can't be installed in this version yet: in the Play version they will come from Play. The list is shown for information.",
  "Bu sürüme dön": "Revert to this version",
  "Bu sürüme dönülsün mü?": "Revert to this version?",
  "Bu süzgeçte paket yok": "No packages in this filter",
@@ -4134,5 +4132,14 @@
  "✓ Token kayıtlı (şifreli depoda)": "✓ Token saved (in encrypted storage)",
  "✓ {0}.duckdns.org": "✓ {0}.duckdns.org",
  "✕ cloudflared durdu (Loglar'a bakın)": "✕ cloudflared stopped (check Logs)",
- "❌ Çalışmıyor: {0}": "❌ Not running: {0}"
+ "❌ Çalışmıyor: {0}": "❌ Not running: {0}",
+ "{0}: Play modülünde {1} yok; modül kurulu mu?": "{0}: {1} is missing from the Play module; is the module installed?",
+ "Play'den indiriliyor… %{0}": "Downloading from Play… {0}%",
+ "Play'den indiriliyor…": "Downloading from Play…",
+ "Play indirme için onay istiyor; Bileşenler ekranından kurun": "Play asks for confirmation to download; install it from the Components screen",
+ "Kurulum iptal edildi": "Installation cancelled",
+ "Uygulama Play'den kurulmamış; bileşen modülleri yalnızca Play'den kurulan uygulamaya gelir": "The app wasn't installed from Play; component modules only come to an app installed from Play",
+ "İnternet bağlantısı yok; bileşen Play'den indirilemedi": "No internet connection; the component couldn't be downloaded from Play",
+ "Yer yetersiz; bileşen kurulamadı": "Not enough storage; the component couldn't be installed",
+ "Bileşen Play'den kurulamadı (hata {0})": "The component couldn't be installed from Play (error {0})"
 }
