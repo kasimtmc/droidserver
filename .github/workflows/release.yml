@@ -74,6 +74,10 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;29.0.14206865" "cmake;4.1.2" > /dev/null
 
+      # Play sürümünün bileşen modülleri: programlar bileşen deposundaki paketlerden (sha256 doğrulamalı) alınır.
+      - name: Play bileşen modülleri
+        run: python3 tools/play-components.py
+
       - name: Test ve derleme
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}

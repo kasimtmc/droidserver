@@ -4,4 +4,6 @@
     <string name="widget_description">Sunucunun durumu, adresi ve aç/kapat düğmesi</string>
     <string name="scene_widget_description">MQTT sahnelerini tek dokunuşla çalıştırın</string>
     <string name="scene_widget_label">DroidServer sahneler</string>
+    <!-- Play modülü adı (Play indirme onayında görünür). -->
+    <string name="component_cloudflared">Cloudflare tüneli</string>
 </resources>

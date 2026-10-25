@@ -33,7 +33,7 @@ class I18nTest {
      */
     @Test
     fun `katalog kaynakla eslesiyor`() {
-        val kotlin = (sourceFiles(File("src/main/kotlin")) + sourceFiles(File("../app/src/main/kotlin"))).flatMap { keys(it.readText(), KT_CALL, ::unescapeKotlin) }.toSet()
+        val kotlin = (listOf("src/main/kotlin", "../app/src/main/kotlin", "../app/src/full/kotlin", "../app/src/play/kotlin").flatMap { sourceFiles(File(it)) }).flatMap { keys(it.readText(), KT_CALL, ::unescapeKotlin) }.toSet()
         val panel = keys(File("src/main/resources/admin/app.js").readText(), JS_CALL, ::unescapeJs).toSet()
         assertTrue(kotlin.size > 1000 && panel.size > 100, "kaynak taranamadı: ${kotlin.size}, ${panel.size}")
         check("en.json", kotlin)

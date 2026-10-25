@@ -1,5 +1,6 @@
 package com.plyg.droidserver.app.ui.wizard
 
+import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -383,27 +384,26 @@ internal fun Steps(vararg lines: String) {
     }
 }
 
-/** Bileşeni depodan indirip kurar (Bileşenler sekmesine gitmeden). */
+/** Bileşeni depodan (Play sürümünde Play'den) indirip kurar (Bileşenler sekmesine gitmeden). */
 @Composable
 internal fun InstallComponentButton(g: AppGraph, id: String, label: String, onInstalled: () -> Unit) {
+    val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
+    var progress by remember { mutableStateOf<String?>(null) }
     var failure by remember { mutableStateOf<String?>(null) }
     Button(enabled = !busy, onClick = {
         scope.launch {
             busy = true
-            failure = withContext(Dispatchers.IO) {
-                runCatching {
-                    val url = g.settings.manifestUrl
-                    require(url.isNotBlank()) { tr("Önce Bileşenler sekmesinde bileşen deposu adresini girin") }
-                    val pkg = g.components.fetchManifest(url).packages.firstOrNull { it.id == id }
-                        ?: error(tr("Bileşen deposunda '{0}' paketi yok", id))
-                    g.components.install(pkg)
-                }.exceptionOrNull()?.message
-            }
+            failure = runCatching {
+                val pkg = withContext(Dispatchers.IO) { g.componentCatalog(g.settings.manifestUrl) }.firstOrNull { it.id == id }
+                    ?: error(tr("Bileşen deposunda '{0}' paketi yok", id))
+                g.installComponent(ctx as? Activity, pkg) { progress = it }
+            }.exceptionOrNull()?.message
             busy = false
+            progress = null
             onInstalled()
         }
-    }) { Text(if (busy) tr("Kuruluyor…") else label) }
+    }) { Text(if (busy) progress ?: tr("Kuruluyor…") else label) }
     ErrorText(failure)
 }

@@ -434,13 +434,36 @@ class ComponentManagerTest {
     }
 
     @Test
-    fun `indirme kapaliysa paket kurulmaz`() {
-        val root = Files.createTempDirectory("ds-noindir").toFile()
-        val mgr = ComponentManager(root, "arm64-v8a", downloads = false)
-        val pkg = ComponentPackage(id = "pg", version = "1", builds = mapOf("arm64-v8a" to ComponentPackage.Build("http://127.0.0.1:1/x.zip", "00")))
-        val e = assertFailsWith<IllegalStateException> { mgr.install(pkg) }
-        assertTrue("Play" in e.message.orEmpty(), e.message)
-        assertTrue(root.resolve("packages").listFiles().isNullOrEmpty(), "hiçbir şey indirilmez ve açılmaz")
+    fun `play modulunden kurulan program baglantiyla calisir, kitaplik klasoru degisince baglanti yenilenir`() {
+        val root = Files.createTempDirectory("ds-modul").toFile()
+        fun libs(name: String, greeting: String) = File(root, name).apply {
+            mkdirs()
+            File(this, "libhello.so").apply { writeText("#!/bin/sh\necho \"$greeting $1\"\n"); setExecutable(true) }
+        }
+        var libDir = libs("lib1", "merhaba")
+        val mgr = ComponentManager(File(root, "c"), "arm64-v8a", moduleLibDir = { libDir }) {}
+        val pkg = ComponentPackage(
+            id = "hello", version = "1.0",
+            // İndirme adresi kullanılmaz: Play sürümünde hiçbir şey indirilmez.
+            builds = mapOf("arm64-v8a" to ComponentPackage.Build("http://127.0.0.1:1/yok.zip", "ab")),
+            executables = listOf("bin/hello"),
+            command = listOf("\${PKG}/bin/hello", "dunya"),
+        )
+        mgr.install(pkg)
+        assertEquals("ab", mgr.installed()["hello"]?.sha256)
+        fun run(): String {
+            val spec = mgr.prepare(ComponentConfig("hello"))
+            return ProcessBuilder(spec.command).start().inputStream.bufferedReader().readText().trim()
+        }
+        assertEquals("merhaba dunya", run())
+
+        libDir = libs("lib2", "selam") // uygulama güncellendi: kitaplık klasörü başka yerde
+        assertEquals("selam dunya", run())
+
+        val missing = ComponentPackage(id = "yok", version = "1", builds = emptyMap(), executables = listOf("bin/yok"))
+        val e = assertFailsWith<IllegalArgumentException> { mgr.install(missing) }
+        assertTrue("libyok.so" in e.message.orEmpty(), e.message)
+        assertTrue("yok" !in mgr.installed())
     }
 
     @Test
