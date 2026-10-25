@@ -4133,7 +4133,6 @@
  "✓ {0}.duckdns.org": "✓ {0}.duckdns.org",
  "✕ cloudflared durdu (Loglar'a bakın)": "✕ cloudflared stopped (check Logs)",
  "❌ Çalışmıyor: {0}": "❌ Not running: {0}",
- "{0}: Play modülünde {1} yok; modül kurulu mu?": "{0}: {1} is missing from the Play module; is the module installed?",
  "Play'den indiriliyor… %{0}": "Downloading from Play… {0}%",
  "Play'den indiriliyor…": "Downloading from Play…",
  "Play indirme için onay istiyor; Bileşenler ekranından kurun": "Play asks for confirmation to download; install it from the Components screen",
@@ -4141,5 +4140,8 @@
  "Uygulama Play'den kurulmamış; bileşen modülleri yalnızca Play'den kurulan uygulamaya gelir": "The app wasn't installed from Play; component modules only come to an app installed from Play",
  "İnternet bağlantısı yok; bileşen Play'den indirilemedi": "No internet connection; the component couldn't be downloaded from Play",
  "Yer yetersiz; bileşen kurulamadı": "Not enough storage; the component couldn't be installed",
- "Bileşen Play'den kurulamadı (hata {0})": "The component couldn't be installed from Play (error {0})"
+ "Bileşen Play'den kurulamadı (hata {0})": "The component couldn't be installed from Play (error {0})",
+ "{0}: Play modülü kurulu değil": "{0}: the Play module isn't installed",
+ "{0}: Play modülünde {1} yok": "{0}: {1} is missing from the Play module",
+ "{0}: uygulamanın klasöründe derlenmiş kod var ({1}); Play sürümünde Android uygulama klasöründeki derlenmiş kodu çalıştırmaz. Yerel eklentisi olmayan paketler kullanın ya da GitHub sürümünü kurun.": "{0}: the app's folder contains compiled code ({1}); in the Play version Android doesn't run compiled code from the app's folder. Use packages without native add-ons, or install the GitHub version."
 }

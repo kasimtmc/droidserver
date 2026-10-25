@@ -26,8 +26,10 @@ PREFIX="data/data/com.termux/files/usr"
 # Profil: kök Termux paketi, atlanacak bağımlılıklar (ses, grafik: sunucuda gereksiz) ve paket kimliği.
 case "$PROFILE" in
   redis)   ROOT_PKG=redis;       ID=redis;   EXCLUDE="";                EXTRA="" ;;
-  nodejs)  ROOT_PKG=nodejs-lts;  ID=nodejs;  EXCLUDE="";                EXTRA="ca-certificates" ;;
-  python)  ROOT_PKG=python;      ID=python;  EXCLUDE="ncurses-ui-libs"; EXTRA="ca-certificates" ;;
+  # npm Termux'ta ayrı paket (nodejs-lts yalnızca önerir); bin/npm ve npx onu çalıştırır.
+  nodejs)  ROOT_PKG=nodejs-lts;  ID=nodejs;  EXCLUDE="";                EXTRA="ca-certificates npm" ;;
+  # pip de Termux'ta ayrı paket (python yalnızca önerir); bin/pip onu çalıştırır.
+  python)  ROOT_PKG=python;      ID=python;  EXCLUDE="ncurses-ui-libs"; EXTRA="ca-certificates python-pip" ;;
   # libandroid-spawn libc++'ı bildirmeden kullanır.
   openjdk) ROOT_PKG=openjdk-21;  ID=openjdk; EXCLUDE="alsa-plugins alsa-lib pulseaudio libjpeg-turbo littlecms"; EXTRA="libc++" ;;
   *) echo "Bilinmeyen profil: $PROFILE" >&2; exit 1 ;;
@@ -65,8 +67,15 @@ while ((${#queue[@]})); do
   deps="$(field "$pkg" 2)"
   [[ -z "$deps" ]] && continue
   while IFS= read -r dep; do
-    dep="${dep%%|*}"; dep="${dep%%(*}"; dep="$(echo "$dep" | tr -d ' ')"
-    [[ -n "$dep" && -z "${seen[$dep]:-}" ]] && queue+=("$dep")
+    # Seçenekli bağımlılık (npm: "nodejs | nodejs-lts"): seçeneklerden biri zaten alındıysa eklenmez, yoksa ilki.
+    first=""; have=""
+    while IFS= read -r alt; do
+      alt="${alt%%(*}"; alt="$(echo "$alt" | tr -d ' ')"
+      [[ -z "$alt" ]] && continue
+      [[ -z "$first" ]] && first="$alt"
+      [[ "${seen[$alt]:-}" == 1 || " ${queue[*]} " == *" $alt "* ]] && have=1
+    done < <(echo "$dep" | tr '|' '\n')
+    [[ -n "$first" && -z "$have" && -z "${seen[$first]:-}" ]] && queue+=("$first")
   done < <(echo "$deps" | tr ',' '\n')
 done
 
@@ -103,6 +112,9 @@ resolve_links() {
 }
 
 # Komut sarmalayıcısı: Termux betiklerinin #! satırı telefonda olmayan yolu gösterir; /system/bin/sh ile çalıştırılır.
+# Node araçları (npm …) --preserve-symlinks ile bağlantıların kendi yolundan çözülür: Play sürümünde paket klasörü
+# kitaplık klasöründeki dosyalara giden bağlantılardan oluşur, gerçek yol oradaki düz listeyi gösterir
+# (bkz. tools/play-components.py). GitHub sürümünde dosyalar gerçek olduğundan etkisizdir.
 wrapper() { # ad, komut (paket köküne göre; "$D" bin klasörü)
   printf '#!/system/bin/sh\nD="$(cd "$(dirname "$0")" && pwd)"\nexec %s "$@"\n' "$2" > "$pkg/bin/$1"
   chmod +x "$pkg/bin/$1"
@@ -115,9 +127,9 @@ case "$PROFILE" in
   nodejs)
     cp -a "$usr/bin/node" "$pkg/bin/"
     cp -a "$usr/lib/node_modules" "$pkg/lib/"
-    wrapper npm '"$D/node" "$D/../lib/node_modules/npm/bin/npm-cli.js"'
-    wrapper npx '"$D/node" "$D/../lib/node_modules/npm/bin/npx-cli.js"'
-    [ -d "$usr/lib/node_modules/corepack" ] && wrapper corepack '"$D/node" "$D/../lib/node_modules/corepack/dist/corepack.js"'
+    wrapper npm '"$D/node" --preserve-symlinks --preserve-symlinks-main "$D/../lib/node_modules/npm/bin/npm-cli.js"'
+    wrapper npx '"$D/node" --preserve-symlinks --preserve-symlinks-main "$D/../lib/node_modules/npm/bin/npx-cli.js"'
+    [ -d "$usr/lib/node_modules/corepack" ] && wrapper corepack '"$D/node" --preserve-symlinks --preserve-symlinks-main "$D/../lib/node_modules/corepack/dist/corepack.js"'
     mkdir -p "$pkg/etc/tls" && cp -a "$usr/etc/tls/cert.pem" "$pkg/etc/tls/"
     ;;
   python)

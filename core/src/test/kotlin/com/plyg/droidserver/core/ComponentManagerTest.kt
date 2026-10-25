@@ -434,20 +434,24 @@ class ComponentManagerTest {
     }
 
     @Test
-    fun `play modulunden kurulan program baglantiyla calisir, kitaplik klasoru degisince baglanti yenilenir`() {
+    fun `play modulunden kurulan paket baglantilarla calisir, kitaplik klasoru degisince baglantilar yenilenir`() {
         val root = Files.createTempDirectory("ds-modul").toFile()
         fun libs(name: String, greeting: String) = File(root, name).apply {
             mkdirs()
-            File(this, "libhello.so").apply { writeText("#!/bin/sh\necho \"$greeting $1\"\n"); setExecutable(true) }
+            File(this, "libhello_0.so").apply { writeText("#!/bin/sh\necho \"$(cat \"$(dirname \"$0\")/../share/greeting\") $1\"\n"); setExecutable(true) }
+            File(this, "libhello_1.so").writeText(greeting)
+            // Zip'teki bağlantı (bin/hi -> hello) aynı dosyaya eşlenir.
+            File(this, "libhello_files.so").writeText("""{"bin/hello":"libhello_0.so","bin/hi":"libhello_0.so","share/greeting":"libhello_1.so"}""")
         }
         var libDir = libs("lib1", "merhaba")
-        val mgr = ComponentManager(File(root, "c"), "arm64-v8a", moduleLibDir = { libDir }) {}
+        var catalog = emptyList<ComponentPackage>()
+        val mgr = ComponentManager(File(root, "c"), "arm64-v8a", moduleLibDir = { libDir }, moduleCatalog = { catalog }) {}
         val pkg = ComponentPackage(
             id = "hello", version = "1.0",
             // İndirme adresi kullanılmaz: Play sürümünde hiçbir şey indirilmez.
             builds = mapOf("arm64-v8a" to ComponentPackage.Build("http://127.0.0.1:1/yok.zip", "ab")),
             executables = listOf("bin/hello"),
-            command = listOf("\${PKG}/bin/hello", "dunya"),
+            command = listOf("\${PKG}/bin/hi", "dunya"),
         )
         mgr.install(pkg)
         assertEquals("ab", mgr.installed()["hello"]?.sha256)
@@ -460,9 +464,15 @@ class ComponentManagerTest {
         libDir = libs("lib2", "selam") // uygulama güncellendi: kitaplık klasörü başka yerde
         assertEquals("selam dunya", run())
 
+        // Uygulamayla gelen katalogda yeni sürüm: kayıt ve paket klasörü kendiliğinden yenilenir.
+        catalog = listOf(pkg.copy(version = "1.1", command = listOf("\${PKG}/bin/hello", "evren")))
+        assertEquals("selam evren", run())
+        assertEquals("1.1", mgr.installed()["hello"]?.version)
+        assertFalse(File(root, "c/packages/hello/1.0").exists(), "eski sürümün bağlantıları silinir")
+
         val missing = ComponentPackage(id = "yok", version = "1", builds = emptyMap(), executables = listOf("bin/yok"))
         val e = assertFailsWith<IllegalArgumentException> { mgr.install(missing) }
-        assertTrue("libyok.so" in e.message.orEmpty(), e.message)
+        assertTrue("Play" in e.message.orEmpty(), e.message)
         assertTrue("yok" !in mgr.installed())
     }
 
