@@ -39,6 +39,12 @@ TMP_OLD = [b"/data/data/com.termux/files/usr/tmp", b"////data/data/dev.droidserv
 assert all(len(o) == len(TMP_NEW) for o in TMP_OLD)
 
 
+# Uygulamanın kendi derlediği yerine geçen dosyalar (paketteki yol -> uygulamanın kitaplık klasöründeki ad): Termux'un
+# libandroid-spawn'ı 4 KB hizalı, Play 64 bit kitaplıklarda 16 KB ister (bkz. app/src/main/cpp/android_spawn.c).
+FROM_APP = {"lib/libandroid-spawn.so": "libandroid-spawn.so"}
+# Play: 64 bit ABI'lerde yüklenen her ELF parçası 16 KB hizalı olmalı.
+PAGE_16K_ABIS = {"arm64-v8a", "x86_64"}
+
 # Play'e özgü ortam: programlar kitaplık klasöründen çalıştığı için `$ORIGIN`'e göre aranan kitaplıklar bulunmaz
 # (java -> jdk/lib/libjli.so); arama yolu paket klasöründen verilir.
 PLAY_ENV = {
@@ -59,6 +65,21 @@ def link_target(name, data, files):
     return target if target in files and target != name else None
 
 
+def min_load_align(data):
+    """64 bit ELF'in yüklenen (PT_LOAD) parçalarının en küçük hizası; ELF64 değilse None."""
+    if data[:4] != b"\x7fELF" or data[4] != 2:
+        return None
+    phoff = int.from_bytes(data[32:40], "little")
+    phentsize = int.from_bytes(data[54:56], "little")
+    phnum = int.from_bytes(data[56:58], "little")
+    aligns = []
+    for i in range(phnum):
+        h = data[phoff + i * phentsize: phoff + (i + 1) * phentsize]
+        if int.from_bytes(h[0:4], "little") == 1:  # PT_LOAD
+            aligns.append(int.from_bytes(h[48:56], "little"))
+    return min(aligns) if aligns else None
+
+
 def module_files(cid, z):
     """Paketteki yol -> modüldeki dosya adı ve dosya adı -> içerik."""
     names = sorted(n for n in z.namelist() if not n.endswith("/"))
@@ -67,6 +88,9 @@ def module_files(cid, z):
     index, blobs = {}, {}
     for n in names:
         if n in links:
+            continue
+        if n in FROM_APP:
+            index[n] = FROM_APP[n]
             continue
         lib = f"lib{cid}_{len(blobs)}.so"
         data = content[n]
@@ -97,6 +121,10 @@ def main(ids):
                 sys.exit(f"{cid} {abi}: sha256 uyuşmuyor")
             with zipfile.ZipFile(io.BytesIO(data)) as z:
                 index, blobs = module_files(cid, z)
+            if abi in PAGE_16K_ABIS:
+                unaligned = [p for p, lib in index.items() if lib in blobs and (min_load_align(blobs[lib]) or 0x4000) < 0x4000]
+                if unaligned:
+                    sys.exit(f"{cid} {abi}: 16 KB hizalı olmayan kitaplıklar (Play kabul etmez): {sorted(set(unaligned))[:5]}")
             missing = [e for e in pkg["executables"] if e not in index]
             if missing:
                 sys.exit(f"{cid} {abi}: çalıştırılabilir dosyalar pakette yok: {missing}")

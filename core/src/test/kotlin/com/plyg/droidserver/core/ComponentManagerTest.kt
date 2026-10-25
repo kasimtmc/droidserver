@@ -477,6 +477,17 @@ class ComponentManagerTest {
     }
 
     @Test
+    fun `aciklama arayuz diline gore`() {
+        val pkg = ConfigJson.decodeFromString(
+            ComponentPackage.serializer(),
+            """{"id":"redis","version":"8","description":"Bellek içi depo","descriptions":{"en":"In-memory store"},"builds":{}}""",
+        )
+        assertEquals("In-memory store", pkg.description("en"))
+        assertEquals("Bellek içi depo", pkg.description("tr"))
+        assertEquals("x", pkg.copy(description = "x", descriptions = emptyMap()).description("en"))
+    }
+
+    @Test
     fun `kilit sahibi program adiyla taninir`() {
         val n = "\u0000"
         assertTrue(runsProgram("/data/user/0/com.plyg.droidserver/files/packages/pg/16/bin/postgres${n}-D$n/data/pg$n", "postgres"))

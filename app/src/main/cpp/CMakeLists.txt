@@ -1,6 +1,6 @@
 # Telefonda yerel YZ: llama.cpp kaynaktan (alt modül, sabit sürüm). Yalnızca CPU; derleme sırasında ağdan bir şey
 # indirilmez (F-Droid). Dağıtım: arm64-v8a ve x86_64 (öykünücü); diğer ABI'lerde yerel YZ yoktur.
-# dsexec: Play sürümünde bileşen programlarının LD_PRELOAD kitaplığı (bkz. dsexec.c); her ABI'de.
+# dsexec ve android-spawn: Play sürümünde bileşen programları için (bkz. dsexec.c, android_spawn.c); her ABI'de.
 cmake_minimum_required(VERSION 3.22.1)
 project(droidserver_llama C CXX)
 
@@ -10,6 +10,9 @@ add_link_options("-Wl,--build-id=sha1")
 
 add_library(dsexec SHARED dsexec.c)
 target_link_libraries(dsexec PRIVATE dl)
+# libandroid-spawn.so: Play sürümünde OpenJDK bileşeni Termux'unki yerine bunu kullanır (bkz. android_spawn.c).
+add_library(android-spawn SHARED android_spawn.c)
+target_link_libraries(android-spawn PRIVATE dl)
 
 if(NOT ANDROID_ABI MATCHES "64")
     return()

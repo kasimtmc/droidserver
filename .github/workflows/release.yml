@@ -1,6 +1,7 @@
 # Uygulama sürümü: `v1.2.3` (ön sürüm: `v1.3.0-beta.1`) etiketi gönderilince veya bu iş akışı elle çalıştırılınca
 # testler koşar, imzalı GitHub APK'sı (`full` türü) üretilir ve GitHub Releases'a `droidserver-<sürüm>.apk` + `.sha256`
-# olarak yüklenir; Play paketi (`play` türü, AAB) iş akışı çıktısı olarak saklanır.
+# olarak yüklenir; Play paketi (`play` türü, AAB) iş akışı çıktısı olarak saklanır ve PLAY_SERVICE_ACCOUNT_JSON varsa
+# Play'e yüklenir (kararlı sürüm kapalı test, ön sürüm iç test kanalına; üretime geçiş Play Console'dan elle).
 # Uygulama içi güncelleme bu sürümleri okur (Durum → Uygulama güncellemesi). Sürüm notu: .github/release-notes/<sürüm>.md
 # (varsa; şablon TEMPLATE.md) + commit'lerden üretilen notlar.
 #
@@ -9,6 +10,8 @@
 #   ANDROID_KEYSTORE_PASSWORD  deponun parolası
 #   ANDROID_KEY_ALIAS          anahtarın adı (ör. droidserver)
 #   ANDROID_KEY_PASSWORD       anahtarın parolası
+#   PLAY_SERVICE_ACCOUNT_JSON  (isteğe bağlı) Play Developer API servis hesabının JSON anahtarı; bkz. docs/play-yayin.md.
+#                              Uygulamanın ilk paketi Play Console'dan elle yüklenir (Play ilk paketi API'den almaz).
 # Not: uygulama indirirken kimlik doğrulamaz; depo (veya sürümler) herkese açık olmalı.
 name: Uygulama sürümü
 
@@ -31,6 +34,9 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-24.04
+    env:
+      # Adımların `if`'inde secrets okunamaz; Play yüklemesi bununla açılır.
+      HAS_PLAY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -95,7 +101,7 @@ jobs:
           (cd dist && sha256sum "droidserver-$V.apk" > "droidserver-$V.apk.sha256")
           cat dist/*.sha256
 
-      # Play sürümü (AAB, aynı anahtarla imzalı): şimdilik iş akışı çıktısı; Play'e yükleme PLAN Faz 19, Grup 4.
+      # Play sürümü (AAB, aynı anahtarla imzalı): iş akışı çıktısı ve (servis hesabı varsa) Play'e yükleme, aşağıda.
       - name: Play paketi
         uses: actions/upload-artifact@v4
         with:
@@ -119,6 +125,18 @@ jobs:
             if [ "${{ steps.v.outputs.prerelease }}" = "true" ]; then FLAGS="$FLAGS --prerelease"; fi
             gh release create "$TAG" dist/* --title "DroidServer $V" $FLAGS
           fi
+
+      # Play'e yükleme (PLAN 19.7): kararlı sürüm kapalı test (alpha), ön sürüm iç test kanalına; üretime geçiş elle.
+      - name: Play'e yükle
+        if: env.HAS_PLAY == 'true'
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.plyg.droidserver
+          releaseFiles: app/build/outputs/bundle/playRelease/app-play-release.aab
+          releaseName: ${{ steps.v.outputs.version }}
+          track: ${{ steps.v.outputs.prerelease == 'true' && 'internal' || 'alpha' }}
+          status: completed
 
       - name: İmza anahtarını sil
         if: always()
