@@ -71,3 +71,17 @@ jobs:
               --notes "DroidServer bileşen deposu. Uygulamada adres: https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/components.json"
           fi
           gh release upload "$TAG" dist/*.zip dist/*.sha256 dist/components.json --clobber
+
+      # Sürümü değişen paketin eski zip'leri birikmesin: bu çalıştırmada üretilmeyen paket dosyaları silinir
+      # (components.json yalnızca güncelleri gösterir; kurulu bileşenler yeniden indirilmeden çalışır).
+      - name: Eski paketleri sil
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$TAG" --json assets -q '.assets[].name' | while read -r name; do
+            case "$name" in *.zip|*.zip.sha256) ;; *) continue ;; esac
+            if [ ! -f "dist/$name" ]; then
+              echo "Siliniyor: $name"
+              gh release delete-asset "$TAG" "$name" -y
+            fi
+          done
