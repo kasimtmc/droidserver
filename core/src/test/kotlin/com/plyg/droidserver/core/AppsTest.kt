@@ -119,6 +119,17 @@ class AppsTest {
         tweaks.fold(AppConfig("api", command = listOf("sh", "run.sh"), port = port)) { a, t -> t(a) }
 
     @Test
+    fun `play surumunde derlenmis kodlu uygulama baslatilmaz`() {
+        val elf = "\u007FELF" + "x".repeat(60)
+        val mgr = AppManager(File(dir, "apps"), log = logs::add, nativeCode = false)
+        mgr.stage("api", zip("run.sh" to "#!/bin/sh\necho hi\n", "node_modules/sqlite3/build/node_sqlite3.node" to elf), "upload")
+        val e = assertFailsWith<AppException> { mgr.prepare(app(), emptyMap()) }
+        assertTrue("node_sqlite3.node" in e.message.orEmpty(), e.message)
+        // GitHub sürümünde aynı kod hazırlanır.
+        assertTrue(AppManager(File(dir, "apps")).prepare(app(), emptyMap()).spec.command.isNotEmpty())
+    }
+
+    @Test
     fun `surum hazirlama ve surec tanimi`() {
         val mgr = AppManager(File(dir, "apps"), log = logs::add)
         // GitHub arşivi gibi tek üst klasör atlanır; betikler çalıştırılabilir olur.

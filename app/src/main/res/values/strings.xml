@@ -6,4 +6,9 @@
     <string name="scene_widget_label">DroidServer sahneler</string>
     <!-- Play modülü adı (Play indirme onayında görünür). -->
     <string name="component_cloudflared">Cloudflare tüneli</string>
+    <string name="component_postgres" translatable="false">PostgreSQL</string>
+    <string name="component_redis" translatable="false">Redis</string>
+    <string name="component_nodejs" translatable="false">Node.js</string>
+    <string name="component_python" translatable="false">Python</string>
+    <string name="component_openjdk" translatable="false">Java (OpenJDK)</string>
 </resources>

@@ -1402,13 +1402,31 @@ modeller veri), ödemeler (Play'in ödeme kuralı uygulamanın kendi dijital sat
     sembolik bağlantı kurar ve her kullanımda bağlantıyı güncel kitaplık klasörüne çevirir.
 
 **19.4 İkililer yerel kitaplık olarak, Play Feature Delivery**
-- [ ] Her bileşenin programları `lib<ad>.so` adıyla (arm64-v8a, x86_64); veri dosyaları (Postgres `share/`, Python standart
+- [x] Her bileşenin programları `lib<ad>.so` adıyla (arm64-v8a, x86_64); veri dosyaları (Postgres `share/`, Python standart
   kitaplığı, Node modülleri) varlık olarak uygulama klasörüne açılır. Termux yolu düzeltmesi aynen uygulanır.
-- [ ] Bileşen başına isteğe bağlı modül (`:components:postgres` …); Bileşenler ekranında "İndir ve kur" modülü
+- [x] Bileşen başına isteğe bağlı modül (`:components:postgres` …); Bileşenler ekranında "İndir ve kur" modülü
   `SplitInstallManager` ile kurar, kaldırır, ilerlemeyi gösterir. `ComponentManager` iki kaynağı destekler: indirme
   (`full`) ve kurulu modül (`play`); bileşen tanımı (komut, ortam, hazır olma denetimi) aynı kalır.
-- [ ] Boyut: OpenJDK (~150 MB) modül sınırına sığıyor mu denetlenir; sığmazsa bölünür ya da sonraki sürüme kalır.
-- [ ] Kendi uygulamalarınız: `play`'de uygulama klasöründe `.so`/`.node` varsa çalıştırılmaz, nedeni ekranda ve logda.
+- [x] Boyut: OpenJDK (~150 MB) modül sınırına sığıyor mu denetlenir; sığmazsa bölünür ya da sonraki sürüme kalır.
+- [x] Kendi uygulamalarınız: `play`'de uygulama klasöründe `.so`/`.node` varsa çalıştırılmaz, nedeni ekranda ve logda.
+- Durum: altı bileşen (cloudflared, PostgreSQL, Redis, Node.js, Python, OpenJDK) Android 16 telefonda Play sürümünden
+  çalıştı: Postgres initdb + sunucu (API tabloları Postgres'te), Redis, hızlı tünel, `npm install` + Node uygulaması,
+  `pip` + Python uygulaması (sqlite, OpenSSL), `java Server.java` (java.home paket klasörü).
+  - Varlık yerine her dosya (program, kitaplık, veri) ayrı `lib<id>_<n>.so` olarak modüle girer, yol eşlemesi
+    `lib<id>_files.so`'da; paket klasörü bağlantılardan kurulur (açma yok, salt okunur). Kitaplık klasörü uygulama
+    güncellenince değişir: bağlantılar her kullanımda denetlenir; katalogdaki tanım değiştiyse (uygulama güncellendi)
+    kayıt ve klasör kendiliğinden yenilenir.
+  - Kitaplık klasöründen çalışmanın yan etkileri `libdsexec.so` (LD_PRELOAD, uygulamanın yerel kodu, her ABI) ile
+    giderildi: `realpath()` (initdb `postgres`'i, Postgres `share/`'ı bulsun), `readlink(/proc/self/exe)` ve `dladdr()`
+    (Java başlatıcısı ve HotSpot JDK klasörünü bulsun), `open("/dev/ashmem")` → `/dev/ashmem<boot_id>` (Android 10+
+    hedefleyen uygulama ashmem'i doğrudan açamaz; libandroid-shmem döngüye giriyordu). Node araçları
+    `--preserve-symlinks` ile çalışır (sarmalayıcıda); openjdk'nin kitaplık yolu Play kataloğunda (`$ORIGIN` yerine).
+  - Bulunan paket hatası (GitHub sürümünü de etkiler): Termux `npm` ve `python-pip`'i ayrı pakete ayırmış; Node.js
+    paketinde npm, Python paketinde pip yoktu. `tools/package-termux.sh` ikisini de alır, seçenekli bağımlılıkta
+    (`nodejs | nodejs-lts`) zaten alınanı seçer. Bileşen deposunun yeniden yayınlanması gerekir (components iş akışı).
+  - Boyut (arm64, sıkıştırılmış indirme): cloudflared 10 MB, Postgres 27 MB, Redis 1,4 MB, Node.js 37 MB, Python
+    14 MB, OpenJDK 65 MB; Play sınırlarının çok altında. Play ABI'leri arm64-v8a, armeabi-v7a, x86_64.
+  - Play'in kendi indirmesi ve onay penceresi Grup 4'te iç test kanalında denenecek.
 
 ### Grup 3 — SMS ve politika uyumu
 

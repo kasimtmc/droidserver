@@ -21,8 +21,12 @@ fun componentModules(context: Context): ComponentModules? = PlayComponentModules
 private class PlayComponentModules(private val context: Context) : ComponentModules {
     private val manager = SplitInstallManagerFactory.create(context)
 
-    override fun catalog(): ComponentManifest =
+    // Uygulamayla gelir; süreç boyunca değişmez.
+    private val catalog by lazy {
         ConfigJson.decodeFromString(ComponentManifest.serializer(), context.assets.open(CATALOG).use { it.readBytes().decodeToString() })
+    }
+
+    override fun catalog(): ComponentManifest = catalog
 
     // Modül kurulunca uygulamanın kod klasörü değişir; süreçteki eski ApplicationInfo değil, güncel olanı sorulur.
     override fun libDir() = File(context.packageManager.getApplicationInfo(context.packageName, 0).nativeLibraryDir)
