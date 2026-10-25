@@ -1,5 +1,8 @@
 # F-Droid gönderimi
 
+> **Bırakıldı (25 Ekim 2026):** F-Droid yayını yapılmayacak; dağıtım GitHub ve Play Store (bkz. `PLAN.md`, Faz 19).
+> Bu klasör yapılan hazırlığın kaydı olarak duruyor.
+
 F-Droid uygulamayı kaynaktan kendisi derler. Derleme tekrarlanabilir olduğu için F-Droid, kendi derlediği APK'yı
 GitHub'daki imzalı APK ile karşılaştırıp **bizim imzamızla** yayınlayabilir; böylece F-Droid'den ve GitHub'dan kurulan
 sürümler birbirinin üzerine güncellenir.

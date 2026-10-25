@@ -6,8 +6,8 @@ Android cihazı, kullanıcının tercihlerine göre yapılandırılan bir arka u
 Kotlin + Ktor + SQLite çekirdeği uygulamanın içinde çalışır; PostgreSQL, Redis, cloudflared gibi
 yan servisler isteğe bağlı olarak indirilip yönetilir.
 
-> **Dağıtım:** Play Store dışı (APK / GitHub Releases / F-Droid). `targetSdk = 28` bilinçli bir seçimdir,
-> aşağıda nedeni açıklanıyor.
+> **Dağıtım:** GitHub Releases (APK). Play Store sürümü ayrı bir yapı türüyle planlanıyor (`PLAN.md`, Faz 19).
+> GitHub sürümünde `targetSdk = 28` bilinçli bir seçimdir, aşağıda nedeni açıklanıyor.
 
 ## Mimari
 
@@ -1523,8 +1523,8 @@ doğrulanır):
 Model ilk istekte belleğe yüklenir, 5 dakika kullanılmazsa boşaltılır. Yüklemeden önce boş bellek ve telefonun ısısı
 denetlenir: yetmezse istek `503` döner ve **sağlık uyarısı** gelir ("Yerel YZ çalıştırılamadı"). Yanıtlar bulut
 modellerinden yavaş ve daha basittir; çalışırken pil tüketir. llama.cpp uygulamaya kaynaktan derlenir (yalnızca CPU,
-arm64-v8a ve x86_64; APK'ya ABI başına yaklaşık 6 MB); 32 bit telefonlarda yerel YZ yoktur. F-Droid'in kuralı gereği
-Gemini Nano (AICore) gibi kapalı ve hazır ikili çalışma zamanları kullanılmaz.
+arm64-v8a ve x86_64; APK'ya ABI başına yaklaşık 6 MB); 32 bit telefonlarda yerel YZ yoktur. Her şey kaynaktan
+derlendiği için Gemini Nano (AICore) gibi kapalı ve hazır ikili çalışma zamanları kullanılmaz.
 
 ```json
 "ai": { "enabled": true, "provider": "local", "model": "qwen2.5-0.5b-instruct-q4_k_m",
@@ -2157,13 +2157,13 @@ Android Studio'dan kurulan **debug** sürümü farklı anahtarla imzalıdır; ya
 bunu söyler). Yayın sürümüne geçmek için Yedekler'den yedek alıp dışa aktarın, uygulamayı kaldırın, sürüm sayfasındaki
 APK'yı kurun ve yedeği geri yükleyin.
 
-## F-Droid ve gizlilik
+## Gizlilik ve tekrarlanabilir derleme
 
-F-Droid için meta veri `fastlane/metadata/android/` altındadır (başlık, açıklamalar, sürüm notu, ekran görüntüleri);
-gönderim adımları ve açık konular `docs/fdroid/README.md`'de. Yayın derlemesi tekrarlanabilir olacak şekilde ayarlıdır
+Mağaza meta verisi `fastlane/metadata/android/` altındadır (başlık, açıklamalar, sürüm notu, ekran görüntüleri). F-Droid
+yayını bırakıldı (`docs/fdroid/` kayıt için duruyor). Yayın derlemesi tekrarlanabilir olacak şekilde ayarlıdır
 (APK'ya derleme ortamının Git bilgisi ve Google'ın şifreli bağımlılık bloğu yazılmaz): aynı kaynaktan iki temiz derleme
 bayt bayt aynı APK'yı verir. Gizlilik politikası ve izin gerekçeleri: [PRIVACY.md](PRIVACY.md). Lisans: GPL-3.0-or-later ([LICENSE](LICENSE)). Play Store sürümü
-targetSdk 28 kaldıkça yok (bkz. Neden targetSdk 28?).
+ayrı bir yapı türüyle (targetSdk 36) planlanıyor; GitHub sürümünün neden 28'de kaldığı: Neden targetSdk 28?
 
 ## Sürüm yayınlama
 
