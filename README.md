@@ -2235,6 +2235,22 @@ Yer tutucular komutta da geçerlidir (örn. Redis `--requirepass ${env:REDIS_PAS
 ortamında PATH'e eklenen klasörler, örn. `${PKG}/bin`), `secrets` (bileşenin ihtiyaç duyduğu sırlar: katalogdan
 çalıştırılınca ortak ortamda yoksa üretilip şifreli depoya eklenir).
 
+### Play sürümünde bileşenler
+
+Play sürümü (targetSdk 36) uygulama klasörüne indirilen programları çalıştıramaz ve Play dışarıdan çalıştırılabilir
+kod indirmeyi yasaklar. Bu yüzden orada bileşenler indirilmez; her biri isteğe bağlı bir Play modülüdür ve
+Bileşenler ekranındaki **Kur** onu Play'den indirir. Paket listesi uygulamayla gelir (depo adresi yoktur) ve modüller
+uygulamayla birlikte güncellenir.
+
+- Android modülün dosyalarını uygulamanın yerel kitaplık klasörüne açar; çalıştırılabilen tek yer orasıdır. Paket
+  klasöründe yalnızca bu dosyalara giden bağlantılar olur; kullanım ve ayarlar GitHub sürümündekiyle aynıdır.
+- Modüller derlemede `tools/play-components.py` ile depodaki paketlerden üretilir (sha256 doğrulamalı).
+- Programlar uygulamanın küçük bir kitaplığıyla (`libdsexec.so`) başlar: kendi yerini arayan programlar (Postgres,
+  Java) paket klasörünü görür; Postgres'in paylaşılan belleği Android'in izin verdiği aygıtla açılır.
+- **Kendi uygulamalarınızda** derlenmiş kod (npm/pip yerel eklentileri `.node`/`.so`, derlenmiş programlar) Play
+  sürümünde çalışmaz; böyle bir uygulama nedeni Loglar'da yazılarak başlatılmaz. Yalnızca JavaScript, Python ve Java
+  kodu kullanın ya da GitHub sürümünü kurun.
+
 ### Bileşen kataloğu
 
 Bu deponun `components` sürümü (varsayılan bileşen deposu) şunları da yayınlar; Bileşenler ekranı açılınca listelenir:

@@ -162,6 +162,7 @@ class AppGraph(context: Context, val profile: Profile, profiles: ProfileStore) {
         tmpDir = componentTmp.absolutePath,
         log = logs::add,
         moduleLibDir = modules?.let { m -> m::libDir },
+        moduleCatalog = modules?.let { m -> { m.catalog().packages } },
     )
 
     /** Kurulabilecek paketler: Play sürümünde uygulamayla gelen katalog, GitHub sürümünde [url]'deki bileşen deposu. */
@@ -208,7 +209,7 @@ class AppGraph(context: Context, val profile: Profile, profiles: ProfileStore) {
     /** Kendi uygulamaların sürümleri (`apps/<ad>`, profil klasöründe). */
     val apps = AppsController(
         context, configRepo, secrets,
-        AppManager(File(dataRoot, "apps"), runtimes = components::runtime, log = logs::add),
+        AppManager(File(dataRoot, "apps"), runtimes = components::runtime, log = logs::add, nativeCode = modules == null),
         supervisor, appScope, logs::add,
     )
 
