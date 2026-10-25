@@ -32,9 +32,9 @@ android {
         minSdk = 26
         versionCode = versionCodeOf(appVersion)
         versionName = appVersion
-        // Yerel YZ (llama.cpp) yalnızca bu ABI'ler için derlenir; paketlenen diğer kitaplıklar (tüm ABI'ler) etkilenmez,
-        // uygulama 32 bit telefonlara da kurulur (yerel YZ orada yok).
-        externalNativeBuild { cmake { abiFilters += listOf("arm64-v8a", "x86_64"); arguments += listOf("-DCMAKE_BUILD_TYPE=Release") } }
+        // Yerel kod bu ABI'ler için derlenir; yerel YZ (llama.cpp) yalnızca 64 bit olanlarda (CMakeLists.txt). Paketlenen
+        // diğer kitaplıklar (tüm ABI'ler) etkilenmez, uygulama 32 bit telefonlara da kurulur (yerel YZ orada yok).
+        externalNativeBuild { cmake { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64"); arguments += listOf("-DCMAKE_BUILD_TYPE=Release") } }
     }
 
     // Dağıtım kanalları (bkz. PLAN Faz 19). Kimlik ve imza ikisinde aynı; kanala göre açılıp kapanan özellikler BuildConfig'te.
@@ -62,7 +62,7 @@ android {
     }
 
     // Play sürümünün bileşenleri: her biri isteğe bağlı Play modülü (yalnızca programlar; bkz. tools/play-components.py).
-    dynamicFeatures += setOf(":components:cloudflared")
+    dynamicFeatures += rootProject.project(":components").childProjects.keys.map { ":components:$it" }
 
     ndkVersion = "29.0.14206865"
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "4.1.2" } }
@@ -142,8 +142,9 @@ val playComponents = rootProject.file("build/play-components")
 android.sourceSets.getByName("play").assets.directories += File(playComponents, "catalog").path
 tasks.matching { it.name.startsWith("bundlePlay") }.configureEach {
     doFirst {
-        check(File(playComponents, "catalog/play-components.json").isFile) {
-            "Play bileşen modülleri hazır değil: önce tools/play-components.py çalıştırın"
+        val missing = rootProject.project(":components").childProjects.keys.filter { !File(playComponents, "$it/jniLibs").isDirectory }
+        check(File(playComponents, "catalog/play-components.json").isFile && missing.isEmpty()) {
+            "Play bileşen modülleri hazır değil ($missing): önce tools/play-components.py çalıştırın"
         }
     }
 }

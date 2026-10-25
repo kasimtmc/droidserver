@@ -145,9 +145,10 @@ data class InstalledComponent(
  * İndirir, sha256 doğrular, açar, çalıştırma izni verir ve ProcessSupervisor için Spec üretir.
  *
  * Neden çalışır: GitHub sürümü targetSdk 28 ile derlenir; böylece Android 10+'daki W^X kısıtı (yazılabilir klasörden
- * exec yasağı) bu uygulamaya uygulanmaz. Play sürümünde ([moduleLibDir] verilir) hiçbir şey indirilmez: programlar
- * Play modülüyle uygulamanın yerel kitaplık klasörüne `lib<ad>.so` adıyla kurulur (oradan çalıştırılabilir), paket
- * klasöründe yalnızca onlara giden sembolik bağlantılar olur (`bin/cloudflared` -> `<kitaplık klasörü>/libcloudflared.so`).
+ * exec yasağı) bu uygulamaya uygulanmaz. Play sürümünde ([moduleLibDir] verilir) hiçbir şey indirilmez: paketin
+ * dosyaları Play modülüyle uygulamanın yerel kitaplık klasörüne `lib<id>_<n>.so` adıyla kurulur (oradan
+ * çalıştırılabilir), paket klasöründe yalnızca onlara giden sembolik bağlantılar olur (`bin/postgres` ->
+ * `<kitaplık klasörü>/libpostgres_7.so`). Hangi yolun hangi dosya olduğu modüldeki `lib<id>_files.so`'da (JSON).
  */
 class ComponentManager(
     private val rootDir: File,
@@ -165,6 +166,11 @@ class ComponentManager(
      * modüller güncellendikçe değişir, her seferinde sorulur). null: paketler indirilir (GitHub sürümü).
      */
     private val moduleLibDir: (() -> File)? = null,
+    /**
+     * Play sürümünün kataloğu (uygulamayla gelir). Modüller uygulamayla birlikte güncellendiği için kayıttaki paket
+     * tanımı katalogdakinden farklıysa bileşen kullanılırken yenilenir.
+     */
+    private val moduleCatalog: (() -> List<ComponentPackage>)? = null,
     private val log: (String) -> Unit = ::println,
 ) : ComponentAdmin {
     private companion object {
@@ -183,6 +189,8 @@ class ComponentManager(
         /** Veri klasöründe ilk kurulumun tamamlandığını gösteren dosya. */
         const val SETUP_MARKER = ".ds-setup-done"
         const val ASIDE_SUFFIX = ".yarim-kurulum-"
+        /** Play sürümünde paket klasörünün bağlantılarının gösterdiği kitaplık klasörü. */
+        const val LIBDIR_MARKER = ".ds-libdir"
     }
 
     /** Bu süreçte bağlantı kalıntılarına karşı denetlenmiş paket klasörleri. */
@@ -194,14 +202,24 @@ class ComponentManager(
         val pkgDir = File(pkgRoot, "${pkg.id}/${inst.version}")
         val dataDir = File(dataRoot, pkg.id).apply { mkdirs() }
         fun expand(s: String) = s.replace("\${PKG}", pkgDir.absolutePath).replace("\${DATA}", dataDir.absolutePath)
-        val env = (pkg.env + cfg.env).mapValues { expand(it.value) }
+        val env = (pkg.env + cfg.env).mapValues { expand(it.value) } + moduleEnv(pkgDir)
 
         fun envValue(ref: MatchResult, name: String = ref.groupValues[1]): String =
             env[name] ?: error(tr("{0}: {1} için ortam değişkeni yok", pkg.id, ref.value))
     }
 
+    /**
+     * Play sürümünde programların ortamına eklenen: kendi yerini realpath() ile bulan programlar kitaplık klasörüne
+     * değil paket klasörüne baksın diye uygulamanın libdsexec.so'su (bkz. app/src/main/cpp/dsexec.c).
+     */
+    private fun moduleEnv(pkgDir: File): Map<String, String> {
+        val libDir = moduleLibDir?.invoke() ?: return emptyMap()
+        val preload = File(libDir, "libdsexec.so").takeIf { it.isFile } ?: return emptyMap()
+        return mapOf("DS_LIBDIR" to libDir.path, "DS_PKG" to pkgDir.path, "LD_PRELOAD" to preload.path)
+    }
+
     private fun context(cfg: ComponentConfig): Context =
-        Context(installed()[cfg.id] ?: error(tr("{0} kurulu değil — önce Bileşenler ekranından kurun", cfg.id)), cfg).also { ctx ->
+        Context(moduleSynced(installed()[cfg.id] ?: error(tr("{0} kurulu değil — önce Bileşenler ekranından kurun", cfg.id))), cfg).also { ctx ->
             // Kitaplık klasörü uygulama ya da başka bir modül güncellenince değişir; bağlantılar yenisine çevrilir.
             moduleLibDir?.let { linkModule(ctx.pkg, ctx.pkgDir, it()) }
             // Eski paketlerle kurulmuş bileşenler yeniden indirilmeden onarılır.
@@ -210,6 +228,14 @@ class ComponentManager(
                 relocateTmp(ctx.pkgDir).takeIf { it > 0 }?.let { log("${cfg.id}: $it dosyada geçici klasör yolu uygulamanınkine çevrildi") }
             }
         }
+
+    /** Play sürümünde kayıttaki tanım katalogdakinden farklıysa (uygulama güncellendi) paketi yeniden bağlar. */
+    private fun moduleSynced(inst: InstalledComponent): InstalledComponent {
+        val libDir = moduleLibDir ?: return inst
+        val fresh = moduleCatalog?.invoke()?.firstOrNull { it.id == inst.id }?.takeIf { it != inst.pkg } ?: return inst
+        synchronized(this) { installFromModule(fresh, libDir()) }
+        return installed().getValue(inst.id)
+    }
 
     /** Depodaki paket kurulu olandan farklı mı (yeni sürüm veya aynı sürümün düzeltilmiş paketi)? */
     fun updateAvailable(pkg: ComponentPackage): Boolean {
@@ -258,7 +284,7 @@ class ComponentManager(
         log("${pkg.id} kuruldu: $target")
     }
 
-    /** Play modülünün kurduğu programlara bağlantılar oluşturur ve paketi kurulu sayar (indirme yok). */
+    /** Play modülünün kurduğu dosyalara bağlantılar oluşturur ve paketi kurulu sayar (indirme yok). */
     private fun installFromModule(pkg: ComponentPackage, libDir: File) {
         val target = File(pkgRoot, "${pkg.id}/${pkg.version}")
         val tmp = File(pkgRoot, "${pkg.id}/.tmp-${pkg.version}")
@@ -266,22 +292,34 @@ class ComponentManager(
         linkModule(pkg, tmp, libDir)
         target.deleteRecursively()
         require(tmp.renameTo(target)) { tr("{0}: kurulum klasörü taşınamadı", pkg.id) }
+        // Önceki sürümün klasöründe yalnızca bağlantılar var.
+        File(pkgRoot, pkg.id).listFiles { f -> f != target && !f.name.startsWith(".") }.orEmpty().forEach { it.deleteRecursively() }
         val setupDone = installed()[pkg.id]?.takeIf { it.version == pkg.version }?.setupDone ?: false
         saveRegistry(installed() + (pkg.id to InstalledComponent(pkg.id, pkg.version, pkg, setupDone, pkg.builds[abi]?.sha256)))
         log("${pkg.id} kuruldu (Play modülü): $target")
     }
 
-    /** [dir]'de her çalıştırılabilir dosya için kitaplık klasöründeki programa bağlantı; doğru olanlara dokunulmaz. */
+    /**
+     * [dir]'i modülün dosyalarına bağlantılarla kurar (bkz. sınıf açıklaması). Kitaplık klasörü değişmediyse (işaret
+     * dosyası) dokunulmaz; değiştiyse (uygulama ya da modül güncellendi) eski bağlantılar silinip yeniden kurulur.
+     */
     private fun linkModule(pkg: ComponentPackage, dir: File, libDir: File) {
-        for (rel in pkg.executables) {
-            val lib = File(libDir, moduleLibName(rel))
-            require(lib.isFile) { tr("{0}: Play modülünde {1} yok; modül kurulu mu?", pkg.id, lib.name) }
+        val marker = File(dir, LIBDIR_MARKER)
+        if (marker.isFile && marker.readText() == libDir.path) return
+        val indexFile = File(libDir, "lib${pkg.id}_files.so")
+        require(indexFile.isFile) { tr("{0}: Play modülü kurulu değil", pkg.id) }
+        val index = ConfigJson.decodeFromString<Map<String, String>>(indexFile.readText())
+        pkg.executables.firstOrNull { it !in index }?.let { throw IllegalArgumentException(tr("{0}: Play modülünde {1} yok", pkg.id, it)) }
+        if (dir.isDirectory) {
+            dir.walkBottomUp().forEach { f -> if (Files.isSymbolicLink(f.toPath()) || (f != dir && f.isDirectory && f.list().isNullOrEmpty())) f.delete() }
+        }
+        for ((rel, lib) in index) {
             val link = File(dir, rel).toPath()
-            if (Files.isSymbolicLink(link) && Files.readSymbolicLink(link) == lib.toPath()) continue
             Files.createDirectories(link.parent)
             Files.deleteIfExists(link)
-            Files.createSymbolicLink(link, lib.toPath())
+            Files.createSymbolicLink(link, File(libDir, lib).toPath())
         }
+        marker.writeText(libDir.path)
     }
 
     fun uninstall(id: String, keepData: Boolean = true) {
@@ -520,9 +558,6 @@ class ComponentManager(
 
     private fun unzip(bytes: ByteArray, dest: File) = unzipSafely(bytes.inputStream(), dest)
 }
-
-/** Play modülünde çalıştırılabilir dosyanın adı: Android yalnızca `lib*.so` adlı dosyaları kurar (`bin/node` -> `libnode.so`). */
-fun moduleLibName(executable: String): String = "lib" + executable.substringAfterLast('/') + ".so"
 
 /**
  * Komut satırı (`/proc/<pid>/cmdline`, NUL ayrımlı) [program]'ı mı çalıştırıyor: ilk iki argümandan birinin dosya adı

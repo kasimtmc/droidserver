@@ -2277,6 +2277,22 @@ Placeholders also work in the command (e.g. Redis `--requirepass ${env:REDIS_PAS
 runtime, e.g. `${PKG}/bin`), `secrets` (secrets the component needs: when run from the catalog, they are generated and
 added to encrypted storage if missing from the shared environment).
 
+### Components in the Play version
+
+The Play version (targetSdk 36) can't run programs downloaded into the app's folder, and Play forbids downloading
+executable code. So there, components aren't downloaded; each one is an on-demand Play module, and **Install** on the
+Components screen downloads it from Play. The package list ships with the app (there is no repository address) and
+the modules are updated together with the app.
+
+- Android unpacks the module's files into the app's native library folder, the only place programs can run from. The
+  package folder only holds links to those files; usage and settings are the same as in the GitHub version.
+- The modules are built from the repository's packages with `tools/play-components.py` (sha256-verified).
+- Programs start with a small library of the app (`libdsexec.so`): programs that look up their own location
+  (Postgres, Java) see the package folder, and Postgres's shared memory is opened through the device Android allows.
+- In **your own apps**, compiled code (npm/pip native add-ons `.node`/`.so`, compiled programs) doesn't run in the Play
+  version; such an app isn't started and the reason is written to Logs. Use only JavaScript, Python and Java code, or
+  install the GitHub version.
+
 ### Component catalog
 
 This repository's `components` release (the default component repository) also publishes the following; they are listed

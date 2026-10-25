@@ -60,6 +60,12 @@ class AppManager(
     private val buildTimeoutSec: Long = 900,
     /** Uygulama sürecinin devraldığı PATH (Android'de `/system/bin` vb.). */
     private val basePath: String = System.getenv("PATH") ?: "/system/bin:/usr/bin:/bin",
+    /**
+     * Uygulamanın klasöründeki derlenmiş kod (ELF: npm/pip yerel eklentileri `.node`/`.so`, programlar) çalışabilir mi.
+     * Play sürümünde hayır: Android, uygulama klasöründen yüklenen derlenmiş kodu engeller (W^X); uygulama anlaşılır
+     * bir nedenle başlatılmaz.
+     */
+    private val nativeCode: Boolean = true,
 ) {
     private fun appDir(name: String) = File(rootDir, name)
     private fun releasesDir(name: String) = File(appDir(name), "releases")
@@ -161,6 +167,12 @@ class AppManager(
         if (!release.built && app.build.isNotEmpty()) {
             for (cmd in app.build) runBuild(app.name, cmd, dir, env, runtime)
             writeRelease(app.name, release.copy(built = true))
+        }
+        if (!nativeCode) nativeFiles(dir).takeIf { it.isNotEmpty() }?.let { found ->
+            throw AppException(
+                tr("{0}: uygulamanın klasöründe derlenmiş kod var ({1}); Play sürümünde Android uygulama klasöründeki derlenmiş kodu çalıştırmaz. Yerel eklentisi olmayan paketler kullanın ya da GitHub sürümünü kurun.",
+                    app.name, found.joinToString()),
+            )
         }
         val command = listOf(resolveProgram(app.command.first(), dir, runtime)) + app.command.drop(1)
         val spec = ProcessSupervisor.Spec(
@@ -302,6 +314,16 @@ class AppManager(
         var n = 1
         while (releaseDir(name, id).exists()) id = "$base-${n++}"
         return id
+    }
+
+    /** Klasördeki ilk birkaç ELF dosyası (göreli yollar). */
+    private fun nativeFiles(root: File): List<String> =
+        root.walkTopDown().filter { it.isFile && it.length() >= 4 && isElf(it) }.take(3).map { it.relativeTo(root).path }.toList()
+
+    private fun isElf(f: File): Boolean {
+        val head = ByteArray(4)
+        val n = runCatching { f.inputStream().use { it.read(head) } }.getOrDefault(0)
+        return n == 4 && head[0] == 0x7F.toByte() && head[1] == 'E'.code.toByte() && head[2] == 'L'.code.toByte() && head[3] == 'F'.code.toByte()
     }
 
     /** `#!` ile başlayan betikler ve ELF dosyaları çalıştırılabilir yapılır (zip izin bitlerini korumaz). */
