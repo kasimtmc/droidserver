@@ -1,5 +1,6 @@
 package com.plyg.droidserver.app
 
+import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.os.Build
@@ -11,6 +12,7 @@ import com.plyg.droidserver.app.data.AppAdminHost
 import com.plyg.droidserver.app.data.AppUpdater
 import com.plyg.droidserver.app.data.AppsController
 import com.plyg.droidserver.app.data.BackupExporter
+import com.plyg.droidserver.app.data.ComponentModules
 import com.plyg.droidserver.app.data.AndroidNetwork
 import com.plyg.droidserver.app.data.AndroidPhone
 import com.plyg.droidserver.app.data.AndroidSqlDriver
@@ -22,9 +24,11 @@ import com.plyg.droidserver.app.data.PendingTemplate
 import com.plyg.droidserver.app.data.Profile
 import com.plyg.droidserver.app.data.ProfileStore
 import com.plyg.droidserver.app.data.SecretStore
+import com.plyg.droidserver.app.data.componentModules
 import com.plyg.droidserver.app.service.ServerService
 import com.plyg.droidserver.core.apps.AppManager
 import com.plyg.droidserver.core.components.ComponentManager
+import com.plyg.droidserver.core.components.ComponentPackage
 import com.plyg.droidserver.core.i18n.I18n
 import com.plyg.droidserver.core.i18n.Lang
 import com.plyg.droidserver.core.i18n.tr
@@ -48,6 +52,7 @@ import com.plyg.droidserver.core.server.EngineState
 import com.plyg.droidserver.app.data.NetUtil
 import com.plyg.droidserver.app.data.AutomationBridge
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.SecureRandom
 import java.util.Base64
@@ -148,13 +153,33 @@ class AppGraph(context: Context, val profile: Profile, profiles: ProfileStore) {
     /** Termux derlemelerinin geçici klasörü: bileşenlerin binary'lerindeki Termux yolu buraya çevrilir. */
     private val componentTmp = File(context.applicationInfo.dataDir, "t").apply { mkdirs() }
 
+    /** Play sürümünde bileşenleri getiren Play modülleri; GitHub sürümünde null (paketler depodan indirilir). */
+    val modules: ComponentModules? = componentModules(context)
+
     val components = ComponentManager(
         rootDir = File(context.filesDir, "components"),
         abi = Build.SUPPORTED_ABIS.first(),
         tmpDir = componentTmp.absolutePath,
         log = logs::add,
-        downloads = BuildConfig.COMPONENT_DOWNLOADS,
+        moduleLibDir = modules?.let { m -> m::libDir },
     )
+
+    /** Kurulabilecek paketler: Play sürümünde uygulamayla gelen katalog, GitHub sürümünde [url]'deki bileşen deposu. */
+    fun componentCatalog(url: String): List<ComponentPackage> = modules?.catalog()?.packages ?: run {
+        require(url.isNotBlank()) { tr("Önce Bileşenler sekmesinde bileşen deposu adresini girin") }
+        components.fetchManifest(url).packages
+    }
+
+    /** Paketi kurar; Play sürümünde önce modülü Play'den indirir ([activity] Play'in onay penceresi için). */
+    suspend fun installComponent(activity: Activity?, pkg: ComponentPackage, progress: (String) -> Unit = {}) {
+        modules?.install(activity, pkg.id, progress)
+        withContext(Dispatchers.IO) { components.install(pkg) }
+    }
+
+    fun uninstallComponent(id: String) {
+        components.uninstall(id)
+        modules?.uninstall(id)
+    }
 
     val network = AndroidNetwork(context)
 

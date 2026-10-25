@@ -48,18 +48,21 @@ android {
             targetSdk = 28
             buildConfigField("boolean", "SELF_UPDATE", "true")
             buildConfigField("boolean", "SIM_SMS", "true")
-            buildConfigField("boolean", "COMPONENT_DOWNLOADS", "true")
         }
         // Play Store sürümü: güncel hedef API; uygulama içi güncelleyici, doğrudan SIM ile SMS ve bileşen indirme yok
-        // (izinleri src/play/AndroidManifest.xml kaldırır).
+        // (izinleri src/play/AndroidManifest.xml kaldırır). Bileşenler Play modülleriyle gelir (src/play/.../Modules.kt).
         create("play") {
             dimension = "channel"
             targetSdk = 36
+            // Play'de bütün modüller aynı ABI'leri desteklemeli; bileşen deposunda x86 (32 bit) derlemesi yok.
+            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
             buildConfigField("boolean", "SELF_UPDATE", "false")
             buildConfigField("boolean", "SIM_SMS", "false")
-            buildConfigField("boolean", "COMPONENT_DOWNLOADS", "false")
         }
     }
+
+    // Play sürümünün bileşenleri: her biri isteğe bağlı Play modülü (yalnızca programlar; bkz. tools/play-components.py).
+    dynamicFeatures += setOf(":components:cloudflared")
 
     ndkVersion = "29.0.14206865"
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "4.1.2" } }
@@ -134,6 +137,17 @@ val copyHelp by tasks.registering(Copy::class) {
 android.sourceSets.getByName("main").assets.directories += helpAssets.get().asFile.path
 tasks.named("preBuild") { dependsOn(copyHelp) }
 
+// Play sürümünün bileşen kataloğu (modüllerdeki programlarla aynı sürüm): tools/play-components.py üretir.
+val playComponents = rootProject.file("build/play-components")
+android.sourceSets.getByName("play").assets.directories += File(playComponents, "catalog").path
+tasks.matching { it.name.startsWith("bundlePlay") }.configureEach {
+    doFirst {
+        check(File(playComponents, "catalog/play-components.json").isFile) {
+            "Play bileşen modülleri hazır değil: önce tools/play-components.py çalıştırın"
+        }
+    }
+}
+
 dependencies {
     implementation(project(":core"))
     implementation(libs.coroutines.android)
@@ -147,6 +161,10 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     debugImplementation(libs.compose.ui.tooling)
+    // Bileşen modüllerini Play'den kurmak için (yalnızca Play sürümünde).
+    "playImplementation"(libs.play.feature.delivery)
+    // feature-delivery fragment 1.0'ı getiriyor; registerForActivityResult en az 1.3 ister (lint hatası).
+    "playImplementation"(libs.androidx.fragment)
 
     // WizardViewModel saf Kotlin tutulur; testleri JVM'de (Robolectric olmadan) koşar.
     testImplementation(libs.junit)

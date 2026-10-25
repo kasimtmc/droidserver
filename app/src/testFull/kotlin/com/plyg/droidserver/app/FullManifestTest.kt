@@ -2,8 +2,10 @@ package com.plyg.droidserver.app
 
 import android.content.pm.PackageManager
 import androidx.test.core.app.ApplicationProvider
+import com.plyg.droidserver.app.data.componentModules
 import com.plyg.droidserver.app.ui.TestDroidServerApp
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -23,6 +25,7 @@ class FullManifestTest {
         assertTrue("android.permission.SEND_SMS" in p)
         assertTrue("android.permission.REQUEST_INSTALL_PACKAGES" in p)
         assertEquals(28, app.applicationInfo.targetSdkVersion)
-        assertTrue(BuildConfig.SELF_UPDATE && BuildConfig.SIM_SMS && BuildConfig.COMPONENT_DOWNLOADS)
+        assertTrue(BuildConfig.SELF_UPDATE && BuildConfig.SIM_SMS)
+        assertNull("bileşenler depodan indirilir", componentModules(app))
     }
 }

@@ -144,8 +144,10 @@ data class InstalledComponent(
 /**
  * İndirir, sha256 doğrular, açar, çalıştırma izni verir ve ProcessSupervisor için Spec üretir.
  *
- * Neden çalışır: uygulama targetSdk 28 ile derlenir; böylece Android 10+'daki W^X kısıtı
- * (yazılabilir klasörden exec yasağı) bu uygulamaya uygulanmaz. Play Store'da bu mümkün değildir.
+ * Neden çalışır: GitHub sürümü targetSdk 28 ile derlenir; böylece Android 10+'daki W^X kısıtı (yazılabilir klasörden
+ * exec yasağı) bu uygulamaya uygulanmaz. Play sürümünde ([moduleLibDir] verilir) hiçbir şey indirilmez: programlar
+ * Play modülüyle uygulamanın yerel kitaplık klasörüne `lib<ad>.so` adıyla kurulur (oradan çalıştırılabilir), paket
+ * klasöründe yalnızca onlara giden sembolik bağlantılar olur (`bin/cloudflared` -> `<kitaplık klasörü>/libcloudflared.so`).
  */
 class ComponentManager(
     private val rootDir: File,
@@ -159,11 +161,10 @@ class ComponentManager(
      */
     private val tmpDir: String? = null,
     /**
-     * Paketler indirilip uygulama klasöründen çalıştırılabilir mi. Play sürümünde hayır (API 29+ uygulama klasöründen
-     * çalıştırmayı engeller, Play de dışarıdan çalıştırılabilir kod indirmeyi yasaklar); bileşenler orada Play'in
-     * modülleriyle gelecek (PLAN Faz 19, Grup 2).
+     * Play sürümünde Play modüllerinin kurduğu programların klasörü (uygulamanın `nativeLibraryDir`'i; uygulama ve
+     * modüller güncellendikçe değişir, her seferinde sorulur). null: paketler indirilir (GitHub sürümü).
      */
-    private val downloads: Boolean = true,
+    private val moduleLibDir: (() -> File)? = null,
     private val log: (String) -> Unit = ::println,
 ) : ComponentAdmin {
     private companion object {
@@ -201,6 +202,8 @@ class ComponentManager(
 
     private fun context(cfg: ComponentConfig): Context =
         Context(installed()[cfg.id] ?: error(tr("{0} kurulu değil — önce Bileşenler ekranından kurun", cfg.id)), cfg).also { ctx ->
+            // Kitaplık klasörü uygulama ya da başka bir modül güncellenince değişir; bağlantılar yenisine çevrilir.
+            moduleLibDir?.let { linkModule(ctx.pkg, ctx.pkgDir, it()) }
             // Eski paketlerle kurulmuş bileşenler yeniden indirilmeden onarılır.
             if (repaired.add(ctx.pkgDir.path)) {
                 repairSymlinks(ctx.pkgDir).takeIf { it > 0 }?.let { log("${cfg.id}: $it sembolik bağlantı onarıldı") }
@@ -227,7 +230,7 @@ class ComponentManager(
         else ConfigJson.decodeFromString<List<InstalledComponent>>(registry.readText()).associateBy { it.id }
 
     fun install(pkg: ComponentPackage) {
-        if (!downloads) throw IllegalStateException(tr("Bu sürümde bileşenler henüz kurulamıyor: Play sürümünde Play'den gelecekler"))
+        moduleLibDir?.let { return installFromModule(pkg, it()) }
         val build = pkg.builds[abi] ?: error(tr("{0}: '{1}' mimarisi için derleme yok", pkg.id, abi))
         log("${pkg.id} ${pkg.version} indiriliyor…")
         val bytes = download(build.url)
@@ -253,6 +256,32 @@ class ComponentManager(
         saveRegistry(installed() + (pkg.id to InstalledComponent(pkg.id, pkg.version, pkg, setupDone, build.sha256)))
         repaired += target.path
         log("${pkg.id} kuruldu: $target")
+    }
+
+    /** Play modülünün kurduğu programlara bağlantılar oluşturur ve paketi kurulu sayar (indirme yok). */
+    private fun installFromModule(pkg: ComponentPackage, libDir: File) {
+        val target = File(pkgRoot, "${pkg.id}/${pkg.version}")
+        val tmp = File(pkgRoot, "${pkg.id}/.tmp-${pkg.version}")
+        tmp.deleteRecursively()
+        linkModule(pkg, tmp, libDir)
+        target.deleteRecursively()
+        require(tmp.renameTo(target)) { tr("{0}: kurulum klasörü taşınamadı", pkg.id) }
+        val setupDone = installed()[pkg.id]?.takeIf { it.version == pkg.version }?.setupDone ?: false
+        saveRegistry(installed() + (pkg.id to InstalledComponent(pkg.id, pkg.version, pkg, setupDone, pkg.builds[abi]?.sha256)))
+        log("${pkg.id} kuruldu (Play modülü): $target")
+    }
+
+    /** [dir]'de her çalıştırılabilir dosya için kitaplık klasöründeki programa bağlantı; doğru olanlara dokunulmaz. */
+    private fun linkModule(pkg: ComponentPackage, dir: File, libDir: File) {
+        for (rel in pkg.executables) {
+            val lib = File(libDir, moduleLibName(rel))
+            require(lib.isFile) { tr("{0}: Play modülünde {1} yok; modül kurulu mu?", pkg.id, lib.name) }
+            val link = File(dir, rel).toPath()
+            if (Files.isSymbolicLink(link) && Files.readSymbolicLink(link) == lib.toPath()) continue
+            Files.createDirectories(link.parent)
+            Files.deleteIfExists(link)
+            Files.createSymbolicLink(link, lib.toPath())
+        }
     }
 
     fun uninstall(id: String, keepData: Boolean = true) {
@@ -491,6 +520,9 @@ class ComponentManager(
 
     private fun unzip(bytes: ByteArray, dest: File) = unzipSafely(bytes.inputStream(), dest)
 }
+
+/** Play modülünde çalıştırılabilir dosyanın adı: Android yalnızca `lib*.so` adlı dosyaları kurar (`bin/node` -> `libnode.so`). */
+fun moduleLibName(executable: String): String = "lib" + executable.substringAfterLast('/') + ".so"
 
 /**
  * Komut satırı (`/proc/<pid>/cmdline`, NUL ayrımlı) [program]'ı mı çalıştırıyor: ilk iki argümandan birinin dosya adı
