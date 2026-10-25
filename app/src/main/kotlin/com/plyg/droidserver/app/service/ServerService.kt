@@ -16,6 +16,7 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import com.plyg.droidserver.app.BuildConfig
 import com.plyg.droidserver.app.R
 import com.plyg.droidserver.app.data.AlertNotifier
 import com.plyg.droidserver.app.data.AndroidDeviceStats
@@ -73,8 +74,23 @@ class ServerService : Service() {
             ctx.startService(Intent(ctx, ServerService::class.java).setAction(ACTION_STOP))
         }
 
-        private fun send(ctx: Context, action: String) =
-            ContextCompat.startForegroundService(ctx, Intent(ctx, ServerService::class.java).setAction(action))
+        /** Servis bu süreçte ön planda çalışıyor mu (komut ona doğrudan iletilir). */
+        @Volatile
+        private var running = false
+
+        /**
+         * Çalışan servise komut normal başlatmayla iletilir (ön plan servisi olan uygulama ön planda sayılır). Servis
+         * çalışmıyorsa ön plan servisi başlatılır; API 31+ hedefte uygulama arka plandayken (Tasker, sunucunun kendi
+         * yönetim ucu) Android buna istisnalar dışında izin vermez: çökmek yerine nedeni loga yazılır.
+         */
+        private fun send(ctx: Context, action: String) {
+            val intent = Intent(ctx, ServerService::class.java).setAction(action)
+            try {
+                if (running) ctx.startService(intent) else ContextCompat.startForegroundService(ctx, intent)
+            } catch (e: IllegalStateException) {
+                ctx.graph.logs.add(tr("Sunucu arka plandan başlatılamadı ({0}); uygulamayı açın ya da pil iyileştirmesinden muaf tutun", e.javaClass.simpleName))
+            }
+        }
     }
 
     /** Servisin başladığı profilin kabı: profil değişse de bu servis kendi sunucusunu durdurur. */
@@ -98,6 +114,7 @@ class ServerService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        running = intent?.action != ACTION_STOP
         if (intent?.action == ACTION_STOP) {
             stopSelf()
             return START_NOT_STICKY
@@ -156,6 +173,7 @@ class ServerService : Service() {
     }
 
     override fun onDestroy() {
+        running = false
         val g = owner
         unwatchNetwork?.invoke()
         g.orchestrator.stopAll()
@@ -214,7 +232,7 @@ class ServerService : Service() {
                     }
                 }
                 // Uygulama güncellemesi: ayar açıksa günde bir (yeni sürüm bir kez bildirilir).
-                if (g.updater.isDue()) g.updater.check(notify = true)
+                if (BuildConfig.SELF_UPDATE && g.updater.isDue()) g.updater.check(notify = true)
                 if (active != null) runCatching {
                     if (active != alertsFor) {
                         alertsFor = active

@@ -55,6 +55,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.plyg.droidserver.app.AppGraph
+import com.plyg.droidserver.app.BuildConfig
 import com.plyg.droidserver.app.data.NetUtil
 import com.plyg.droidserver.app.data.UpdateState
 import com.plyg.droidserver.app.service.ServerService
@@ -129,7 +130,7 @@ fun StatusScreen(
         ) {
             if (hasConfig) ConfigUpgradeCard(g, wizard, dismissible = true)
             val update by g.updater.state.collectAsState()
-            if (update is UpdateState.Available || update is UpdateState.Downloading || update is UpdateState.Installing) UpdateCard(g)
+            if (BuildConfig.SELF_UPDATE && (update is UpdateState.Available || update is UpdateState.Downloading || update is UpdateState.Installing)) UpdateCard(g)
 
             if (!hasConfig) WelcomeCard(onStartWizard) else ServerHero(state, activeConfig)
 

@@ -153,6 +153,7 @@ class AppGraph(context: Context, val profile: Profile, profiles: ProfileStore) {
         abi = Build.SUPPORTED_ABIS.first(),
         tmpDir = componentTmp.absolutePath,
         log = logs::add,
+        downloads = BuildConfig.COMPONENT_DOWNLOADS,
     )
 
     val network = AndroidNetwork(context)

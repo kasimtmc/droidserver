@@ -1,5 +1,8 @@
 package com.plyg.droidserver.app.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -34,6 +37,9 @@ class MainActivity : ComponentActivity() {
         pendingConfirm = null
     }
 
+    /** Bildirim izni (sonuç beklenmez: verilmezse sorun giderici "bildirimler kapalı" der). */
+    private val notificationLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -44,6 +50,12 @@ class MainActivity : ComponentActivity() {
             ServerService.start(this)
         }
         AppLock.legacyConfirm = { intent, done -> pendingConfirm = done; confirmLauncher.launch(intent) }
+        // API 33+ hedefleyen sürüm (Play) bildirim iznini kendisi ister; eski hedefte Android bunu ilk bildirimde sorar.
+        if (savedInstanceState == null && Build.VERSION.SDK_INT >= 33 && applicationInfo.targetSdkVersion >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
         setContent {
             DroidServerTheme { if (locked.value) LockScreen(::unlock) else AppNavigation(g) }
         }

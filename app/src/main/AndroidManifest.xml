@@ -26,8 +26,14 @@
 
     <queries>
         <package android:name="com.tailscale.ipn" />
+        <!-- Otomasyon köprüsü: kurulu otomasyon uygulamaları (AutomationBridge.KNOWN_APPS; API 30+ paket görünürlüğü). -->
+        <package android:name="net.dinglisch.android.taskerm" />
+        <package android:name="com.arlosoft.macrodroid" />
+        <package android:name="com.llamalab.automate" />
     </queries>
 
+    <!-- Yedek: Android 11 ve öncesinde allowBackup="false" bütün yedeği kapatır; 12+ için dataExtractionRules bulut yedeğini
+         ve cihazdan cihaza aktarımı kapatır. Lint'in ayrıca istediği fullBackupContent bu yüzden gereksiz. -->
     <application
         android:name=".DroidServerApp"
         android:label="@string/app_name"
@@ -36,6 +42,8 @@
         android:usesCleartextTraffic="true"
         android:extractNativeLibs="true"
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        tools:ignore="DataExtractionRules"
         android:supportsRtl="true"
         tools:targetApi="34">
 
