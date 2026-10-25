@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Play sürümü: Play'in kısıtlı izinleri hiç istenmez (bkz. PLAN Faz 19). PlayManifestTest bunları denetler. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- SMS'i SIM'den doğrudan göndermek yok; sağlayıcı ya da kullanıcı onaylı gönderim (SMS uygulaması açılır). -->
+    <!-- Lint kaldırma satırını izin isteği sanıyor; telefon donanımı ana manifestte zaten isteğe bağlı. -->
+    <uses-permission android:name="android.permission.SEND_SMS" tools:node="remove"
+        tools:ignore="PermissionImpliesUnsupportedChromeOsHardware" />
+    <!-- Güncellemeyi Play yapar. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
+
+    <application>
+        <receiver android:name=".service.UpdateReceiver" tools:node="remove" />
+    </application>
+</manifest>

@@ -42,7 +42,7 @@ import java.io.File
 
 /**
  * Ekran görüntüleri (tasarım denetimi için; normal test koşusunda atlanır):
- * `./gradlew :app:testDebugUnitTest -Pscreenshots --tests ScreenshotTest` → `build/screenshots` klasörüne PNG.
+ * `./gradlew :app:testFullDebugUnitTest -Pscreenshots --tests ScreenshotTest` → `build/screenshots` klasörüne PNG.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)

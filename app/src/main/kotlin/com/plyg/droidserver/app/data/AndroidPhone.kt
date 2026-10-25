@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.Build
 import android.telephony.SmsManager
+import com.plyg.droidserver.app.BuildConfig
 import com.plyg.droidserver.core.i18n.tr
 import com.plyg.droidserver.core.phone.PhoneException
 import com.plyg.droidserver.core.phone.PhoneHost
@@ -16,6 +17,8 @@ import java.time.Instant
 /** SMS ve son bilinen konum; izin verilmemişse açıklayıcı hata (sihirbaz izni ister). */
 class AndroidPhone(private val context: Context) : PhoneHost {
     override fun sendSms(to: String, text: String) {
+        // Play sürümünde SEND_SMS izni hiç yok (Play kuralı); SMS sağlayıcı ya da onaylı gönderimle gider.
+        if (!BuildConfig.SIM_SMS) throw PhoneException(tr("Bu sürümde SMS, SIM kartından doğrudan gönderilemez"))
         require(Manifest.permission.SEND_SMS, tr("SMS izni verilmedi (Sihirbaz → Genel → Telefon özellikleri)"))
         val sms = if (Build.VERSION.SDK_INT >= 31) context.getSystemService(SmsManager::class.java) else @Suppress("DEPRECATION") SmsManager.getDefault()
             ?: throw PhoneException(tr("Bu cihaz SMS gönderemiyor"))

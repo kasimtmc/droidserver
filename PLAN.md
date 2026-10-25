@@ -1352,18 +1352,34 @@ modeller veri), ödemeler (Play'in ödeme kuralı uygulamanın kendi dijital sat
 ### Grup 1 — İki yapı türü ve API 36
 
 **19.1 Yapı türleri**
-- [ ] `full` (bugünkü, targetSdk 28, GitHub) ve `play` türleri; `BuildConfig` bayrakları (güncelleyici, doğrudan SIM,
+- [x] `full` (bugünkü, targetSdk 28, GitHub) ve `play` türleri; `BuildConfig` bayrakları (güncelleyici, doğrudan SIM,
   bileşen kaynağı, yerel eklenti engeli). Kaynak tek; türe özel manifest yalnızca izinler ve servis türü için.
-- [ ] `play` manifestinde `SEND_SMS` ve `REQUEST_INSTALL_PACKAGES` açıkça kaldırılır (`tools:node="remove"`); birleştirilmiş
+- [x] `play` manifestinde `SEND_SMS` ve `REQUEST_INSTALL_PACKAGES` açıkça kaldırılır (`tools:node="remove"`); birleştirilmiş
   manifestte bu izinlerden biri varsa derlemeyi düşüren test (bir kütüphane geri getirirse fark edilsin).
-- [ ] Release iş akışı: `full` APK'yı GitHub'a (bugünkü gibi), `play` AAB'yi Play'e (servis hesabı anahtarı secret'ta).
+- [x] Release iş akışı: `full` APK'yı GitHub'a (bugünkü gibi), `play` AAB'yi Play'e (servis hesabı anahtarı secret'ta).
+- Durum: `channel` boyutunda `full` (varsayılan, targetSdk 28) ve `play` (targetSdk 36); bayraklar `SELF_UPDATE`,
+  `SIM_SMS`, `COMPONENT_DOWNLOADS` (`full`'da açık, `play`'de kapalı). `app/src/play/AndroidManifest.xml` iki izni ve
+  `UpdateReceiver`'ı kaldırır; `PlayManifestTest`/`FullManifestTest` (Robolectric, birleştirilmiş manifest) izinleri,
+  targetSdk'yı ve bayrakları denetler. `play`'de güncelleyici gizli; Telefon özelliklerinde doğrudan SMS anahtarı yok
+  (başka sürümden açık gelen ayar kapatılabilir, gönderim açıklamalı hatayla düşer); bileşen kurulumu Grup 2'ye kadar
+  kapalı (`ComponentManager(downloads = false)`, ekranda uyarı). Yerel eklenti engeli bayrağı 19.4 ile gelir. Release
+  iş akışı `full` APK'yı sürüme ekler, `play` AAB'yi şimdilik iş akışı çıktısı olarak saklar; Play'e otomatik yükleme
+  (servis hesabı) Grup 4'te, Play Console kurulunca. İki tür paralel derlenirken dex birleştirme 2 GB'ta bellek
+  yetmediği için Gradle belleği 4 GB.
 
 **19.2 API 36 uyumu (`play` türünde)**
-- [ ] Android 14–16 davranışları: ön plan servisi türü ve açılışta başlatma kısıtları (`specialUse` açılışta
+- [x] Android 14–16 davranışları: ön plan servisi türü ve açılışta başlatma kısıtları (`specialUse` açılışta
   başlatılabilir), bildirim izni, paket görünürlüğü (Tasker, Tailscale), kapsamlı depolama (SAF zaten kullanılıyor),
   `exported` bileşenler, kenardan kenara görünüm (Compose), dinamik kod yükleme kısıtları, kesin alarmlar.
-- [ ] Sorun gidericinin bulguları türe göre (targetSdk 28'e özgü açıklamalar `play`'de gizlenir).
-- [ ] Lint ve ekran görüntüsü testleri iki türde.
+- [x] Sorun gidericinin bulguları türe göre (targetSdk 28'e özgü açıklamalar `play`'de gizlenir).
+- [x] Lint ve ekran görüntüsü testleri iki türde.
+- Durum: bildirim izni (Android 13+) ilk açılışta istenir; arka plandan ön plan servisi başlatılamazsa (Android 12+,
+  ör. otomasyon niyeti) çökme yerine log ve öneri; servis zaten çalışıyorsa `startService`. Paket görünürlüğüne Tasker,
+  MacroDroid ve Automate eklendi (Tailscale zaten vardı). Android 12+ cihaz aktarımı yedeği `data_extraction_rules.xml`
+  ile kapalı (`allowBackup=false` buna yetmiyor). Dışa açık bileşenler, SAF, kenardan kenara görünüm ve kesin alarm
+  gerektiren yer yoktu; lint iki türde de yalnızca bilinen uyarılar. Sorun gidericide targetSdk 28'e özgü bulgu yok
+  (alt süreç kısıtı iki türde de geçerli), değişiklik gerekmedi. Ekran görüntüleri `play` türünde `build/screenshots/play`.
+  Ön plan servisi türü (`specialUse`) ve konum izinleri 19.6'da.
 
 ### Grup 2 — Bileşenlerin Play'e uygun paketlenmesi
 
@@ -1425,7 +1441,7 @@ modeller veri), ödemeler (Play'in ödeme kuralı uygulamanın kendi dijital sat
 - [ ] Release iş akışında `play` AAB'sinin kapalı test kanalına yüklenmesi; üretime geçiş elle.
 
 ### Kabul (her grup)
-- İki tür de `:core:test`, `:app:testDebugUnitTest` (iki tür), `:app:lintDebug` temiz; `full` türünün davranışı ve APK'sı
+- İki tür de `:core:test`, `:app:testFullDebugUnitTest`, `:app:testPlayDebugUnitTest`, `:app:lintFullDebug`, `:app:lintPlayDebug` temiz; `full` türünün davranışı ve APK'sı
   değişmez (mevcut testler aynen geçer).
 - `play` birleştirilmiş manifestinde `SEND_SMS` ve `REQUEST_INSTALL_PACKAGES` yok (test).
 - `play` türünde bileşenler modülden kurulup çalışır (Postgres ile uçtan uca, cihazda); SMS'in üç yolu testli.
