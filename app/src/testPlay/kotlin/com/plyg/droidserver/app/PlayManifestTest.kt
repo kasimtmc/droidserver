@@ -29,7 +29,7 @@ class PlayManifestTest {
     @Test
     fun `kisitli izinler yok`() {
         val p = permissions()
-        for (forbidden in listOf("android.permission.SEND_SMS", "android.permission.REQUEST_INSTALL_PACKAGES")) {
+        for (forbidden in listOf("android.permission.SEND_SMS", "android.permission.REQUEST_INSTALL_PACKAGES", "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS")) {
             assertFalse("$forbidden Play sürümünde olmamalı: $p", forbidden in p)
         }
         assertTrue("android.permission.POST_NOTIFICATIONS" in p)

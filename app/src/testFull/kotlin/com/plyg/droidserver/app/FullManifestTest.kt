@@ -24,6 +24,7 @@ class FullManifestTest {
         val p = app.packageManager.getPackageInfo(app.packageName, PackageManager.GET_PERMISSIONS).requestedPermissions.orEmpty().toSet()
         assertTrue("android.permission.SEND_SMS" in p)
         assertTrue("android.permission.REQUEST_INSTALL_PACKAGES" in p)
+        assertTrue("android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" in p)
         assertEquals(28, app.applicationInfo.targetSdkVersion)
         assertTrue(BuildConfig.SELF_UPDATE && BuildConfig.SIM_SMS)
         assertNull("bileşenler depodan indirilir", componentModules(app))

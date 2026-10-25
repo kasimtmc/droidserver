@@ -2157,7 +2157,7 @@ private fun Route.authRoutes(
                 call.application.launch(Dispatchers.IO) {
                     runCatching {
                         val code = writes.write { users.newSmsCode(number) } ?: return@runCatching
-                        phone.sendSms(number, tr("{0} giriş kodunuz: {1}. 10 dakika geçerli; kimseyle paylaşmayın.", config.name, code), "auth.sms")
+                        phone.sendSms(number, tr("{0} giriş kodunuz: {1}. 10 dakika geçerli; kimseyle paylaşmayın.", config.name, code), "auth.sms", ttlSeconds = 600, replace = true)
                     }
                 }
                 call.respond(HttpStatusCode.Accepted, buildJsonObject { put("message", JsonPrimitive(tr("Bu numarayla bir hesap varsa giriş kodu SMS ile gönderildi"))) })
