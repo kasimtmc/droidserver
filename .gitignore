@@ -11,3 +11,6 @@ captures/
 *.jks
 *.keystore
 CLAUDE.md
+# Android Studio'nun imzalı paket çıktısı (Build → Generate Signed App Bundle): app/<tür>/release/
+app/full/
+app/play/
