@@ -1329,7 +1329,7 @@ fun Application.droidServerModule(
                     io { readPackage(channel.toInputStream()) }
                 }
                 val existing = davDirs["scripts"]?.list()?.toSet().orEmpty()
-                val plan = Packages.plan(config, pkg, existing)
+                val plan = adminHost?.let { h -> io { h.planPackage(pkg) } } ?: Packages.plan(config, pkg, existing)
                 call.respond(JsonObject(plan.toJson() + ("token" to JsonPrimitive(stagedPackages.put(pkg)))))
             }
             endpoint(paths, Endpoint.PACKAGES_INSTALL) {

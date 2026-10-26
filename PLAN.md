@@ -1283,6 +1283,8 @@ başlar (panel eşitleme ve güvenli bağlantılar bunların temelidir). Dört g
   Uçlar `/_packages` (liste, plan: zip / `{url}` / `{git}` → 10 dk'lık anahtar, kur, kaldır). Uygulamada Sunucu →
   Paketler, panelde Konfigürasyon → Paketler, CLI'de `package key|build|plan|install|list|remove` (Node'un yerleşik
   crypto ve zlib'iyle). Kaldırmada koleksiyon tabloları ve veriler kalır. Testler: `PackagesTest` (CLI ile imzalama dahil).
+  Plan ucu kurulumla aynı konfigürasyondan, diskteki dosyadan hesaplanır (`AdminHost.planPackage`; 26 Ekim 2026'ya dek
+  çalışan konfigürasyondandı: son deploy başarısızsa kurulu paket "zaten var" çakışmasıyla engelli görünüyordu).
 
 ### Grup 4 — Ödemeler
 

@@ -10,6 +10,7 @@ import com.plyg.droidserver.core.config.ConfigValidator
 import com.plyg.droidserver.core.config.ServerConfig
 import com.plyg.droidserver.core.i18n.tr
 import com.plyg.droidserver.core.packages.PackageFile
+import com.plyg.droidserver.core.packages.PackagePlan
 import com.plyg.droidserver.core.packages.PackageSignature
 import com.plyg.droidserver.core.packages.Packages
 import com.plyg.droidserver.core.replication.Failover
@@ -77,9 +78,12 @@ class AppAdminHost(
 
     override fun replica(): ReplicaStatus? = engine.replica.value
 
+    override fun planPackage(pkg: PackageFile): PackagePlan =
+        Packages.plan(ConfigSecrets.resolve(repo.load(), secrets::get), pkg, engine.scriptsDir?.list()?.toSet().orEmpty())
+
     override fun installPackage(pkg: PackageFile): String {
         val raw = repo.load()
-        val plan = Packages.plan(ConfigSecrets.resolve(raw, secrets::get), pkg, engine.scriptsDir?.list()?.toSet().orEmpty())
+        val plan = planPackage(pkg)
         require(!plan.blocked) { (plan.conflicts + plan.errors + listOfNotNull((pkg.signature as? PackageSignature.Invalid)?.reason)).joinToString("; ") }
         engine.stagePackage(pkg, plan.previous)
         repo.saveText(Packages.apply(raw, pkg).toJson())

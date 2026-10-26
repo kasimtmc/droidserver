@@ -185,6 +185,9 @@ class PackagesTest {
     private class Host : AdminHost {
         var installed: PackageFile? = null
         var removed: String? = null
+        /** Diskteki konfigürasyon (çalışandan farklı olabilir). */
+        var file: ServerConfig? = null
+        override fun planPackage(pkg: PackageFile) = file?.let { Packages.plan(it, pkg, emptySet()) }
         override fun configText() = "{}"
         override fun plan(text: String): JsonObject = JsonObject(mapOf("errors" to JsonArray(emptyList())))
         override fun deploy(text: String) {}
@@ -212,6 +215,13 @@ class PackagesTest {
         val token = plan.getValue("token").jsonPrimitive.content
         val bad = client.post("/api/_packages/plan") { bearerAuth(key); contentType(ContentType.Application.Zip); setBody("zip değil".toByteArray()) }
         assertEquals(400, bad.status.value)
+        // Paket diskteki dosyada kurulu ama son deploy başarısız (çalışanda yok): plan dosyaya göre, güncelleme der.
+        host.file = Packages.apply(config, read(zip(files())))
+        val again = client.post("/api/_packages/plan") { bearerAuth(key); contentType(ContentType.Application.Zip); setBody(zip(files())) }
+        val againPlan = Json.parseToJsonElement(again.bodyAsText()).jsonObject
+        assertEquals(0, againPlan.getValue("adds").jsonArray.size, again.bodyAsText())
+        assertEquals(3, againPlan.getValue("updates").jsonArray.size)
+        host.file = null
 
         val ok = client.post("/api/_packages/install") { bearerAuth(key); contentType(ContentType.Application.Json); setBody("""{"token":"$token"}""") }
         assertEquals(200, ok.status.value, ok.bodyAsText())

@@ -115,6 +115,12 @@ interface AdminHost {
     /** Kopyayı yazılabilir ana sunucu yapar ve deploy'u başlatır (uygulamadaki "Devral" ile aynı yol). */
     fun takeover()
 
+    /**
+     * Paketin kurulum planı, [installPackage]'in kullandığı konfigürasyondan (diskteki dosya; son deploy başarısız
+     * olduysa çalışandan farklıdır). null: ortamda yok, çalışan konfigürasyonla hesaplanır.
+     */
+    fun planPackage(pkg: com.plyg.droidserver.core.packages.PackageFile): com.plyg.droidserver.core.packages.PackagePlan? = null
+
     /** Paketi kurar (dosyaları, konfigürasyon, deploy); plan engelliyse [IllegalArgumentException]. Sonuç iletisi. */
     fun installPackage(pkg: com.plyg.droidserver.core.packages.PackageFile): String = throw UnsupportedOperationException()
 
