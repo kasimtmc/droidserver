@@ -48,9 +48,9 @@ private class PlayComponentModules(private val context: Context) : ComponentModu
                         progress(if (total > 0) tr("Play'den indiriliyor… %{0}", s.bytesDownloaded() * 100 / total) else tr("Play'den indiriliyor…"))
                     }
                     SplitInstallSessionStatus.INSTALLING -> progress(tr("Kuruluyor…"))
-                    // Büyük indirmelerde Play kullanıcıya sorar.
+                    // Büyük indirmelerde Play kullanıcıya sorar (kurulum ekrandan bağımsız sürdüğü için etkinlik kapanmış olabilir).
                     SplitInstallSessionStatus.REQUIRES_USER_CONFIRMATION ->
-                        if (activity != null) @Suppress("DEPRECATION") manager.startConfirmationDialogForResult(s, activity, 0)
+                        if (activity != null && !activity.isFinishing && !activity.isDestroyed) @Suppress("DEPRECATION") manager.startConfirmationDialogForResult(s, activity, 0)
                         else finish(IllegalStateException(tr("Play indirme için onay istiyor; Bileşenler ekranından kurun")))
                     SplitInstallSessionStatus.INSTALLED -> finish(null)
                     SplitInstallSessionStatus.CANCELED -> finish(IllegalStateException(tr("Kurulum iptal edildi")))

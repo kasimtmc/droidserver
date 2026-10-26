@@ -18,6 +18,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -390,20 +392,21 @@ internal fun InstallComponentButton(g: AppGraph, id: String, label: String, onIn
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
-    var progress by remember { mutableStateOf<String?>(null) }
     var failure by remember { mutableStateOf<String?>(null) }
-    Button(enabled = !busy, onClick = {
+    // Kurulum uygulama kapsamında sürer: ekrandan çıkılınca yarıda kalmaz (AppGraph.launchComponentInstall).
+    val installing by g.componentInstall.collectAsState()
+    LaunchedEffect(installing == null) { if (installing == null) onInstalled() }
+    Button(enabled = !busy && installing == null, onClick = {
         scope.launch {
             busy = true
-            failure = runCatching {
-                val pkg = withContext(Dispatchers.IO) { g.componentCatalog(g.settings.manifestUrl) }.firstOrNull { it.id == id }
+            failure = null
+            runCatching {
+                withContext(Dispatchers.IO) { g.componentCatalog(g.settings.manifestUrl) }.firstOrNull { it.id == id }
                     ?: error(tr("Bileşen deposunda '{0}' paketi yok", id))
-                g.installComponent(ctx as? Activity, pkg) { progress = it }
-            }.exceptionOrNull()?.message
+            }.onSuccess { pkg -> g.launchComponentInstall(ctx as? Activity, pkg) { failure = it?.message } }
+                .onFailure { failure = it.message }
             busy = false
-            progress = null
-            onInstalled()
         }
-    }) { Text(if (busy) progress ?: tr("Kuruluyor…") else label) }
+    }) { Text(if (installing?.id == id) installing?.progress ?: tr("Kuruluyor…") else if (busy) tr("Kuruluyor…") else label) }
     ErrorText(failure)
 }

@@ -48,6 +48,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import com.plyg.droidserver.app.service.QuickControls
 import com.plyg.droidserver.core.server.EngineState
@@ -180,6 +183,31 @@ class AppGraph(context: Context, val profile: Profile, profiles: ProfileStore) {
     suspend fun installComponent(activity: Activity?, pkg: ComponentPackage, progress: (String) -> Unit = {}) {
         modules?.install(activity, pkg.id, progress)
         withContext(Dispatchers.IO) { components.install(pkg) }
+    }
+
+    /** Süren bileşen kurulumu: kimlik ve ilerleme metni (ilerleme gelene dek null). */
+    data class ComponentInstall(val id: String, val progress: String?)
+
+    private val _componentInstall = MutableStateFlow<ComponentInstall?>(null)
+    val componentInstall: StateFlow<ComponentInstall?> = _componentInstall.asStateFlow()
+
+    /**
+     * Bileşeni uygulama kapsamında kurar: ekrandan çıkılınca (Play indirmesi sürerken başka sekmeye geçilince) yarıda
+     * kalmaz, ekrana dönünce [componentInstall]'dan sürdüğü görünür. Aynı anda tek kurulum; biri sürüyorsa false.
+     * Bitince [onDone] ana iş parçacığında, hata (varsa) ile çağrılır; hata loglara da yazılır.
+     */
+    fun launchComponentInstall(activity: Activity?, pkg: ComponentPackage, onDone: (Throwable?) -> Unit = {}): Boolean {
+        if (!_componentInstall.compareAndSet(null, ComponentInstall(pkg.id, null))) return false
+        appScope.launch(Dispatchers.Main) {
+            val failure = runCatching {
+                withContext(Dispatchers.IO) { supervisor.stop(pkg.id) }
+                installComponent(activity, pkg) { _componentInstall.value = ComponentInstall(pkg.id, it) }
+            }.exceptionOrNull()
+            failure?.let { logs.add("Bileşen hatası: ${it.message}") }
+            _componentInstall.value = null
+            onDone(failure)
+        }
+        return true
     }
 
     fun uninstallComponent(id: String) {

@@ -89,6 +89,10 @@ fun ComponentsScreen(g: AppGraph, wizard: WizardViewModel) {
     var error by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     val statuses by g.supervisor.statuses.collectAsState()
+    val installing by g.componentInstall.collectAsState()
+    // Kurulum bitince (ekrandan çıkılıp dönülmüş olsa da) kurulu liste yenilenir.
+    LaunchedEffect(installing == null) { if (installing == null) installed = g.components.installed() }
+    val working = busy || installing != null
     val active by wizard.active.collectAsState()
     val configured = active?.components.orEmpty().associateBy { it.id }
 
@@ -105,21 +109,16 @@ fun ComponentsScreen(g: AppGraph, wizard: WizardViewModel) {
         busy = false
     }
 
-    /** Kurar (Play sürümünde önce modülü Play'den indirir; ilerleme bilgi satırında), sonra [then]. */
-    fun install(pkg: ComponentPackage, then: () -> Unit = {}) = scope.launch {
-        busy = true
+    /**
+     * Kurar (Play sürümünde önce modülü Play'den indirir; ilerleme bilgi satırında), sonra [then]. Kurulum uygulama
+     * kapsamında sürer: başka sekmeye geçilince yarıda kalmaz ([AppGraph.launchComponentInstall]).
+     */
+    fun install(pkg: ComponentPackage, then: () -> Unit = {}) {
         error = null
-        val ok = runCatching {
-            withContext(Dispatchers.IO) { g.supervisor.stop(pkg.id) }
-            g.installComponent(ctx as? Activity, pkg) { notice = it }
-        }.onFailure {
-            error = it.message
-            g.logs.add("Bileşen hatası: ${it.message}")
-        }.isSuccess
-        notice = null
-        installed = g.components.installed()
-        busy = false
-        if (ok) then()
+        g.launchComponentInstall(ctx as? Activity, pkg) { failure ->
+            error = failure?.message
+            if (failure == null) then()
+        }
     }
 
     fun setService(id: String, change: (ComponentConfig?) -> ComponentConfig?) = scope.launch {
@@ -177,7 +176,7 @@ fun ComponentsScreen(g: AppGraph, wizard: WizardViewModel) {
         actions = {
             // Play sürümünde katalog uygulamayla gelir; depo adresi yok.
             if (g.modules == null) {
-                IconButton(enabled = !busy && url.isNotBlank(), onClick = { io { packages = g.componentCatalog(url) } }) {
+                IconButton(enabled = !working && url.isNotBlank(), onClick = { io { packages = g.componentCatalog(url) } }) {
                     Icon(Icons.Default.Refresh, contentDescription = tr("Depoyu yenile"))
                 }
                 IconButton(onClick = { showRepo = !showRepo }) { Icon(Icons.Default.Tune, contentDescription = tr("Bileşen deposu")) }
@@ -208,7 +207,7 @@ fun ComponentsScreen(g: AppGraph, wizard: WizardViewModel) {
                             tr("Paketler indirilince sha256 ile doğrulanır. Servisler (örn. Redis) \"Çalıştır\" ile sunucuyla birlikte başlar; çalışma ortamları (Node.js, Python, Java) Uygulamalar ekranındaki uygulamalar içindir. PostgreSQL sihirbazın Veritabanı, tünel Erişim adımından yönetilir."),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Button(enabled = !busy && url.isNotBlank(), onClick = { io { packages = g.componentCatalog(url) } }) { Text(tr("Depoyu yenile")) }
+                        Button(enabled = !working && url.isNotBlank(), onClick = { io { packages = g.componentCatalog(url) } }) { Text(tr("Depoyu yenile")) }
                     }
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -216,9 +215,9 @@ fun ComponentsScreen(g: AppGraph, wizard: WizardViewModel) {
                         FilterChip(selected = filter == i, onClick = { filter = i }, label = { Text(label) })
                     }
                 }
-                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
+                if (working) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
                 ErrorText(error)
-                notice?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                (installing?.let { it.progress ?: tr("Kuruluyor…") } ?: notice)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
             if (shown.isEmpty()) item {
                 EmptyState(
@@ -273,12 +272,12 @@ fun ComponentsScreen(g: AppGraph, wizard: WizardViewModel) {
                     if (inst != null && !pkg.isRuntime && id !in managed) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(tr("Sunucuyla birlikte çalıştır"), Modifier.weight(1f))
-                            Switch(cfg?.enabled == true, enabled = !busy, onCheckedChange = { on -> if (on) enable(id, pkg) else setService(id) { null } })
+                            Switch(cfg?.enabled == true, enabled = !working, onCheckedChange = { on -> if (on) enable(id, pkg) else setService(id) { null } })
                         }
                         if (cfg?.enabled == true) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(tr("Ortak ortam değişkenlerini ve sırları ver"), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                                Switch(cfg.sharedEnv, enabled = !busy, onCheckedChange = { on -> setService(id) { cur -> cur?.copy(sharedEnv = on) } })
+                                Switch(cfg.sharedEnv, enabled = !working, onCheckedChange = { on -> setService(id) { cur -> cur?.copy(sharedEnv = on) } })
                             }
                         }
                     }
@@ -287,18 +286,18 @@ fun ComponentsScreen(g: AppGraph, wizard: WizardViewModel) {
                     }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (inst == null && !pkg.isRuntime && id !in managed && pkg.builds.isNotEmpty()) {
-                            Button(enabled = !busy, onClick = {
+                            Button(enabled = !working, onClick = {
                                 install(pkg) { enable(id, pkg) }
                             }) { Text(tr("Kur ve çalıştır")) }
                         }
                         if (packages.any { it.id == id } && (inst == null || g.components.updateAvailable(pkg))) {
                             val primary = inst == null && (pkg.isRuntime || id in managed)
                             val onClick = { install(pkg) }
-                            if (primary) Button(enabled = !busy, onClick = { onClick() }) { Text(tr("Kur")) }
-                            else OutlinedButton(enabled = !busy, onClick = { onClick() }) { Text(if (inst == null) tr("Yalnızca kur") else tr("Güncelle")) }
+                            if (primary) Button(enabled = !working, onClick = { onClick() }) { Text(tr("Kur")) }
+                            else OutlinedButton(enabled = !working, onClick = { onClick() }) { Text(if (inst == null) tr("Yalnızca kur") else tr("Güncelle")) }
                         }
                         if (inst != null) {
-                            TextButton(enabled = !busy, onClick = { io { g.supervisor.stop(id); g.uninstallComponent(id) } }) { Text(tr("Kaldır (veriyi koru)")) }
+                            TextButton(enabled = !working, onClick = { io { g.supervisor.stop(id); g.uninstallComponent(id) } }) { Text(tr("Kaldır (veriyi koru)")) }
                         }
                     }
                 }
