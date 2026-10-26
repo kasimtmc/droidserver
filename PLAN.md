@@ -1508,9 +1508,11 @@ modeller veri), ödemeler (Play'in ödeme kuralı uygulamanın kendi dijital sat
   kitle, reklam yok beyanı, uygulama erişimi (inceleyici için talimat).
 - Durum (26 Ekim 2026): uygulama **kapalı testte**. Play Uygulama İmzalama GitHub sürümünün anahtarıyla (PEPK; SHA-256
   `e4bead66…bc51`), ilk paket Android Studio'dan elle (0.9.4). İçerik derecelendirmesi ve veri güvenliği formu
-  `docs/play-console.md`'deki yanıtlarla. Kalan: kapalı testte 12 test kullanıcısının 14 gün kalması (kişisel hesap),
-  üretim erişimi başvurusu ve üretime geçiş; Play'den kurulumla cihaz testi `faz19b` (modüllerin Play'den inmesi).
-  Sonraki yüklemeler 0.9.4'ün sürüm kodundan (90499) büyük olmalı.
+  `docs/play-console.md`'deki yanıtlarla. Modüllerin Play'den inmesi (`faz19b`) kullanıcı tarafından doğrulandı.
+  Kapalı testte 0.9.6 (Console'dan elle yüklendi; R8'li, uygulama içi güncellemeli). Kalan: 12 test kullanıcısının 14 gün
+  kalması (kişisel hesap), üretim erişimi başvurusu ve üretime geçiş; Play'den kurulu telefonda `faz19d` (güncelleme
+  kartı, değerlendirme) ve bileşen kurarken sekme değiştirme. Sonraki yüklemeler 0.9.6'nın sürüm kodundan (90699)
+  büyük olmalı.
 - [x] Release iş akışında `play` AAB'sinin kapalı test kanalına yüklenmesi; üretime geçiş elle.
 - Durum (bizim taraf hazır; Console adımları kullanıcıda): `release.yml` `PLAY_SERVICE_ACCOUNT_JSON` varsa AAB'yi
   yükler (`r0adkll/upload-google-play`, commit'e sabit): kararlı sürüm kapalı test (alpha), ön sürüm dahili test; ilk
