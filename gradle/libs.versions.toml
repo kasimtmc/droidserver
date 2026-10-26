@@ -21,6 +21,8 @@ junit = "4.13.2"
 robolectric = "4.17"
 roborazzi = "1.76.0"
 playFeatureDelivery = "2.1.0"
+playAppUpdate = "2.1.0"
+playReview = "2.0.2"
 fragment = "1.9.1"
 
 [libraries]
@@ -68,6 +70,8 @@ roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose"
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
 androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 play-feature-delivery = { module = "com.google.android.play:feature-delivery", version.ref = "playFeatureDelivery" }
+play-app-update = { module = "com.google.android.play:app-update", version.ref = "playAppUpdate" }
+play-review = { module = "com.google.android.play:review", version.ref = "playReview" }
 androidx-fragment = { module = "androidx.fragment:fragment", version.ref = "fragment" }
 
 [plugins]

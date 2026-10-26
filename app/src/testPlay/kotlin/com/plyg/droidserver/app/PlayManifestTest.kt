@@ -3,6 +3,7 @@ package com.plyg.droidserver.app
 import android.content.pm.PackageManager
 import androidx.test.core.app.ApplicationProvider
 import com.plyg.droidserver.app.data.componentModules
+import com.plyg.droidserver.app.data.storeServices
 import com.plyg.droidserver.app.ui.TestDroidServerApp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -41,5 +42,6 @@ class PlayManifestTest {
         assertFalse(BuildConfig.SELF_UPDATE)
         assertFalse(BuildConfig.SIM_SMS)
         assertNotNull("bileşenler Play modülleriyle gelir", componentModules(app))
+        assertNotNull("uygulama içi güncelleme ve değerlendirme Play'den", storeServices(app))
     }
 }

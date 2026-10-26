@@ -131,6 +131,7 @@ fun StatusScreen(
             if (hasConfig) ConfigUpgradeCard(g, wizard, dismissible = true)
             val update by g.updater.state.collectAsState()
             if (BuildConfig.SELF_UPDATE && (update is UpdateState.Available || update is UpdateState.Downloading || update is UpdateState.Installing)) UpdateCard(g)
+            g.store?.let { StoreUpdateCard(g, it) }
 
             if (!hasConfig) WelcomeCard(onStartWizard) else ServerHero(state, activeConfig)
 

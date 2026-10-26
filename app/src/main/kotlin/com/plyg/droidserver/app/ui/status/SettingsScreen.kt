@@ -1,6 +1,7 @@
 package com.plyg.droidserver.app.ui.status
 
 import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
 import android.os.Build
 import android.os.PowerManager
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +15,7 @@ import androidx.compose.material.icons.filled.BatterySaver
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -98,10 +100,27 @@ fun SettingsScreen(g: AppGraph, onBack: () -> Unit) {
             SectionHeader(tr("Tasker ve otomasyon"))
             AutomationSection(g)
 
-            // Play sürümünde güncellemeyi Play yapar.
+            // Play sürümünde güncellemeyi Play yapar (Durum ekranındaki kart).
             if (BuildConfig.SELF_UPDATE) {
                 SectionHeader(tr("Güncelleme"))
                 UpdateCard(g)
+            }
+            g.store?.let { store ->
+                SectionHeader("Google Play")
+                RowGroup {
+                    ListRow(
+                        Icons.Default.Star, tr("Play'de değerlendir"),
+                        subtitle = tr("Görüşünüzü Play'deki uygulama sayfasında yazın"),
+                        onClick = {
+                            val page = store.storePage()
+                            try {
+                                ctx.startActivity(page)
+                            } catch (_: ActivityNotFoundException) {
+                                ctx.startActivity(page.setPackage(null)) // Play Store yoksa tarayıcıda
+                            }
+                        },
+                    )
+                }
             }
         }
     }

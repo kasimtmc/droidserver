@@ -2201,6 +2201,12 @@ With your own domain: create a tunnel under Zero Trust > Networks > Tunnels, set
 
 ## App update
 
+**Play version:** Play does the updating. When the app opens it asks Play for a new version; if there is one, a card
+appears on the Status screen: **Download** (downloads in the background after Play's confirmation, the server keeps
+running), then **Restart and install** (a running server is restarted after the install). Once the app has been installed
+for a week and the server is running, Play's review dialog is requested once (Play may not show it); Settings → Google
+Play → **Rate on Play** opens the Play page. The rest of this section is about the GitHub version.
+
 The **App update** card on the Status screen looks for a new version on GitHub Releases (`kasimtmc/droidserver`): once a
 day if the setting is on (in the background while the server runs, a new version is notified once; also when the app
 opens), and on demand with "Check now". Pre-releases (beta) are offered only if selected; automatic checking can be turned off.

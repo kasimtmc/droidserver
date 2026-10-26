@@ -24,7 +24,9 @@ import com.plyg.droidserver.app.data.PendingTemplate
 import com.plyg.droidserver.app.data.Profile
 import com.plyg.droidserver.app.data.ProfileStore
 import com.plyg.droidserver.app.data.SecretStore
+import com.plyg.droidserver.app.data.StoreServices
 import com.plyg.droidserver.app.data.componentModules
+import com.plyg.droidserver.app.data.storeServices
 import com.plyg.droidserver.app.service.ServerService
 import com.plyg.droidserver.core.apps.AppManager
 import com.plyg.droidserver.core.components.ComponentManager
@@ -155,6 +157,9 @@ class AppGraph(context: Context, val profile: Profile, profiles: ProfileStore) {
 
     /** Play sürümünde bileşenleri getiren Play modülleri; GitHub sürümünde null (paketler depodan indirilir). */
     val modules: ComponentModules? = componentModules(context)
+
+    /** Play sürümünde Play'in uygulama içi güncellemesi ve değerlendirmesi; GitHub sürümünde null. */
+    val store: StoreServices? = storeServices(context)
 
     val components = ComponentManager(
         rootDir = File(context.filesDir, "components"),
@@ -316,6 +321,11 @@ class Settings(context: Context) {
     var smsConfirmDisclosure: Boolean
         get() = prefs.getBoolean("smsConfirmDisclosure", false)
         set(v) = prefs.edit { putBoolean("smsConfirmDisclosure", v) }
+
+    /** Play'in değerlendirme penceresinin istendiği an (bir kez istenir; bkz. MainActivity). */
+    var reviewAskedAt: Long
+        get() = prefs.getLong("reviewAskedAt", 0)
+        set(v) = prefs.edit { putLong("reviewAskedAt", v) }
 
     /** İlk açılış rehberi görüldü (atlandı veya bitirildi). */
     var onboardingDone: Boolean

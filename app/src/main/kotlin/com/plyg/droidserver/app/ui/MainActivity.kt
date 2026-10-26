@@ -28,6 +28,7 @@ import com.plyg.droidserver.app.graph
 import com.plyg.droidserver.app.service.ServerService
 import com.plyg.droidserver.app.ui.theme.DroidServerTheme
 import com.plyg.droidserver.core.i18n.tr
+import com.plyg.droidserver.core.server.EngineState
 
 class MainActivity : ComponentActivity() {
     private val locked = mutableStateOf(false)
@@ -71,12 +72,31 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        val g = graph
+        val store = g.store ?: return
+        store.checkForUpdate()
+        // Değerlendirme bir kez, uygulama bir haftadır kuruluyken ve sunucu çalışırken istenir (Play penceresi göstermeyebilir).
+        val installedAt = packageManager.getPackageInfo(packageName, 0).firstInstallTime
+        if (g.settings.reviewAskedAt == 0L && System.currentTimeMillis() - installedAt > REVIEW_AFTER_MS &&
+            g.engine.state.value is EngineState.Running
+        ) {
+            g.settings.reviewAskedAt = System.currentTimeMillis()
+            store.requestReview(this)
+        }
+    }
+
     override fun onStop() {
         AppLock.onStop()
         super.onStop()
     }
 
     private fun unlock() = AppLock.authenticate(this, tr("DroidServer'ın kilidini açın")) { ok -> if (ok) locked.value = false }
+
+    private companion object {
+        const val REVIEW_AFTER_MS = 7L * 24 * 60 * 60 * 1000
+    }
 }
 
 @Composable

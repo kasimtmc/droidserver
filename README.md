@@ -2160,6 +2160,12 @@ yapın, token'ı sihirbaza girin.
 
 ## Uygulama güncellemesi
 
+**Play sürümü:** güncellemeyi Play yapar. Uygulama açılınca Play'e yeni sürüm sorulur; varsa Durum ekranında kart
+çıkar: **İndir** (Play onayıyla arka planda iner, sunucu çalışmaya devam eder), inince **Yeniden başlat ve kur**
+(çalışıyorsa sunucu kurulumdan sonra yeniden başlar). Uygulama bir haftadır kuruluysa ve sunucu çalışıyorsa Play'in
+değerlendirme penceresi bir kez istenir (Play göstermeyebilir); Ayarlar → Google Play → **Play'de değerlendir** Play
+sayfasını açar. Aşağısı GitHub sürümü içindir.
+
 Durum ekranındaki **Uygulama güncellemesi** kartı yeni sürümü GitHub Releases'ta (`kasimtmc/droidserver`) arar: ayar
 açıksa günde bir (sunucu çalışırken arka planda, yeni sürüm bir kez bildirilir; uygulama açılınca da), ayrıca "Şimdi
 denetle" ile. Ön sürümler (beta) yalnızca seçilirse önerilir; otomatik denetim kapatılabilir.

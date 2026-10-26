@@ -168,6 +168,9 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
     // Bileşen modüllerini Play'den kurmak için (yalnızca Play sürümünde).
     "playImplementation"(libs.play.feature.delivery)
+    // Play sürümünde uygulama içi güncelleme ve değerlendirme (bkz. src/play/.../Store.kt).
+    "playImplementation"(libs.play.app.update)
+    "playImplementation"(libs.play.review)
     // feature-delivery fragment 1.0'ı getiriyor; registerForActivityResult en az 1.3 ister (lint hatası).
     "playImplementation"(libs.androidx.fragment)
 

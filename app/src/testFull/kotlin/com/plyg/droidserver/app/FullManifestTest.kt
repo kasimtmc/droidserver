@@ -3,6 +3,7 @@ package com.plyg.droidserver.app
 import android.content.pm.PackageManager
 import androidx.test.core.app.ApplicationProvider
 import com.plyg.droidserver.app.data.componentModules
+import com.plyg.droidserver.app.data.storeServices
 import com.plyg.droidserver.app.ui.TestDroidServerApp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -28,5 +29,6 @@ class FullManifestTest {
         assertEquals(28, app.applicationInfo.targetSdkVersion)
         assertTrue(BuildConfig.SELF_UPDATE && BuildConfig.SIM_SMS)
         assertNull("bileşenler depodan indirilir", componentModules(app))
+        assertNull("güncellemeyi kendi güncelleyicisi yapar", storeServices(app))
     }
 }

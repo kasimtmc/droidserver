@@ -1,6 +1,8 @@
 package com.plyg.droidserver.app.ui.status
 
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,12 +31,15 @@ import androidx.core.net.toUri
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.plyg.droidserver.app.AppGraph
 import com.plyg.droidserver.app.Settings
+import com.plyg.droidserver.app.data.StoreServices
+import com.plyg.droidserver.app.data.StoreUpdate
 import com.plyg.droidserver.app.data.UpdateState
 import com.plyg.droidserver.app.ui.common.ErrorText
 import com.plyg.droidserver.app.ui.common.SectionCard
 import com.plyg.droidserver.app.ui.common.WarningText
 import com.plyg.droidserver.app.ui.config.formatBytes
 import com.plyg.droidserver.core.i18n.tr
+import com.plyg.droidserver.core.server.EngineState
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
@@ -124,4 +129,38 @@ internal fun UpdateCard(g: AppGraph) {
 
     // Uygulama açıldığında, günlük denetim zamanı geldiyse (bildirim göstermeden; kart zaten görünüyor).
     LaunchedEffect(Unit) { if (g.updater.isDue()) g.updater.check() }
+}
+
+/**
+ * Play sürümünde Play'den gelen güncelleme (esnek): yeni sürüm varsa indirme, inince yeniden başlatıp kurma. Güncelleme
+ * yoksa ya da uygulama Play'den kurulmamışsa görünmez.
+ */
+@Composable
+internal fun StoreUpdateCard(g: AppGraph, store: StoreServices) {
+    val state by store.update.collectAsState()
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {}
+    if (state == StoreUpdate.None) return
+    SectionCard(tr("Uygulama güncellemesi")) {
+        when (val s = state) {
+            StoreUpdate.None -> {}
+            is StoreUpdate.Available -> {
+                Text(tr("Play'de yeni sürüm var."), style = MaterialTheme.typography.titleSmall)
+                Text(tr("Arka planda iner; sunucu inerken çalışmaya devam eder."), style = MaterialTheme.typography.bodySmall)
+                Button(onClick = { store.startUpdate(launcher) }) { Text(tr("İndir")) }
+            }
+            is StoreUpdate.Downloading -> {
+                Text(tr("İndiriliyor… %{0}", s.percent), style = MaterialTheme.typography.bodySmall)
+                LinearProgressIndicator(progress = { s.percent / 100f }, modifier = Modifier.fillMaxWidth())
+            }
+            StoreUpdate.Downloaded -> {
+                Text(tr("Güncelleme indi."), style = MaterialTheme.typography.titleSmall)
+                Text(tr("Kurmak için uygulama yeniden başlar; sunucu kısa süre durur."), style = MaterialTheme.typography.bodySmall)
+                Button(onClick = {
+                    // Kurulumdan sonra (MY_PACKAGE_REPLACED) çalışan sunucu yeniden başlatılır; bkz. BootReceiver.
+                    g.settings.restartAfterUpdate = g.engine.state.value is EngineState.Running
+                    store.completeUpdate()
+                }) { Text(tr("Yeniden başlat ve kur")) }
+            }
+        }
+    }
 }

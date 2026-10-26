@@ -1516,6 +1516,17 @@ modeller veri), ödemeler (Play'in ödeme kuralı uygulamanın kendi dijital sat
     sistemin kendisine iletir, 8'de `vfork` + `execve`), modül eşlemesi onu gösterir; `tools/play-components.py`
     64 bit ELF'te 16 KB'den küçük hizayı derlemede reddeder. Xiaomi'de (Android 16) Java'dan `ProcessBuilder` çalıştı.
 
+**19.8 Play'e özgü kolaylıklar** (26 Ekim 2026)
+- [x] Play'den kurulumda bileşen modüllerinin inmesi: kullanıcı kapalı test sürümüyle doğruladı (Play Feature Delivery
+  gerçek yolu; daha önce yalnızca `adb install-multiple` ile denenmişti).
+- [x] Uygulama içi güncelleme (Play In-App Updates, esnek): açılışta Play'e sorulur, Durum'da kart (İndir → arka planda
+  iner → Yeniden başlat ve kur); çalışan sunucu kurulumdan sonra yeniden başlar (`restartAfterUpdate`, BootReceiver).
+- [x] Değerlendirme (Play In-App Review): kurulumdan bir hafta sonra, sunucu çalışırken bir kez istenir (Play kotasıyla
+  göstermeyebilir); Ayarlar → Google Play → "Play'de değerlendir" Play sayfasını açar (API düğmeyle tetiklenmez).
+- Durum: `StoreServices` (main) + `src/play/.../Store.kt` (`app-update` 2.1.0, `review` 2.0.2; yalnızca play türünde);
+  GitHub sürümünde null, kendi güncelleyicisi sürer. Gerçek akış yalnızca Play'den kurulan uygulamada denenebilir:
+  cihaz testi `faz19d` (kapalı teste daha yüksek sürüm yükleyince).
+
 ### Kabul (her grup)
 - İki tür de `:core:test`, `:app:testFullDebugUnitTest`, `:app:testPlayDebugUnitTest`, `:app:lintFullDebug`, `:app:lintPlayDebug` temiz; `full` türünün davranışı ve APK'sı
   değişmez (mevcut testler aynen geçer).

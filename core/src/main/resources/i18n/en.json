@@ -4192,5 +4192,13 @@
  "SMS'i gönder": "Send SMS",
  "Bu sürümde konum yalnızca DroidServer ekrandayken alınabilir (arka planda konum izni istenmez)": "In this version the location can only be read while DroidServer is on screen (background location isn't requested)",
  "Bu sürümde yalnızca DroidServer ekrandayken.": "In this version only while DroidServer is on screen.",
- "Listede DroidServer'ı bulun ve pil iyileştirmesini kapatın (\"Optimize etme\" / \"Kısıtlama yok\")": "Find DroidServer in the list and turn off battery optimization (\"Don't optimize\" / \"Unrestricted\")"
+ "Listede DroidServer'ı bulun ve pil iyileştirmesini kapatın (\"Optimize etme\" / \"Kısıtlama yok\")": "Find DroidServer in the list and turn off battery optimization (\"Don't optimize\" / \"Unrestricted\")",
+ "Play'de yeni sürüm var.": "A new version is available on Play.",
+ "Arka planda iner; sunucu inerken çalışmaya devam eder.": "It downloads in the background; the server keeps running meanwhile.",
+ "İndiriliyor… %{0}": "Downloading… {0}%",
+ "Güncelleme indi.": "The update has been downloaded.",
+ "Kurmak için uygulama yeniden başlar; sunucu kısa süre durur.": "The app restarts to install it; the server stops briefly.",
+ "Yeniden başlat ve kur": "Restart and install",
+ "Play'de değerlendir": "Rate on Play",
+ "Görüşünüzü Play'deki uygulama sayfasında yazın": "Write your review on the app's Play page"
 }
