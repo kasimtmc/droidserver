@@ -1299,8 +1299,10 @@ fun Application.droidServerModule(
             // (AdminHost) konfigürasyon kaydı ve deploy ile.
             endpoint(paths, Endpoint.PACKAGES) {
                 requireAdmin(call.caller())
+                // Kurulum ve planla aynı yerden (diskteki dosya): son deploy başarısızsa çalışan konfigürasyon eskidir.
+                val packages = io { adminHost?.configText() }?.let { ServerConfig.fromJson(it).packages } ?: config.packages
                 call.respond(buildJsonObject {
-                    put("items", JsonArray(config.packages.map { Json.encodeToJsonElement(com.plyg.droidserver.core.packages.InstalledPackage.serializer(), it) }))
+                    put("items", JsonArray(packages.map { Json.encodeToJsonElement(com.plyg.droidserver.core.packages.InstalledPackage.serializer(), it) }))
                 })
             }
             endpoint(paths, Endpoint.PACKAGES_PLAN) {

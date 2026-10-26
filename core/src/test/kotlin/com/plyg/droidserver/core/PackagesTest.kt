@@ -188,7 +188,7 @@ class PackagesTest {
         /** Diskteki konfigürasyon (çalışandan farklı olabilir). */
         var file: ServerConfig? = null
         override fun planPackage(pkg: PackageFile) = file?.let { Packages.plan(it, pkg, emptySet()) }
-        override fun configText() = "{}"
+        override fun configText() = file?.toJson() ?: "{}"
         override fun plan(text: String): JsonObject = JsonObject(mapOf("errors" to JsonArray(emptyList())))
         override fun deploy(text: String) {}
         override fun logs(after: Long): Pair<Long, List<String>> = 0L to emptyList()
@@ -221,6 +221,8 @@ class PackagesTest {
         val againPlan = Json.parseToJsonElement(again.bodyAsText()).jsonObject
         assertEquals(0, againPlan.getValue("adds").jsonArray.size, again.bodyAsText())
         assertEquals(3, againPlan.getValue("updates").jsonArray.size)
+        val listed = Json.parseToJsonElement(client.get("/api/_packages") { bearerAuth(key) }.bodyAsText()).jsonObject
+        assertEquals("magaza", listed.getValue("items").jsonArray.single().jsonObject.getValue("name").jsonPrimitive.content, "liste de dosyadan")
         host.file = null
 
         val ok = client.post("/api/_packages/install") { bearerAuth(key); contentType(ContentType.Application.Json); setBody("""{"token":"$token"}""") }
