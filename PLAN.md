@@ -205,7 +205,7 @@ eşlenebilsin diye validator'ı `List<ValidationError(path, message)>` döndüre
 - Yeni kurulumda varsayılan konfigürasyon, yer tutucu yerine üretilmiş bir anahtarla oluşturulur
   (`ConfigRepository.defaultConfigText`); yer tutucu hiçbir zaman diske yazılmaz.
 - `ServerEngine.plan(config)`: sunucu aynı veritabanıyla çalışıyorsa canlı bağlantı, değilse geçici bağlantı.
-- `material-icons-extended` debug APK'yı ~18 MB'tan ~26 MB'a büyüttü; sürüm derlemesinde küçültme (R8) açılırsa düşer.
+- `material-icons-extended` debug APK'yı ~18 MB'tan ~26 MB'a büyüttü; sürüm derlemesinde küçültme (R8) 19.8'de açıldı.
 - PostgreSQL kartı ve "Kur" düğmesi "yakında" etiketiyle kapalı; Faz 3'te `DatabaseStep` açılacak.
 
 ---
@@ -1526,6 +1526,11 @@ modeller veri), ödemeler (Play'in ödeme kuralı uygulamanın kendi dijital sat
 - Durum: `StoreServices` (main) + `src/play/.../Store.kt` (`app-update` 2.1.0, `review` 2.0.2; yalnızca play türünde);
   GitHub sürümünde null, kendi güncelleyicisi sürer. Gerçek akış yalnızca Play'den kurulan uygulamada denenebilir:
   cihaz testi `faz19d` (kapalı teste daha yüksek sürüm yükleyince).
+- [x] R8 (küçültme ve karartma): Play "DEX kodu optimizasyonu" uyarısı (karartma %0). Sürüm derlemesinde
+  `isMinifyEnabled`; yansımayla çalışan kütüphanelerin (Rhino, pgjdbc, Jackson, Anthropic SDK, java-jwt, victools)
+  kuralları `app/proguard-rules.pro`. Çözümleme dosyası AAB'nin içinde Play'e gider. Cihazda doğrulandı: play sürümü
+  (Lineage) kayıt CRUD, OpenAPI, paket + Rhino betiği, Postgres modülü ve SQLite→Postgres taşıma, JWT, Anthropic SDK,
+  Play güncelleme denetimi; full sürümü (emülatör) sihirbaz, CRUD, betik, GitHub güncelleme denetimi.
 
 ### Kabul (her grup)
 - İki tür de `:core:test`, `:app:testFullDebugUnitTest`, `:app:testPlayDebugUnitTest`, `:app:lintFullDebug`, `:app:lintPlayDebug` temiz; `full` türünün davranışı ve APK'sı
