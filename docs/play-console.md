@@ -51,17 +51,30 @@ göndermesi), nereye gitmediği, nasıl kapatılacağı. Kodda: `PhoneSection.kt
 
 ## Veri güvenliği formu
 
-Geliştirici sunucusu yok; uygulama analiz, reklam ya da hata raporu göndermez. Veri yalnızca kullanıcının açtığı ve
-ayarladığı hizmetlere gider. Önerilen yanıtlar (Play'in tanımları gönderimde yeniden okunmalı):
+Geliştirici sunucusu yok; uygulama analiz, reklam ya da hata raporu göndermez. Ama Play'in tanımında uygulamanın
+cihazdan dışarı gönderdiği her veri "toplama", üçüncü tarafa gönderdiği "paylaşma" sayılır (geliştiriciye hiçbir şey
+gelmese de). Aşağıdakiler yalnızca kullanıcı ilgili özelliği açarsa olur. Play'in tanımları gönderimde yeniden okunmalı.
+
+**Veri toplama ve güvenlik**
 
 | Soru | Yanıt | Not |
 |---|---|---|
-| Veri topluyor ya da paylaşıyor mu? | Evet (isteğe bağlı özellikler) | Aşağıdaki türler yalnızca kullanıcı ilgili özelliği açarsa |
-| Kişisel bilgi → Telefon numarası | Paylaşılır, isteğe bağlı | SMS sağlayıcısı açıksa alıcı numarası sağlayıcıya (Netgsm, İleti Merkezi, Twilio); amaç: uygulama işlevi |
-| Mesajlar → SMS ya da MMS | Paylaşılır, isteğe bağlı | Aynı: SMS metni sağlayıcıya |
-| Konum → Kesin / yaklaşık konum | Toplanır, isteğe bağlı | Kullanıcının kendi uygulamaları sunucunun API'sinden okur; telefondan geliştiriciye gitmez; amaç: uygulama işlevi |
-| Aktarımda şifreleme | Evet | Sağlayıcılara HTTPS; yerel ağ istekleri kullanıcının ayarına bağlı (HTTPS/Tünel) |
-| Veri silme isteği | Uygulanmaz | Veri telefonda; kullanıcı uygulamadan siler, kaldırınca gider |
-| Onaylı SIM kipi | Toplama yok | Numara ve metin yalnızca bildirimde ve SMS uygulamasında, telefondan çıkmaz (kullanıcı kendisi gönderir) |
+| Gerekli veri türlerinden birini topluyor ya da paylaşıyor mu? | Evet | İsteğe bağlı özellikler (aşağıda) |
+| Toplanan tüm veriler aktarımda şifreleniyor mu? | Hayır | Sağlayıcılara HTTPS; yerel ağdaki API varsayılan olarak düz HTTP (ör. konum) |
+| Hesap oluşturma yöntemleri | Uygulama hesap oluşturmaya izin vermiyor | Geliştiriciyle hesap yok; sunucunun kullanıcı hesapları sahibin kendi sunucusunda |
 
-Gizlilik politikası adresi: `PRIVACY.en.md` (GitHub'daki sayfası).
+**Veri türleri** (hepsi isteğe bağlı, amaç yalnızca "Uygulama işlevselliği", geçici işleme: Hayır)
+
+| Tür | Toplanır | Paylaşılır | Ne zaman, kime |
+|---|---|---|---|
+| Konum → Yaklaşık, Kesin | Evet | Hayır | Konum açıksa sahibin kendi uygulamaları API'den okur |
+| Kişisel bilgiler → Telefon numarası | Hayır | Evet | SMS sağlayıcısı açıksa alıcı numarası Netgsm / İleti Merkezi / Twilio'ya |
+| Mesajlar → SMS ya da MMS | Hayır | Evet | Aynı: SMS metni sağlayıcıya |
+| Kişisel bilgiler → E-posta adresi | Hayır | Evet | Ödemede alıcı e-postası Stripe / iyzico / Paddle'a; e-posta açıksa sahibin SMTP sunucusuna |
+| Uygulama içeriği → Kullanıcının oluşturduğu diğer içerik | Hayır | Evet | YZ açıksa istemler ve kayıtlar (sahibin anahtarıyla) Claude / OpenAI / Gemini'ye |
+
+Bildirilmeyenler: bulut yedeği (uçtan uca şifreli; Play toplama saymaz), kart bilgisi (telefondan geçmez), harita
+karoları (yalnızca görüntülenen bölge), Telegram uyarıları ve webhook'lar (sunucu durumu, sahibin kendi verisi), onaylı
+SIM kipi (numara ve metin telefonda kalır, kullanıcı kendisi gönderir).
+
+Gizlilik politikası adresi: `https://github.com/kasimtmc/droidserver/blob/master/PRIVACY.en.md`.
