@@ -4200,5 +4200,8 @@
  "Kurmak için uygulama yeniden başlar; sunucu kısa süre durur.": "The app restarts to install it; the server stops briefly.",
  "Yeniden başlat ve kur": "Restart and install",
  "Play'de değerlendir": "Rate on Play",
- "Görüşünüzü Play'deki uygulama sayfasında yazın": "Write your review on the app's Play page"
+ "Görüşünüzü Play'deki uygulama sayfasında yazın": "Write your review on the app's Play page",
+ "Konfigürasyon siz düzenlerken başka yerden değişti (web paneli, paket ya da geri yükleme). Diğer değişiklikler taslağa eklendi; şu bölümlerde taslağınız kaldı, kaydederseniz oradaki yeni hal kaybolur: {0}": "The configuration changed elsewhere while you were editing (web panel, package or restore). The other changes were added to the draft; in these sections your draft was kept and saving will discard the new version there: {0}",
+ "tümü": "all",
+ "Taslağı at": "Discard draft"
 }

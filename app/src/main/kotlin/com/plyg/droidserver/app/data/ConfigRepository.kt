@@ -6,6 +6,9 @@ import com.plyg.droidserver.core.config.ConfigJson
 import com.plyg.droidserver.core.config.ConfigMigrations
 import com.plyg.droidserver.core.config.ConfigSecrets
 import com.plyg.droidserver.core.config.ServerConfig
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.serialization.json.jsonObject
 import java.io.File
 import java.time.Instant
@@ -25,6 +28,8 @@ class ConfigRepository(private val context: Context, private val secrets: Secret
     private val dir = File(root, "config").apply { mkdirs() }
     private val file = File(dir, "server.json")
     private val draftFile = File(dir, "draft.json")
+    /** Taslağın başladığı etkin konfigürasyon: arada dosya başka yerden değiştiyse taslakla birleştirilir. */
+    private val draftBaseFile = File(dir, "draft-base.json")
     private val historyDir = File(dir, "history").apply { mkdirs() }
 
     /** Etkin konfigürasyon var mı? Yoksa uygulama ilk açılışta sihirbazı gösterir. */
@@ -40,8 +45,15 @@ class ConfigRepository(private val context: Context, private val secrets: Secret
     /** Etkin konfigürasyon; henüz yoksa null (varsayılanı oluşturmaz). */
     fun loadActiveOrNull(): ServerConfig? = if (hasConfig()) load() else null
 
-    /** Metni ayrıştırır (hatalıysa istisna fırlatır), sırları depoya taşır ve kaydeder. */
-    fun saveText(text: String): ServerConfig {
+    private val _changes = MutableSharedFlow<ServerConfig>(extraBufferCapacity = 16)
+    /** Sihirbaza haber vermeden kaydedilen konfigürasyonlar (web paneli, paket, geri yükleme, kopya); sihirbaz dinler. */
+    val changes: SharedFlow<ServerConfig> = _changes.asSharedFlow()
+
+    /**
+     * Metni ayrıştırır (hatalıysa istisna fırlatır), sırları depoya taşır ve kaydeder. Sihirbazı kendisi güncelleyen
+     * çağıran [notify]'ı kapatır.
+     */
+    fun saveText(text: String, notify: Boolean = true): ServerConfig {
         ServerConfig.fromJson(text) // önce ayrıştır: hatalı metin için depoya hiçbir şey yazılmasın
         val stored = ConfigSecrets.secureText(text, secrets) ?: text
         val cfg = ServerConfig.fromJson(stored)
@@ -50,6 +62,7 @@ class ConfigRepository(private val context: Context, private val secrets: Secret
             historyDir.listFiles()?.sortedByDescending { it.name }?.drop(20)?.forEach { it.delete() }
         }
         writeAtomic(file, stored)
+        if (notify) _changes.tryEmit(cfg)
         return cfg
     }
 
@@ -65,13 +78,18 @@ class ConfigRepository(private val context: Context, private val secrets: Secret
     fun loadDraft(): ServerConfig? =
         draftFile.takeIf { it.exists() }?.let { runCatching { ServerConfig.fromJson(it.readText()) }.getOrNull() }
 
-    fun saveDraft(config: ServerConfig) {
+    fun loadDraftBase(): ServerConfig? =
+        draftBaseFile.takeIf { it.exists() }?.let { runCatching { ServerConfig.fromJson(it.readText()) }.getOrNull() }
+
+    fun saveDraft(config: ServerConfig, base: ServerConfig?) {
         val text = config.toJson()
         writeAtomic(draftFile, ConfigSecrets.secureText(text, secrets) ?: text)
+        if (base == null) draftBaseFile.delete() else writeAtomic(draftBaseFile, base.toJson())
     }
 
     fun clearDraft() {
         draftFile.delete()
+        draftBaseFile.delete()
     }
 
     /** Etkin dosya eski biçimdeyse ne değişeceği; güncelse veya dosya yoksa null. */
@@ -90,7 +108,7 @@ class ConfigRepository(private val context: Context, private val secrets: Secret
      */
     @Synchronized
     fun upgradeFile(): ServerConfig {
-        val cfg = saveText(file.readText())
+        val cfg = saveText(file.readText(), notify = false)
         for (f in history()) {
             runCatching { ConfigSecrets.secureText(f.readText(), secrets) }.getOrNull()?.let { writeAtomic(f, it) }
         }

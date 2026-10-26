@@ -191,6 +191,12 @@ eşlenebilsin diye validator'ı `List<ValidationError(path, message)>` döndüre
   (ikisi aynı etkinlik kapsamlı `WizardViewModel` taslağını kullanır).
 - [x] Ekran döndürme ve uygulama kapatılıp açılması taslağı kaybettirmiyor (ViewModel döndürmede korunur;
   her değişiklik `files/config/draft.json`'a yazılır, açılışta oradan devam edilir).
+- [x] Sihirbaz dışında kaydedilen konfigürasyon (web paneli, paket kurma/kaldırma, yedekten geri yükleme, kopya) taslağın
+  üzerine yazılmıyor (26 Ekim 2026'da düzeltildi: paket kurulduktan sonra sihirbazla kaydedince paketin koleksiyonu ve
+  script'i kayboluyordu). `ConfigRepository.changes` sihirbaza bildirir; taslak, başladığı dosyayla (`draft-base.json`)
+  üç yönlü birleştirilir (`ConfigMerge`: alan alan, `name`'li diziler öğe öğe). İki taraf aynı yeri farklı
+  değiştirdiyse taslaktaki kalır, sihirbazda uyarı ve "Taslağı at" çıkar. Uygulama kapalıyken değişen dosya
+  açılışta birleştirilir. Cihazda: taslakta ad değişmişken API'den paket kuruldu, sihirbazla kaydedince ikisi de kaldı.
 - [x] Testler: `WizardViewModelTest` (9, JVM; Robolectric yok), `WizardSupportTest` (6, core: alan yolları,
   şablonlar, varsayılan değerler, erişim/özet, fark ve uyarılar, API örnekleri + deneme isteği, şema planı).
 

@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.plyg.droidserver.app.AppGraph
 import com.plyg.droidserver.app.data.TemplateRequest
 import com.plyg.droidserver.app.ui.common.ScreenScaffold
+import com.plyg.droidserver.app.ui.common.WarningText
 import com.plyg.droidserver.core.config.PostgresDefaults
 import com.plyg.droidserver.core.i18n.tr
 import com.plyg.droidserver.core.templates.AppTemplate
@@ -61,6 +62,7 @@ fun WizardScreen(
     val errors by vm.errors.collectAsState()
     val editing by vm.editingCollection.collectAsState()
     val expert by vm.expert.collectAsState()
+    val conflicts by vm.conflicts.collectAsState()
     fun readInstalled() = runCatching { g.components.installed().keys }.getOrDefault(emptySet())
     var installedIds by remember { mutableStateOf(readInstalled()) }
     val goBack = { if (!vm.back()) onClose() }
@@ -115,6 +117,19 @@ fun WizardScreen(
         },
     ) { modifier ->
         Column(modifier.fillMaxSize()) {
+            if (conflicts.isNotEmpty()) {
+                // Dosya sihirbaz dışında değişti ve taslak aynı yerleri farklı değiştirmişti (WizardViewModel.onFileChanged).
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    WarningText(tr(
+                        "Konfigürasyon siz düzenlerken başka yerden değişti (web paneli, paket ya da geri yükleme). Diğer değişiklikler taslağa eklendi; şu bölümlerde taslağınız kaldı, kaydederseniz oradaki yeni hal kaybolur: {0}",
+                        conflicts.joinToString(", ") { it.ifEmpty { tr("tümü") } },
+                    ))
+                    Row {
+                        TextButton(onClick = { vm.discard() }) { Text(tr("Taslağı at")) }
+                        TextButton(onClick = { vm.dismissConflicts() }) { Text(tr("Tamam")) }
+                    }
+                }
+            }
             if (editing == null) {
                 val count = WizardStep.entries.size
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

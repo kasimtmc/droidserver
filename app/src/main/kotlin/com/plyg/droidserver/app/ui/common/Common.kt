@@ -257,7 +257,7 @@ suspend fun applyAndDeploy(ctx: Context, g: AppGraph, vm: WizardViewModel, draft
 
 /** Konfigürasyonu kaydeder (sırlar depoya taşınır), sihirbazı günceller ve deploy'u başlatır. */
 suspend fun saveAndDeploy(ctx: Context, g: AppGraph, wizard: WizardViewModel, text: String): ServerConfig {
-    val saved = withContext(Dispatchers.IO) { g.configRepo.saveText(text) }
+    val saved = withContext(Dispatchers.IO) { g.configRepo.saveText(text, notify = false) }
     wizard.onSaved(saved)
     ServerService.deploy(ctx)
     return saved
@@ -276,7 +276,7 @@ suspend fun saveConfigChange(
         val resolved = runCatching { ConfigSecrets.resolve(next, g.secrets::get) }.getOrDefault(next)
         val errors = com.plyg.droidserver.core.config.ConfigValidator.validateDetailed(resolved)
             .filter { e -> scope.any { e.path.startsWith(it) } }.map { it.message }
-        if (errors.isNotEmpty()) null to errors else g.configRepo.saveText(next.toJson()) to emptyList()
+        if (errors.isNotEmpty()) null to errors else g.configRepo.saveText(next.toJson(), notify = false) to emptyList()
     }
     if (saved == null) return errors
     wizard.onExternalChange(saved, patch)

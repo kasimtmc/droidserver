@@ -1,12 +1,14 @@
 package com.plyg.droidserver.app.ui.wizard
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.plyg.droidserver.app.AppGraph
 import com.plyg.droidserver.app.data.DraftStore
 import com.plyg.droidserver.core.auth.ApiKeys
 import com.plyg.droidserver.core.config.AccessMode
+import com.plyg.droidserver.core.config.ConfigMerge
 import com.plyg.droidserver.core.config.ApiKeyConfig
 import com.plyg.droidserver.core.config.AdminPanelConfig
 import com.plyg.droidserver.core.config.AlertsConfig
@@ -87,6 +89,7 @@ import com.plyg.droidserver.core.server.DeployOrchestrator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonObject
 
@@ -211,13 +214,21 @@ class WizardViewModel(
 
     val hasUnsavedChanges: Boolean get() = _draft.value != _active.value
 
+    private val _conflicts = MutableStateFlow<List<String>>(emptyList())
+    /** Etkin dosyayla taslağın aynı yeri farklı değiştirdiği yollar ([onFileChanged]); kaydedilirse dosyadaki kaybolur. */
+    val conflicts: StateFlow<List<String>> = _conflicts.asStateFlow()
+
     // ---- taslak
 
     fun update(transform: (ServerConfig) -> ServerConfig) {
         val next = transform(_draft.value)
         if (next == _draft.value) return
         setDraft(next)
-        if (next == _active.value) drafts.clear() else drafts.save(next)
+        persist()
+    }
+
+    private fun persist() {
+        if (_draft.value == _active.value) drafts.clear() else drafts.save(_draft.value, _active.value)
     }
 
     /** JSON düzenleyiciden gelen konfigürasyon. */
@@ -226,6 +237,7 @@ class WizardViewModel(
     /** Kaydedilip deploy edildi: taslak, etkin konfigürasyon olur. */
     fun onSaved(saved: ServerConfig) {
         _active.value = saved
+        _conflicts.value = emptyList()
         resetChoices()
         setDraft(saved)
         drafts.clear()
@@ -245,6 +257,7 @@ class WizardViewModel(
             drafts.clear()
         } else {
             _errors.value = computeErrors(_draft.value)
+            persist()
         }
     }
 
@@ -260,11 +273,39 @@ class WizardViewModel(
             drafts.clear()
         } else {
             update(patch)
+            persist()
         }
+    }
+
+    /**
+     * Etkin dosya sihirbazın haberi olmadan kaydedildi (web paneli, paket kurma/kaldırma, yedekten geri yükleme, kopya)
+     * ya da taslak eski bir dosyadan başlamıştı. Kaydedilmemiş taslak yoksa taslak dosyayla aynı olur; varsa dosyadaki
+     * değişiklikler taslağa birleştirilir ([ConfigMerge]): ikisi aynı yeri farklı değiştirdiyse taslaktaki kalır ve
+     * [conflicts]'e yazılır.
+     */
+    fun onFileChanged(saved: ServerConfig) {
+        val base = _active.value
+        if (saved == base) return
+        _active.value = saved
+        if (_draft.value == base) {
+            setDraft(saved)
+            drafts.clear()
+            return
+        }
+        val merged = ConfigMerge.threeWay(base, _draft.value, saved)
+        _conflicts.value = (_conflicts.value + merged.conflicts).distinct()
+        setDraft(merged.config)
+        persist()
+    }
+
+    /** Çakışma uyarısını kapatır (taslak olduğu gibi kalır). */
+    fun dismissConflicts() {
+        _conflicts.value = emptyList()
     }
 
     /** Kaydedilmemiş değişiklikleri atar. */
     fun discard() {
+        _conflicts.value = emptyList()
         resetChoices()
         setDraft(_active.value ?: freshDefault())
         drafts.clear()
@@ -1173,9 +1214,11 @@ class WizardViewModel(
             initializer {
                 val active = runCatching { g.configRepo.loadActiveOrNull() }.getOrNull()
                 val fresh = { ServerConfig.fromJson(g.configRepo.defaultConfigText()) }
+                val draft = g.draftStore.load()
                 WizardViewModel(
-                    initialDraft = g.draftStore.load() ?: active ?: fresh(),
-                    active = active,
+                    initialDraft = draft ?: active ?: fresh(),
+                    // Taslak, başladığı dosyaya göre açılır; dosya o zamandan beri değiştiyse aşağıda birleştirilir.
+                    active = draft?.let { g.draftStore.base() } ?: active,
                     drafts = g.draftStore,
                     secrets = g.secrets,
                     resolveSecret = g.secrets::get,
@@ -1183,7 +1226,10 @@ class WizardViewModel(
                     keyLastUsed = g.engine.keyUsage::lastUsed,
                     expertMode = g.settings.expertMode,
                     saveExpertMode = { g.settings.expertMode = it },
-                )
+                ).also { vm ->
+                    active?.let(vm::onFileChanged)
+                    vm.viewModelScope.launch { g.configRepo.changes.collect(vm::onFileChanged) }
+                }
             }
         }
     }

@@ -50,9 +50,11 @@ class WizardViewModelTest {
 
     private class MemoryDrafts : DraftStore {
         var saved: ServerConfig? = null
+        var savedBase: ServerConfig? = null
         override fun load() = saved
-        override fun save(config: ServerConfig) { saved = config }
-        override fun clear() { saved = null }
+        override fun base() = savedBase
+        override fun save(config: ServerConfig, base: ServerConfig?) { saved = config; savedBase = base }
+        override fun clear() { saved = null; savedBase = null }
     }
 
     /** api_key_1, jwt_2 ... adlarıyla bellekte saklar. */
@@ -455,6 +457,49 @@ class WizardViewModelTest {
         second.discard()
         assertEquals(active, second.draft.value)
         assertNull(drafts.saved)
+    }
+
+    @Test
+    fun `dosya disaridan degisince taslakla birlestirilir`() {
+        val active = fresh()
+        val installed = active.copy(collections = listOf(CollectionTemplate.TODOS.create()))
+
+        val clean = vm(initial = active, active = active)
+        clean.onFileChanged(installed)
+        assertEquals(installed, clean.draft.value, "değişiklik yoksa taslak dosya olur")
+        assertNull(drafts.saved)
+
+        // Taslakta ad değişmişken paket bir koleksiyon ekledi: kaydedince ikisi de kalır.
+        val editing = vm(initial = active, active = active)
+        editing.setName("evim")
+        editing.onFileChanged(installed)
+        assertEquals("evim", editing.draft.value.name)
+        assertEquals(installed.collections, editing.draft.value.collections)
+        assertEquals(installed, editing.active.value)
+        assertEquals(emptyList(), editing.conflicts.value)
+        assertEquals(installed, drafts.savedBase, "taslağın tabanı yeni dosya")
+
+        // Aynı alanı iki taraf farklı değiştirdi: taslaktaki kalır, uyarı çıkar; atınca dosya.
+        val renamed = installed.copy(name = "panel")
+        editing.onFileChanged(renamed)
+        assertEquals("evim", editing.draft.value.name)
+        assertEquals(listOf("name"), editing.conflicts.value)
+        editing.discard()
+        assertEquals(renamed, editing.draft.value)
+        assertEquals(emptyList(), editing.conflicts.value)
+    }
+
+    @Test
+    fun `uygulama kapaliyken dosya degistiyse acilista birlestirilir`() {
+        val active = fresh()
+        vm(initial = active, active = active).setName("evim")
+        val installed = active.copy(collections = listOf(CollectionTemplate.TODOS.create()))
+
+        // Fabrikadaki gibi: taslak tabanıyla açılır, sonra güncel dosya birleştirilir.
+        val reopened = vm(initial = drafts.load()!!, active = drafts.base())
+        reopened.onFileChanged(installed)
+        assertEquals("evim", reopened.draft.value.name)
+        assertEquals(installed.collections, reopened.draft.value.collections)
     }
 
     @Test
