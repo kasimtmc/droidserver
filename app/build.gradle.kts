@@ -2,7 +2,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 // Sürüm: `-PappVersion=1.2.3` (yayın iş akışı etiketten verir). versionCode sürümden türetilir ve her yeni sürümde
 // büyür: 1.2.3 → 1020399, 1.3.0-beta.2 → 1030002 (ön sürümler aynı sürümün kararlısından küçük). Alt sürüm ve yama < 100.
-val appVersion: String = providers.gradleProperty("appVersion").orNull ?: "0.9.3"
+val appVersion: String = providers.gradleProperty("appVersion").orNull ?: "0.9.4"
 
 fun versionCodeOf(version: String): Int {
     val m = Regex("""^(\d+)\.(\d+)\.(\d+)(?:-[A-Za-z]*\.?(\d+)?)?$""").matchEntire(version)
