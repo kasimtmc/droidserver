@@ -2495,4 +2495,4 @@ tools/          package-postgres.sh, package-cloudflared.sh (Termux derlemelerin
 - [x] **Takvim ve kişiler:** çakışma kuralı (kaynak başına), `.ics` aboneliği (gizli adresle), CalDAV ve CardDAV ile telefon takvimi ve rehberiyle iki yönlü eşitleme
 - [x] **Konum:** `geo` alanı, `near` (yakından uzağa) ve `box` filtreleri, panelde ve uygulamada OpenStreetMap haritası, haritadan ve telefondan konum seçme
 - [x] **Play sürümü altyapısı:** ayrı yapı türü (targetSdk 36), bileşenler isteğe bağlı Play modülü olarak, SMS sağlayıcısı (Netgsm, İleti Merkezi, Twilio) ve onaylı SIM, 16 KB sayfa uyumu, Play'e otomatik yükleme, mağaza kaydı
-- [ ] **Google Play'de yayın:** dahili ve kapalı test, üretim ([docs/play-yayin.md](docs/play-yayin.md))
+- [ ] **Google Play'de yayın:** kapalı testte (Ekim 2026); üretim ([docs/play-yayin.md](docs/play-yayin.md))
