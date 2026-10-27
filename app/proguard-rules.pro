@@ -13,7 +13,8 @@
 # Jackson (Anthropic SDK, java-jwt): veri sınıflarını ve modülleri yansımayla okur/yazar.
 -keep class com.fasterxml.jackson.** { *; }
 -dontwarn com.fasterxml.jackson.**
--keep class com.anthropic.** { *; }
+# Anthropic SDK'nın kendi kuralları (META-INF/proguard) model sınıflarını Jackson için korur; hepsini tutmak SDK'nın
+# yüz binlerce metodunu küçültme ve iyileştirme dışı bırakıyordu (Play "DEX kodu optimizasyonu" %24).
 -dontwarn com.anthropic.**
 -keep class com.auth0.jwt.** { *; }
 -dontwarn com.auth0.jwt.**

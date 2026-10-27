@@ -1542,6 +1542,10 @@ modeller veri), ödemeler (Play'in ödeme kuralı uygulamanın kendi dijital sat
   kuralları `app/proguard-rules.pro`. Çözümleme dosyası AAB'nin içinde Play'e gider. Cihazda doğrulandı: play sürümü
   (Lineage) kayıt CRUD, OpenAPI, paket + Rhino betiği, Postgres modülü ve SQLite→Postgres taşıma, JWT, Anthropic SDK,
   Play güncelleme denetimi; full sürümü (emülatör) sihirbaz, CRUD, betik, GitHub güncelleme denetimi.
+  0.9.6'da Play'in optimizasyon oranı %24 kaldı: Anthropic SDK'sının tamamı korunuyordu (model sınıfları ~385 bin metot).
+  SDK kendi R8 kurallarını getirir; bizim kuralı kaldırınca DEX 35 MB'tan 12 MB'a indi (Play şartı Şubat 2027'den, 10 MB
+  üstü DEX'te en az %25). Cihazda (Xiaomi) sahte anahtarla Claude isteği: istek kuruldu, 401 yanıtı SDK'dan okundu.
+  "Optimizasyon ekleme" (Play Console → Gelişmiş ayarlar) kapalı kalır: Play'in koda ne yaptığı belgelenmemiş.
 
 ### Kabul (her grup)
 - İki tür de `:core:test`, `:app:testFullDebugUnitTest`, `:app:testPlayDebugUnitTest`, `:app:lintFullDebug`, `:app:lintPlayDebug` temiz; `full` türünün davranışı ve APK'sı
