@@ -113,6 +113,13 @@ class PerformanceTest(private val dialect: Dialect) {
         val bytes = gz.bodyAsBytes()
         assertTrue(bytes.size < plain.length)
         assertEquals(plain, GZIPInputStream(bytes.inputStream()).readBytes().decodeToString())
+        // Sıkıştırılan yanıt da ETag taşır ve 304 döner (tarayıcılar ve OkHttp hep gzip ister).
+        val gzTag = gz.headers[HttpHeaders.ETag]
+        assertTrue(gzTag != null && gzTag.startsWith("W/\""), "gzip yanıtında ETag: $gzTag")
+        val gzAgain = client.get("/api/collections/places/records?perPage=50&sort=id") {
+            bearerAuth(key); header(HttpHeaders.AcceptEncoding, "gzip"); header(HttpHeaders.IfNoneMatch, gzTag)
+        }
+        assertEquals(HttpStatusCode.NotModified, gzAgain.status)
         val small = client.get("/api/health") { header(HttpHeaders.AcceptEncoding, "gzip") }
         assertEquals(null, small.headers[HttpHeaders.ContentEncoding], "küçük yanıt sıkıştırılmaz")
     }

@@ -178,8 +178,11 @@ import io.ktor.server.plugins.compression.excludeContentType
 import io.ktor.server.plugins.compression.gzip
 import io.ktor.server.plugins.compression.matchContentType
 import io.ktor.server.plugins.compression.minimumSize
-import io.ktor.server.plugins.conditionalheaders.ConditionalHeaders
-import io.ktor.http.content.EntityTagVersion
+import io.ktor.server.response.ApplicationSendPipeline
+import io.ktor.http.content.OutgoingContent
+import io.ktor.server.application.call
+import io.ktor.util.pipeline.PipelinePhase
+import io.ktor.server.http.content.HttpStatusCodeContent
 import io.ktor.http.content.TextContent
 import io.ktor.http.content.ByteArrayContent
 import io.ktor.server.plugins.statuspages.StatusPages
@@ -350,19 +353,26 @@ fun Application.droidServerModule(
     val proxyClient = if (liveApps.isEmpty()) null else AppProxy.client(appClient ?: HttpClient(io.ktor.client.engine.cio.CIO).also { c ->
         monitor.subscribe(ApplicationStopped) { c.close() }
     })
-    // GET yanıtlarına içerik özeti (ETag); istemci If-None-Match gönderirse değişmemiş yanıt gövdesiz 304 döner.
-    install(ConditionalHeaders) {
-        version { call, content ->
-            if (call.request.httpMethod != HttpMethod.Get) return@version emptyList()
-            val bytes = when (content) {
-                is TextContent -> content.text.toByteArray()
-                is ByteArrayContent -> content.bytes()
-                else -> return@version emptyList()
-            }
-            val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
-            // Zayıf: sıkıştırılmış ve sıkıştırılmamış hali aynı özeti taşır.
-            listOf(EntityTagVersion(Base64.getUrlEncoder().withoutPadding().encodeToString(digest).take(27), weak = true))
+    // GET yanıtlarına içerik özeti (zayıf ETag); istemci If-None-Match gönderirse değişmemiş yanıt gövdesiz 304 döner.
+    // Sıkıştırmadan (ContentEncoding) önce hesaplanır: Ktor'un ConditionalHeaders'ı gönderimin sonunda çalıştığı için
+    // sıkıştırılmış gövdeyi okuyamıyor, gzip isteyen istemcilere (tarayıcılar, OkHttp) ETag hiç gitmiyordu.
+    val etagPhase = PipelinePhase("ETag")
+    sendPipeline.insertPhaseBefore(ApplicationSendPipeline.ContentEncoding, etagPhase)
+    sendPipeline.intercept(etagPhase) { content ->
+        if (call.request.httpMethod != HttpMethod.Get || content !is OutgoingContent) return@intercept
+        if ((call.response.status() ?: content.status ?: HttpStatusCode.OK) != HttpStatusCode.OK) return@intercept
+        val bytes = when (content) {
+            is TextContent -> content.text.toByteArray()
+            is ByteArrayContent -> content.bytes()
+            else -> return@intercept
         }
+        val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+        val tag = Base64.getUrlEncoder().withoutPadding().encodeToString(digest).take(27)
+        call.response.headers.append(HttpHeaders.ETag, "W/\"$tag\"")
+        // Zayıf karşılaştırma: W/ önekiyle ya da öneksiz, liste ya da "*".
+        val match = call.request.headers[HttpHeaders.IfNoneMatch]?.split(',')
+            ?.map { it.trim().removePrefix("W/").trim('"') }?.any { it == tag || it == "*" } == true
+        if (match) proceedWith(HttpStatusCodeContent(HttpStatusCode.NotModified))
     }
     // Dosyalarda Range istekleri (video/ses ileri sarma, yarıda kalan indirmeyi sürdürme): 206 ve Content-Range.
     install(PartialContent) { maxRangeCount = 10 }
