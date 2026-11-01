@@ -1549,7 +1549,8 @@ modeller veri), ödemeler (Play'in ödeme kuralı uygulamanın kendi dijital sat
   Play güncelleme denetimi; full sürümü (emülatör) sihirbaz, CRUD, betik, GitHub güncelleme denetimi.
   0.9.6'da Play'in optimizasyon oranı %24 kaldı: Anthropic SDK'sının tamamı korunuyordu (model sınıfları ~385 bin metot).
   SDK kendi R8 kurallarını getirir; bizim kuralı kaldırınca DEX 35 MB'tan 12 MB'a indi (Play şartı Şubat 2027'den, 10 MB
-  üstü DEX'te en az %25). Cihazda (Xiaomi) sahte anahtarla Claude isteği: istek kuruldu, 401 yanıtı SDK'dan okundu.
+  üstü DEX'te en az %25). Cihazda (Xiaomi) sahte anahtarla Claude isteği: istek kuruldu, 401 yanıtı SDK'dan okundu. Gerçek anahtarla (1 Kasım 2026): tek ve çok turlu
+  sohbet yanıt verdi; model, bitiş nedeni ve token sayıları okundu, kullanım sayacı işledi.
   "Optimizasyon ekleme" (Play Console → Gelişmiş ayarlar) kapalı kalır: Play'in koda ne yaptığı belgelenmemiş.
   Kaynak küçültme de açık (`isShrinkResources`): kütüphanelerin kullanılmayan kaynakları çıkar (55 → 10 dosya); ekran
   yoğunluğu parçası artık oluşmaz. Cihazda bildirim simgesi ve iki ekran aracı denendi.
