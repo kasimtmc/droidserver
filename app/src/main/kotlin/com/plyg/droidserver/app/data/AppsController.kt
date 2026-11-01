@@ -73,12 +73,12 @@ class AppsController(
                 val known = manager.state(name).let { st -> listOfNotNull(st.pending, st.current) }
                     .mapNotNull { id -> manager.releases(name).firstOrNull { it.id == id }?.commit }
                 if (known.any { it == target }) {
-                    log("[$name] Git: ${target.take(12)} zaten yüklü; değişiklik yok")
+                    log(tr("[{0}] Git: {1} zaten yüklü; değişiklik yok", name, target.take(12)))
                     return@withContext null
                 }
             }
             cache.mkdirs()
-            log("[$name] Git: ${git.repo}@${git.branch} indiriliyor…")
+            log(tr("[{0}] Git: {1}@{2} indiriliyor…", name, git.repo, git.branch))
             val fetched = fetcher.download(git, cache, target)
             try {
                 manager.stage(name, fetched.file, "git", fetched.commit, git.subdir)
@@ -93,16 +93,16 @@ class AppsController(
             runCatching { pull(app, commit) }
                 .onSuccess { r ->
                     if (r != null) {
-                        log("[$app] Git'ten yeni sürüm ($reason): ${r.commit?.take(12) ?: r.id}; deploy ediliyor")
+                        log(tr("[{0}] Git'ten yeni sürüm ({1}): {2}; deploy ediliyor", app, reason, r.commit?.take(12) ?: r.id))
                         ServerService.deploy(context)
                     }
                 }
-                .onFailure { log("[$app] Git'ten çekilemedi ($reason): ${it.message}") }
+                .onFailure { log(tr("[{0}] Git'ten çekilemedi ({1}): {2}", app, reason, it.message)) }
         }
     }
 
     override fun redeploy(reason: String) {
-        log("Deploy isteği: $reason")
+        log(tr("Deploy isteği: {0}", reason))
         ServerService.deploy(context)
     }
 

@@ -170,7 +170,7 @@ object BackupArchive {
                         }
                     }
                     db.dialect.resetIdSequenceSql(c.name)?.let { db.query(it) }
-                    log("Geri yüklendi: ${c.name} ($n kayıt)")
+                    log(tr("Geri yüklendi: {0} ({1} kayıt)", c.name, n))
                 }
             }
             for ((name, dir) in dirs) {

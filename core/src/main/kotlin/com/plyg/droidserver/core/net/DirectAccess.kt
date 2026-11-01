@@ -110,7 +110,7 @@ class DirectAccess(
         // Port yönlendirme ve DNS güncelleme engelleyici ağ çağrılarıdır.
         job = scope.launch(Dispatchers.IO) {
             while (isActive) {
-                val wait = runCatching { check() }.getOrElse { log("Doğrudan erişim kontrolü başarısız: ${it.message}"); checkIntervalMs }
+                val wait = runCatching { check() }.getOrElse { log(tr("Doğrudan erişim kontrolü başarısız: {0}", it.message)); checkIntervalMs }
                 delay(wait)
             }
         }
@@ -153,7 +153,7 @@ class DirectAccess(
             true
         } catch (t: Throwable) {
             _status.value = DirectStatus(error = tr("HTTPS ucu açılamadı (port {0}): {1}", d.port, t.message))
-            log("HTTPS ucu açılamadı: ${t.message}")
+            log(tr("HTTPS ucu açılamadı: {0}", t.message))
             false
         }
     }
@@ -184,7 +184,7 @@ class DirectAccess(
     private fun startProxy(id: TlsIdentity, port: Int, target: Int): TlsProxy = try {
         TlsProxy(id.sslContext(), InetSocketAddress(InetAddress.getByName("::"), port), target, log).start()
     } catch (e: java.net.SocketException) {
-        log("IPv6 kullanılamıyor (${e.message}); HTTPS ucu yalnızca IPv4'te")
+        log(tr("IPv6 kullanılamıyor ({0}); HTTPS ucu yalnızca IPv4'te", e.message))
         TlsProxy(id.sslContext(), InetSocketAddress("0.0.0.0", port), target, log).start()
     }
 
@@ -214,7 +214,7 @@ class DirectAccess(
             null
         } catch (e: Exception) {
             certificateRetryAt = System.currentTimeMillis() + certificateRetryMs
-            log("Let's Encrypt sertifikası alınamadı: ${e.message}")
+            log(tr("Let's Encrypt sertifikası alınamadı: {0}", e.message))
             e.message ?: e.toString()
         }
         _status.update { it.copy(certificateWorking = false, certificateError = error) }
@@ -241,8 +241,8 @@ class DirectAccess(
                 val r = probe.withMulticast { mapper.map(probe.gateway(), lan, d.port) }
                 mapping = r.mapping
                 mappingErrors += r.errors
-                if (mapping != null) log("Modemde port yönlendirme (${mapping.method}): ${mapping.externalPort} → ${lan.hostAddress}:${d.port}")
-                else log("Modemde port yönlendirme yapılamadı: ${r.errors.joinToString("; ")}")
+                if (mapping != null) log(tr("Modemde port yönlendirme ({0}): {1} → {2}:{3}", mapping.method, mapping.externalPort, lan.hostAddress, d.port))
+                else log(tr("Modemde port yönlendirme yapılamadı: {0}", r.errors.joinToString("; ")))
             }
         }
         val observed = if (d.network == DirectNetwork.WIFI) wan.publicIpv4() else null
@@ -266,7 +266,7 @@ class DirectAccess(
                     log(if (target.isEmpty()) tr("DuckDNS kaydı temizlendi: {0} (ulaşılabilir adres yok)", ddnsHost) else tr("DuckDNS güncellendi: {0} → {1}", ddnsHost, target))
                 } catch (e: Exception) {
                     ddnsError = e.message
-                    log("DuckDNS güncellenemedi: ${e.message}")
+                    log(tr("DuckDNS güncellenemedi: {0}", e.message))
                 }
             }
             ddnsActive = target.isNotEmpty() && lastDdnsIp == target

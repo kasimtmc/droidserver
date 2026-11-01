@@ -152,12 +152,12 @@ class HealthMonitor(
         channels.forEach { (name, ch) ->
             runCatching { ch.send(alert) }
                 .onSuccess { ok = true }
-                .onFailure { log("Uyarı $name kanalına gönderilemedi: ${it.message}") }
+                .onFailure { log(tr("Uyarı {0} kanalına gönderilemedi: {1}", name, it.message)) }
         }
         if (!ok) return null
         recent.addLast(alert)
         while (recent.size > MAX_RECENT) recent.removeFirst()
-        log("Uyarı: ${alert.title}${if (alert.resolved) "" else " — " + alert.message}")
+        log(tr("Uyarı: {0}{1}", alert.title, if (alert.resolved) "" else " — " + alert.message))
         return alert
     }
 

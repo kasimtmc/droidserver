@@ -35,7 +35,7 @@ class CertificateManager(
     @Synchronized
     fun current(host: String): TlsIdentity? {
         val id = cached ?: runCatching { if (certFile.exists()) TlsIdentity.load(certFile, password) else null }
-            .onFailure { log("Let's Encrypt sertifikası okunamadı: ${it.message}") }.getOrNull()?.also { cached = it }
+            .onFailure { log(tr("Let's Encrypt sertifikası okunamadı: {0}", it.message)) }.getOrNull()?.also { cached = it }
         return id?.takeIf { covers(it.certificate, host) && it.certificate.notAfter.toInstant().isAfter(clock()) }
     }
 
@@ -52,7 +52,7 @@ class CertificateManager(
     fun obtain(host: String, domain: String, token: String, key: TlsIdentity): TlsIdentity {
         val account = TlsIdentity.loadOrCreate(accountFile, password)
         val acme = client(directoryUrl, KeyPair(account.certificate.publicKey, account.privateKey))
-        log("Let's Encrypt: $host için sertifika isteniyor (DNS doğrulaması, 1-2 dakika sürebilir)")
+        log(tr("Let's Encrypt: {0} için sertifika isteniyor (DNS doğrulaması, 1-2 dakika sürebilir)", host))
         val pem = acme.obtain(
             host,
             Der.csr(host, key.certificate.publicKey, key.privateKey),
@@ -67,7 +67,7 @@ class CertificateManager(
         if (!covers(id.certificate, host)) throw AcmeException(tr("Gelen sertifika {0} adını içermiyor", host))
         id.save(certFile, password)
         synchronized(this) { cached = id }
-        log("Let's Encrypt sertifikası alındı: $host, ${id.certificate.notAfter.toInstant()} tarihine kadar geçerli")
+        log(tr("Let's Encrypt sertifikası alındı: {0}, {1} tarihine kadar geçerli", host, id.certificate.notAfter.toInstant()))
         return id
     }
 

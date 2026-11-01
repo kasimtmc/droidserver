@@ -192,7 +192,7 @@ class ScriptRuntime private constructor(
                     fn.call(cx, scope, scope, arrayOf(toJs(cx, record), context(cx, caller, null)))
                 }
             } catch (e: Exception) {
-                log("[script] ${event.function}($collection) hatası (kayıt yazıldı): ${e.message}")
+                log(tr("[script] {0}({1}) hatası (kayıt yazıldı): {2}", event.function, collection, e.message))
             }
         }
     }
@@ -204,7 +204,7 @@ class ScriptRuntime private constructor(
                 job.handler.call(cx, scope, scope, arrayOf(context(cx, Caller.Admin, null)))
             }
         } catch (e: Exception) {
-            log("[script] zamanlanmış görev (${job.schedule.expression}, ${job.source}) hatası: ${e.message}")
+            log(tr("[script] zamanlanmış görev ({0}, {1}) hatası: {2}", job.schedule.expression, job.source, e.message))
         }
     }
 
@@ -232,7 +232,7 @@ class ScriptRuntime private constructor(
             cx.putThreadLocal(DEADLINE, System.nanoTime() + timeoutMs * 1_000_000)
             return block(cx)
         } catch (e: ScriptTimeout) {
-            log("[script] $what süre sınırını (${timeoutMs} ms) aştı ve durduruldu")
+            log(tr("[script] {0} süre sınırını ({1} ms) aştı ve durduruldu", what, timeoutMs))
             throw ScriptException(500, tr("Script süre sınırını aştı"))
         } catch (e: ScriptFail) {
             failed(what, e)
@@ -250,7 +250,7 @@ class ScriptRuntime private constructor(
             log("[script] $what: ${e.details()} (${e.sourceName()}:${e.lineNumber()})\n${e.scriptStackTrace.trim()}")
             throw hidden("${e.details()} (${e.sourceName()}:${e.lineNumber()})")
         } catch (e: StackOverflowError) {
-            log("[script] $what: yığın taştı (sonsuz özyineleme?)")
+            log(tr("[script] {0}: yığın taştı (sonsuz özyineleme?)", what))
             throw hidden(tr("yığın taştı (sonsuz özyineleme?)"))
         } finally {
             Context.exit()
@@ -545,7 +545,7 @@ class ScriptRuntime private constructor(
                 }
                 loading = false
                 if (errors.isNotEmpty()) throw ScriptLoadException(errors)
-                log("[script] ${sources.size} dosya yüklendi: ${routes.size} uç, ${hooks.values.sumOf { it.size }} olay, ${crons.size} zamanlanmış görev, ${jobTypes.size} iş türü")
+                log(tr("[script] {0} dosya yüklendi: {1} uç, {2} olay, {3} zamanlanmış görev, {4} iş türü", sources.size, routes.size, hooks.values.sumOf { it.size }, crons.size, jobTypes.size))
                 return ScriptRuntime(config, log, scope, routes, hooks, crons, jobTypes)
             } finally {
                 Context.exit()

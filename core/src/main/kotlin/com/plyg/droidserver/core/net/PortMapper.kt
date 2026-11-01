@@ -63,7 +63,7 @@ class PortMapper(
                 NAT_PMP -> natPmpRequest(gateway ?: return, mapRequest(m.internalPort, 0, 0))
                 UPNP -> m.upnp?.let { soap(it, "DeletePortMapping", deleteArgs(m.externalPort)) }
             }
-        }.onFailure { log("Port yönlendirmesi kaldırılamadı: ${it.message}") }
+        }.onFailure { log(tr("Port yönlendirmesi kaldırılamadı: {0}", it.message)) }
     }
 
     // ---- NAT-PMP (RFC 6886)

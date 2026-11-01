@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import com.plyg.droidserver.app.data.AutomationBridge
 import com.plyg.droidserver.app.graph
+import com.plyg.droidserver.core.i18n.tr
 
 /**
  * Otomasyon uygulamalarından gelen komutlar (açık yayın: paket `com.plyg.droidserver`, sınıf bu sınıf). Köprü kapalıysa
@@ -16,7 +17,7 @@ class TaskerReceiver : BroadcastReceiver() {
         val action = intent.action ?: return
         val name = action.substringAfterLast('.')
         if (!g.automation.accepts(intent.getStringExtra(AutomationBridge.EXTRA_TOKEN))) {
-            g.logs.add("Otomasyon komutu reddedildi ($name): köprü kapalı veya anahtar hatalı")
+            g.logs.add(tr("Otomasyon komutu reddedildi ({0}): köprü kapalı veya anahtar hatalı", name))
             return
         }
         val hasConfig = g.configRepo.hasConfig()
@@ -26,6 +27,6 @@ class TaskerReceiver : BroadcastReceiver() {
             AutomationBridge.ACTION_STOP -> ServerService.stop(context)
             else -> return
         }
-        g.logs.add(if (hasConfig || action == AutomationBridge.ACTION_STOP) "Otomasyon komutu: $name" else "Otomasyon komutu ($name): önce sihirbazı tamamlayın")
+        g.logs.add(if (hasConfig || action == AutomationBridge.ACTION_STOP) tr("Otomasyon komutu: {0}", name) else tr("Otomasyon komutu ({0}): önce sihirbazı tamamlayın", name))
     }
 }

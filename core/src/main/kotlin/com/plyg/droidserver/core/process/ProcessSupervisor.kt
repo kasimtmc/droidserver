@@ -97,7 +97,7 @@ class ProcessSupervisor(
                 val p = pb.start()
                 m.process = p
                 setStatus(Status(spec.id, Phase.RUNNING, pid = pidOf(p), restarts = restarts))
-                log("[${spec.id}] başladı pid=${pidOf(p)}")
+                log(tr("[{0}] başladı pid={1}", spec.id, pidOf(p)))
                 val started = System.currentTimeMillis()
 
                 runInterruptible {
@@ -114,7 +114,7 @@ class ProcessSupervisor(
                 m.process = null
             }
 
-            log("[${spec.id}] çıktı, kod=$exit")
+            log(tr("[{0}] çıktı, kod={1}", spec.id, exit))
             if (m.stopping) break
 
             val shouldRestart = when (spec.restart) {
@@ -127,7 +127,7 @@ class ProcessSupervisor(
             }
             if (restarts >= spec.maxRestarts) {
                 setStatus(Status(spec.id, Phase.FAILED, restarts = restarts, lastExit = exit))
-                log("[${spec.id}] yeniden başlatma sınırı aşıldı"); return
+                log(tr("[{0}] yeniden başlatma sınırı aşıldı", spec.id)); return
             }
             restarts++
             setStatus(Status(spec.id, Phase.BACKOFF, restarts = restarts, lastExit = exit))
@@ -162,10 +162,10 @@ class ProcessSupervisor(
         val finished = p.waitFor(60, TimeUnit.SECONDS)
         if (!finished) p.destroyForcibly()
         val ok = finished && p.exitValue() == 0
-        if (!ok) log("[${spec.id}] durdurma komutu başarısız: ${runCatching { p.inputStream.bufferedReader().readText().trim() }.getOrDefault("")}")
+        if (!ok) log(tr("[{0}] durdurma komutu başarısız: {1}", spec.id, runCatching { p.inputStream.bufferedReader().readText().trim() }.getOrDefault("")))
         ok
     } catch (e: Exception) {
-        log("[${spec.id}] durdurma komutu çalıştırılamadı: ${e.message}")
+        log(tr("[{0}] durdurma komutu çalıştırılamadı: {1}", spec.id, e.message))
         false
     }
 

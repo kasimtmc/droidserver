@@ -106,10 +106,10 @@ class Replicator(
                     if (stopped) break
                     failures++
                     status.update { (it ?: ReplicaStatus()).copy(phase = ReplicaStatus.Phase.ERROR, error = e.message ?: e.javaClass.simpleName) }
-                    if (failures == 1 || failures % 20 == 0) log("Kopya: ${e.message}")
+                    if (failures == 1 || failures % 20 == 0) log(tr("Kopya: {0}", e.message))
                     false
                 }
-                if (!stopped) runCatching { checkFailover() }.onFailure { log("Kopya: devralma denetimi: ${it.message}") }
+                if (!stopped) runCatching { checkFailover() }.onFailure { log(tr("Kopya: devralma denetimi: {0}", it.message)) }
                 if (!more && !stopped) sleep(if (failures > 0) minOf(failoverWait(), 2_000L shl minOf(failures, 5)) else source.intervalSec * 1000L)
             }
         }, "ds-replica").apply { isDaemon = true; start() }
@@ -140,7 +140,7 @@ class Replicator(
             if (notifiedHash != hash) {
                 notifiedHash = hash
                 val (cfg, _) = get("/_replication/config", "")
-                log("Kopya: ana sunucunun konfigürasyonu değişti; kopya yeniden kuruluyor")
+                log(tr("Kopya: ana sunucunun konfigürasyonu değişti; kopya yeniden kuruluyor"))
                 onPrimaryConfig.invoke(ConfigJson.decodeFromJsonElement(ServerConfig.serializer(), cfg.getValue("config")), hash)
             }
             status.update { it?.copy(phase = ReplicaStatus.Phase.WAITING_CONFIG) }
@@ -184,7 +184,7 @@ class Replicator(
                     else -> null
                 }
                 if (blocked != null) {
-                    if (status.value?.failoverNote != blocked) log("Kopya: $blocked")
+                    if (status.value?.failoverNote != blocked) log(tr("Kopya: {0}", blocked))
                     status.update { it?.copy(failoverNote = blocked) }
                     return
                 }
@@ -205,7 +205,7 @@ class Replicator(
 
     /** Ana sunucuya yazmayı durdurtur, son değişikliğe kadar eşitler ve devralır; yetişemezse ana sunucu sürer. */
     private fun failback(host: FailoverHost) {
-        log("Kopya: ana rol geri alınıyor; ${source.url} yazmaları durduruyor")
+        log(tr("Kopya: ana rol geri alınıyor; {0} yazmaları durduruyor", source.url))
         val latest = try {
             Failover.post(base, "/_replication/step-down", source.key, "{}").getValue("latest").jsonPrimitive.long
         } catch (e: Exception) {
@@ -221,21 +221,21 @@ class Replicator(
         } else {
             caughtUpSince = null
             runCatching { Failover.post(base, "/_replication/step-up", source.key, "{}") }
-            log("Kopya: ana rol geri alınamadı (son değişikliğe yetişilemedi); daha sonra yeniden denenecek")
+            log(tr("Kopya: ana rol geri alınamadı (son değişikliğe yetişilemedi); daha sonra yeniden denenecek"))
         }
     }
 
     private fun promote(host: FailoverHost, event: String, detail: String) {
         stopped = true
         status.update { (it ?: ReplicaStatus()).copy(phase = ReplicaStatus.Phase.PROMOTING, failoverNote = detail) }
-        log("Kopya: $detail")
+        log(tr("Kopya: {0}", detail))
         val id = primaryId
         host.change(event, detail, false) { Failover.promote(it, id) }
     }
 
     /** Tüm tabloları kopyalar (anada olmayan yerel satırlar silinir); sonra [latest]'ten devam. */
     private fun initial(latest: Long) {
-        log("Kopya: ilk kopyalama başladı (${tables.size} tablo)")
+        log(tr("Kopya: ilk kopyalama başladı ({0} tablo)", tables.size))
         val seen = HashMap<String, MutableSet<Long>>()
         for (c in tables) {
             var after = 0L
@@ -263,7 +263,7 @@ class Replicator(
         }
         state = state.copy(seq = latest, initialDone = true)
         writeState()
-        log("Kopya: ilk kopyalama bitti")
+        log(tr("Kopya: ilk kopyalama bitti"))
     }
 
     private fun apply(changes: List<JsonObject>) {

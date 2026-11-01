@@ -94,7 +94,7 @@ class DeployOrchestrator(
         val problems = startComponents(target)
         // Hedefe ulaşılamıyorsa sunucu hiç durdurulmaz; asıl neden (örn. bileşen başlatılamadı) önce gösterilir.
         runCatching { openDatabase(target.database).close() }.onFailure { t ->
-            log("Veriler taşınmadı: ${describe(target.database)} veritabanına bağlanılamadı; sunucu eski veritabanıyla çalışmaya devam ediyor")
+            log(tr("Veriler taşınmadı: {0} veritabanına bağlanılamadı; sunucu eski veritabanıyla çalışmaya devam ediyor", describe(target.database)))
             throw DeployException(problems + tr("Yeni veritabanına bağlanılamadı: {0}", t.message))
         }
         val readOnly = options.duringMove == DuringMove.READ_ONLY
@@ -103,19 +103,19 @@ class DeployOrchestrator(
         } catch (t: Throwable) {
             throw DeployException(listOf(tr("Sunucu salt okunur yapılamadı: {0}", t.message)) + problems)
         }
-        log("Veriler taşınıyor: ${describe(prev.database)} → ${describe(target.database)}" + if (readOnly) tr(" (sunucu salt okunur)") else "")
+        log(tr("Veriler taşınıyor: {0} → {1}", describe(prev.database), describe(target.database)) + if (readOnly) tr(" (sunucu salt okunur)") else "")
         try {
             val report = openDatabase(prev.database).use { source ->
                 openDatabase(target.database).use { dest ->
                     DataCopier.copy(source, dest, prev.schemaCollections(), target.schemaCollections(), replaceExisting = options.replaceExisting, log = log)
                 }
             }
-            log("Taşıma tamamlandı: $report")
+            log(tr("Taşıma tamamlandı: {0}", report))
             return report
         } catch (t: Throwable) {
-            log("Veri taşıma başarısız: ${t.message}; sunucu eski haline dönüyor")
+            log(tr("Veri taşıma başarısız: {0}; sunucu eski haline dönüyor", t.message))
             runCatching { if (readOnly) engine.resumeWrites() else engine.deploy(prev) }
-                .onFailure { log("Eski konfigürasyon açılamadı: ${it.message}") }
+                .onFailure { log(tr("Eski konfigürasyon açılamadı: {0}", it.message)) }
             throw DeployException(listOf(tr("Veri taşınamadı: {0}", t.message)) + problems)
         }
     }
@@ -136,7 +136,7 @@ class DeployOrchestrator(
         if (password == prev.database.password) return
         try {
             openDatabase(prev.database).use { PostgresAdmin.changePassword(it, password) }
-            log("PostgreSQL parolası değiştirildi (${prev.database.user})")
+            log(tr("PostgreSQL parolası değiştirildi ({0})", prev.database.user))
         } catch (t: Throwable) {
             throw DeployException(listOf(tr("Parola değiştirilemedi: {0}", t.message)))
         }
@@ -153,11 +153,11 @@ class DeployOrchestrator(
         val task = components.task(componentId, taskId)
             ?: throw DeployException(listOf(tr("{0}: '{1}' işi yok (bileşeni güncelleyin)", componentId, taskId)))
         if (task.stopFirst && supervisor.isAlive(componentId)) {
-            log("[$componentId] '${task.title}' için durduruluyor")
+            log(tr("[{0}] '{1}' için durduruluyor", componentId, task.title))
             supervisor.stop(componentId)
         }
         return try {
-            components.runTask(cfg, taskId).also { log("[$componentId] ${task.title}: tamamlandı") }
+            components.runTask(cfg, taskId).also { log(tr("[{0}] {1}: tamamlandı", componentId, task.title)) }
         } catch (t: Throwable) {
             throw DeployException(listOf(tr("{0} başarısız: {1}", task.title, t.message)))
         }
@@ -202,14 +202,14 @@ class DeployOrchestrator(
                 throw DeployException(listOf(tr("Yedekteki şifreli alanlar başka bir anahtarla şifrelenmiş ({0}). Önce Sihirbaz → Veritabanı → Alan şifreleme'de o anahtarı girin; sonra geri yükleyin.", id)))
             }
         }
-        log("Geri yükleniyor: ${file.name} (${manifest.createdAt}, ${manifest.tables.values.sum()} kayıt)")
+        log(tr("Geri yükleniyor: {0} ({1}, {2} kayıt)", file.name, manifest.createdAt, manifest.tables.values.sum()))
         engine.stop()
         try {
             withContext(Dispatchers.IO) {
                 openDatabase(target.database).use { BackupArchive.restore(file, it, target, dirs, log) }
             }
         } catch (t: Throwable) {
-            log("Geri yükleme başarısız, sunucu eski haliyle açılıyor: ${t.message}")
+            log(tr("Geri yükleme başarısız, sunucu eski haliyle açılıyor: {0}", t.message))
             runCatching { engine.deploy(prev) }
             throw t
         }
@@ -240,13 +240,13 @@ class DeployOrchestrator(
                 problem(tr("[{0}] başlatılamadı: {1}", c.id, t.message))
                 continue
             }
-            if (supervisor.start(spec)) log("[${c.id}] başlatılıyor") else log("[${c.id}] değişmedi, yeniden başlatılmadı")
+            if (supervisor.start(spec)) log(tr("[{0}] başlatılıyor", c.id)) else log(tr("[{0}] değişmedi, yeniden başlatılmadı", c.id))
             started += spec
         }
 
         for (spec in started) {
             val r = spec.readiness ?: continue
-            log("[${spec.id}] hazır olması bekleniyor (tcp ${r.tcpPort}, en çok ${r.timeoutSec} sn)")
+            log(tr("[{0}] hazır olması bekleniyor (tcp {1}, en çok {2} sn)", spec.id, r.tcpPort, r.timeoutSec))
             if (!probe.await(r) { supervisor.isAlive(spec.id) }) {
                 problem(tr("[{0}] hazır olmadı (tcp {1}, {2} sn)", spec.id, r.tcpPort, r.timeoutSec))
             }
@@ -269,10 +269,10 @@ class DeployOrchestrator(
         /** Süreci başlatır ve sağlık denetimini bekler; sorun yoksa null. */
         suspend fun run(app: AppConfig, p: AppManager.Prepared): String? {
             if (!supervisor.start(p.spec)) {
-                log("[${app.processId}] değişmedi, yeniden başlatılmadı")
+                log(tr("[{0}] değişmedi, yeniden başlatılmadı", app.processId))
                 return null
             }
-            log("[${app.processId}] başlatılıyor (sürüm ${p.release}); sağlık denetimi bekleniyor")
+            log(tr("[{0}] başlatılıyor (sürüm {1}); sağlık denetimi bekleniyor", app.processId, p.release))
             return mgr.awaitHealthy(app, { supervisor.isAlive(p.spec.id) })
         }
 
@@ -316,7 +316,7 @@ class DeployOrchestrator(
             resolved.apps.filter { it.enabled && apps != null }.map { it.processId }
         for (id in supervisor.ids() - wantedIds) {
             supervisor.stop(id)
-            log("[$id] durduruldu (konfigürasyonda etkin değil)")
+            log(tr("[{0}] durduruldu (konfigürasyonda etkin değil)", id))
         }
     }
 

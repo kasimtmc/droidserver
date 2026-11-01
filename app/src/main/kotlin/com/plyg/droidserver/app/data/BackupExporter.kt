@@ -44,15 +44,15 @@ class BackupExporter(
         if (kind == BackupKind.MANUAL) engine.audit.record(actor, "backup.create", info.name)
         settings.backupTreeUri?.let { tree ->
             runCatching { copyTo(info.file, tree.toUri()) }
-                .onSuccess { logs.add("Yedek klasöre kopyalandı: ${info.name}") }
+                .onSuccess { logs.add(tr("Yedek klasöre kopyalandı: {0}", info.name)) }
                 .onFailure {
-                    logs.add("Yedek seçilen klasöre kopyalanamadı (izin kaldırılmış olabilir): ${it.message}")
+                    logs.add(tr("Yedek seçilen klasöre kopyalanamadı (izin kaldırılmış olabilir): {0}", it.message))
                     engine.health.event(AlertKind.BACKUP, tr("Yedek seçilen klasöre kopyalanamadı (izin kaldırılmış olabilir): {0}", it.message), "folder")
                 }
         }
         remoteConfig()?.takeIf { kind == BackupKind.SCHEDULED || (kind == BackupKind.MANUAL && it.uploadManual) }?.let { r ->
             runCatching { upload(RemoteBackups(r), info) }.onFailure {
-                logs.add("Yedek buluta yüklenemedi: ${it.message}")
+                logs.add(tr("Yedek buluta yüklenemedi: {0}", it.message))
                 engine.health.event(AlertKind.BACKUP, tr("Yedek buluta yüklenemedi: {0}", it.message), "remote")
             }
         }
@@ -64,8 +64,8 @@ class BackupExporter(
 
     private fun upload(remote: RemoteBackups, info: BackupInfo): String {
         val name = remote.upload(info.file)
-        logs.add("Yedek buluta yüklendi (şifreli): $name")
-        remote.prune().forEach { logs.add("Buluttaki eski yedek silindi: $it") }
+        logs.add(tr("Yedek buluta yüklendi (şifreli): {0}", name))
+        remote.prune().forEach { logs.add(tr("Buluttaki eski yedek silindi: {0}", it)) }
         return name
     }
 
@@ -104,15 +104,15 @@ class BackupExporter(
     suspend fun restore(file: File, orchestrator: DeployOrchestrator) {
         if (engine.state.value is EngineState.Running) {
             val safety = backup(BackupKind.BEFORE_RESTORE)
-            logs.add("Geri yüklemeden önce mevcut durum yedeklendi: ${safety.name}")
+            logs.add(tr("Geri yüklemeden önce mevcut durum yedeklendi: {0}", safety.name))
         } else {
-            logs.add("Sunucu çalışmıyor; geri yükleme öncesi yedek alınamadı")
+            logs.add(tr("Sunucu çalışmıyor; geri yükleme öncesi yedek alınamadı"))
         }
         val current = if (repo.hasConfig()) repo.load() else ServerConfig.fromJson(repo.defaultConfigText())
         val merged = orchestrator.restore(file, current, engine.backupDirs)
         engine.audit.record(AuditLog.APP, "backup.restore", file.name)
         repo.saveText(merged.toJson())
-        logs.add("Geri yükleme tamamlandı; yedekteki konfigürasyon kaydedildi. Sır bulunamadı hatası alırsanız Sihirbaz → Güvenlik'te anahtarı yeniden üretin.")
+        logs.add(tr("Geri yükleme tamamlandı; yedekteki konfigürasyon kaydedildi. Sır bulunamadı hatası alırsanız Sihirbaz → Güvenlik'te anahtarı yeniden üretin."))
         file.delete()
     }
 }

@@ -114,9 +114,9 @@ class Mailer(
     private fun send(to: String, subject: String, text: String, html: String? = null) {
         try {
             sender.send(to, subject, text, html)
-            log("E-posta gönderildi: ${mask(to)} ($subject)")
+            log(tr("E-posta gönderildi: {0} ({1})", mask(to), subject))
         } catch (e: Exception) {
-            log("E-posta gönderilemedi (${mask(to)}): ${e.message}")
+            log(tr("E-posta gönderilemedi ({0}): {1}", mask(to), e.message))
         }
     }
 

@@ -102,7 +102,7 @@ fun ComponentsScreen(g: AppGraph, wizard: WizardViewModel) {
         withContext(Dispatchers.IO) {
             runCatching(block).onFailure {
                 error = it.message
-                g.logs.add("Bileşen hatası: ${it.message}")
+                g.logs.add(tr("Bileşen hatası: {0}", it.message))
             }
         }
         installed = g.components.installed()

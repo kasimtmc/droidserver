@@ -90,7 +90,7 @@ class WebhookDispatcher(
             if (!h.enabled || action !in h.events) continue
             if (h.collections.isNotEmpty() && collection !in h.collections) continue
             if (pending.get() >= maxPending) {
-                log("Webhook '${h.name}': bekleyen teslim sınırı (${maxPending}) doldu, olay atlandı")
+                log(tr("Webhook '{0}': bekleyen teslim sınırı ({1}) doldu, olay atlandı", h.name, maxPending))
                 continue
             }
             enqueue(h, "$collection.$action", collection, record)
@@ -123,7 +123,7 @@ class WebhookDispatcher(
                     val d = attempt(h, id, event, body, n, final = n == attempts)
                     if (d.ok) return@launch
                     if (n == attempts) {
-                        log("Webhook '${h.name}' teslim edilemedi ($event): ${d.error ?: "HTTP ${d.status}"}")
+                        log(tr("Webhook '{0}' teslim edilemedi ({1}): {2}", h.name, event, d.error ?: "HTTP ${d.status}"))
                         return@launch
                     }
                     delay(retryDelaysMs[n - 1])

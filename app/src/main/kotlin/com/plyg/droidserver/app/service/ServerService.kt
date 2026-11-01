@@ -148,13 +148,13 @@ class ServerService : Service() {
             installPendingTemplate(g)
             g.discovery.announce(result.config)
         } catch (e: DeployException) {
-            e.errors.forEach { g.logs.add("Konfigürasyon hatası: $it") }
+            e.errors.forEach { g.logs.add(tr("Konfigürasyon hatası: {0}", it)) }
             updateNotification(tr("Deploy başarısız: konfigürasyon hatalı"))
             g.engine.resumeWrites() // veri taşımadan sonra deploy başarısızsa eski sunucu salt okunur kalmasın
         } catch (t: Throwable) {
             g.engine.resumeWrites()
             val waitSec = minOf(60L, 5L shl minOf(attempt, 4))
-            g.logs.add("Deploy başarısız: ${t.message}; $waitSec sn sonra yeniden denenecek (deneme ${attempt + 1})")
+            g.logs.add(tr("Deploy başarısız: {0}; {1} sn sonra yeniden denenecek (deneme {2})", t.message, waitSec, attempt + 1))
             updateNotification(tr("Başlatılamadı, {0} sn sonra yeniden denenecek: {1}", waitSec, t.message))
             retryJob = scope.launch {
                 delay(waitSec * 1_000)
@@ -168,8 +168,8 @@ class ServerService : Service() {
         val pending = g.pendingTemplate.get()?.takeIf { !it.applyDraft } ?: return
         val template = AppTemplate.of(pending.id) ?: return g.pendingTemplate.clear()
         runCatching { g.engine.installTemplate(template, pending.samples, pending.site, overwriteSite = pending.site) }
-            .onSuccess { g.logs.add("${template.title} şablonu kuruldu: $it"); g.pendingTemplate.clear() }
-            .onFailure { g.logs.add("${template.title} şablonu kurulamadı: ${it.message}"); g.pendingTemplate.clear() }
+            .onSuccess { g.logs.add(tr("{0} şablonu kuruldu: {1}", template.title, it)); g.pendingTemplate.clear() }
+            .onFailure { g.logs.add(tr("{0} şablonu kurulamadı: {1}", template.title, it.message)); g.pendingTemplate.clear() }
     }
 
     override fun onDestroy() {
@@ -178,7 +178,7 @@ class ServerService : Service() {
         unwatchNetwork?.invoke()
         g.orchestrator.stopAll()
         g.discovery.stop()
-        g.logs.add("Sunucu durduruldu")
+        g.logs.add(tr("Sunucu durduruldu"))
         releaseLocks()
         scope.cancel()
         super.onDestroy()
@@ -226,7 +226,7 @@ class ServerService : Service() {
                     if (schedule?.due(LocalDateTime.now()) == true) {
                         runCatching { g.backups.backup(BackupKind.SCHEDULED) }
                             .onFailure {
-                                g.logs.add("Zamanlanmış yedek alınamadı: ${it.message}")
+                                g.logs.add(tr("Zamanlanmış yedek alınamadı: {0}", it.message))
                                 g.engine.health.event(AlertKind.BACKUP, tr("Zamanlanmış yedek alınamadı: {0}", it.message))
                             }
                     }
@@ -264,7 +264,7 @@ class ServerService : Service() {
                             },
                         ),
                     )
-                }.onFailure { g.logs.add("Sağlık denetimi başarısız: ${it.message}") }
+                }.onFailure { g.logs.add(tr("Sağlık denetimi başarısız: {0}", it.message)) }
                 // Widget'taki istek sayısı ve pil.
                 StatusWidget.refresh(this@ServerService)
                 delay(30_000)
@@ -325,7 +325,7 @@ class ServerService : Service() {
             val g = owner
             runBlocking { g.deployLock.withLock { g.orchestrator.stopAll() } }
             g.discovery.stop()
-            g.logs.add("Sunucu Telegram'dan durduruldu; komutlar dinleniyor")
+            g.logs.add(tr("Sunucu Telegram'dan durduruldu; komutlar dinleniyor"))
             // Uzun yoklama için kilit gerekmez (gelen yanıt cihazı uyandırır): pil tasarrufu.
             releaseLocks()
             updateNotification(tr("Durduruldu; Telegram'dan /baslat ile başlatılabilir"))

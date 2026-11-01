@@ -107,7 +107,7 @@ internal fun ReplicaCard(g: AppGraph, config: ServerConfig) {
                                 val cfg = g.configRepo.load()
                                 g.configRepo.saveText(Failover.promote(cfg, status?.primaryId).toJson())
                                 g.engine.audit.record(AuditLog.APP, "replica.promote", source.url)
-                            }.onFailure { g.logs.add("Devralınamadı: ${it.message}") }
+                            }.onFailure { g.logs.add(tr("Devralınamadı: {0}", it.message)) }
                         }
                         ServerService.deploy(ctx)
                     }

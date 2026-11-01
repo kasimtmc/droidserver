@@ -229,8 +229,8 @@ class ComponentManager(
             moduleLibDir?.let { linkModule(ctx.pkg, ctx.pkgDir, it()) }
             // Eski paketlerle kurulmuş bileşenler yeniden indirilmeden onarılır.
             if (repaired.add(ctx.pkgDir.path)) {
-                repairSymlinks(ctx.pkgDir).takeIf { it > 0 }?.let { log("${cfg.id}: $it sembolik bağlantı onarıldı") }
-                relocateTmp(ctx.pkgDir).takeIf { it > 0 }?.let { log("${cfg.id}: $it dosyada geçici klasör yolu uygulamanınkine çevrildi") }
+                repairSymlinks(ctx.pkgDir).takeIf { it > 0 }?.let { log(tr("{0}: {1} sembolik bağlantı onarıldı", cfg.id, it)) }
+                relocateTmp(ctx.pkgDir).takeIf { it > 0 }?.let { log(tr("{0}: {1} dosyada geçici klasör yolu uygulamanınkine çevrildi", cfg.id, it)) }
             }
         }
 
@@ -263,7 +263,7 @@ class ComponentManager(
     fun install(pkg: ComponentPackage) {
         moduleLibDir?.let { return installFromModule(pkg, it()) }
         val build = pkg.builds[abi] ?: error(tr("{0}: '{1}' mimarisi için derleme yok", pkg.id, abi))
-        log("${pkg.id} ${pkg.version} indiriliyor…")
+        log(tr("{0} {1} indiriliyor…", pkg.id, pkg.version))
         val bytes = download(build.url)
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
         require(digest.equals(build.sha256, ignoreCase = true)) { tr("{0}: sha256 uyuşmuyor", pkg.id) }
@@ -286,7 +286,7 @@ class ComponentManager(
         val setupDone = installed()[pkg.id]?.takeIf { it.version == pkg.version }?.setupDone ?: false
         saveRegistry(installed() + (pkg.id to InstalledComponent(pkg.id, pkg.version, pkg, setupDone, build.sha256)))
         repaired += target.path
-        log("${pkg.id} kuruldu: $target")
+        log(tr("{0} kuruldu: {1}", pkg.id, target))
     }
 
     /** Play modülünün kurduğu dosyalara bağlantılar oluşturur ve paketi kurulu sayar (indirme yok). */
@@ -301,7 +301,7 @@ class ComponentManager(
         File(pkgRoot, pkg.id).listFiles { f -> f != target && !f.name.startsWith(".") }.orEmpty().forEach { it.deleteRecursively() }
         val setupDone = installed()[pkg.id]?.takeIf { it.version == pkg.version }?.setupDone ?: false
         saveRegistry(installed() + (pkg.id to InstalledComponent(pkg.id, pkg.version, pkg, setupDone, pkg.builds[abi]?.sha256)))
-        log("${pkg.id} kuruldu (Play modülü): $target")
+        log(tr("{0} kuruldu (Play modülü): {1}", pkg.id, target))
     }
 
     /**
@@ -359,7 +359,7 @@ class ComponentManager(
         val marker = File(dataDir, SETUP_MARKER)
         if (pkg.setup.isNotEmpty() && inst.setupDone && !marker.exists()) runCatching { marker.writeText(inst.version) }
         if (!inst.setupDone && pkg.setup.isNotEmpty() && marker.exists()) {
-            log("${pkg.id}: ilk kurulum daha önce yapılmış; yeniden yapılmıyor")
+            log(tr("{0}: ilk kurulum daha önce yapılmış; yeniden yapılmıyor", pkg.id))
             saveRegistry(installed() + (pkg.id to inst.copy(setupDone = true)))
         } else if (!inst.setupDone && pkg.setup.isNotEmpty()) {
             setAsideIncomplete(pkg.id, dataDir)
@@ -369,7 +369,7 @@ class ComponentManager(
             try {
                 files.forEach { (file, content) -> writePrivate(file, content) }
                 for (cmd in pkg.setup) {
-                    log("${pkg.id} kurulum: ${cmd.joinToString(" ")}")
+                    log(tr("{0} kurulum: {1}", pkg.id, cmd.joinToString(" ")))
                     val p = ProcessBuilder(cmd.map(::expand)).directory(dataDir).redirectErrorStream(true)
                         .apply { environment().putAll(env) }.start()
                     p.outputStream.close() // girdi bekleyen komut takılmasın
@@ -446,7 +446,7 @@ class ComponentManager(
         File(dataRoot, componentId).deleteRecursively()
         dataRoot.listFiles { f -> f.name.startsWith("$componentId$ASIDE_SUFFIX") }.orEmpty().forEach { it.deleteRecursively() }
         saveRegistry(installed() + (componentId to inst.copy(setupDone = false)))
-        log("$componentId verisi silindi; sonraki başlatmada ilk kurulum yeniden yapılacak")
+        log(tr("{0} verisi silindi; sonraki başlatmada ilk kurulum yeniden yapılacak", componentId))
     }
 
     /** Kilit dosyasındaki PID [program] adlı canlı bir süreç değilse dosyayı siler. */
@@ -459,7 +459,7 @@ class ComponentManager(
             runCatching { runsProgram(File(proc, "cmdline").readText(), program) }.getOrDefault(true)
         if (alive) return
         lock.delete()
-        log("$id: eski kilit dosyası silindi (${lock.name}, PID ${pid ?: "?"} artık bu programa ait değil)")
+        log(tr("{0}: eski kilit dosyası silindi ({1}, PID {2} artık bu programa ait değil)", id, lock.name, pid ?: "?"))
     }
 
     /**
@@ -472,7 +472,7 @@ class ComponentManager(
         val aside = File(dataRoot, "$id$ASIDE_SUFFIX$stamp")
         check(dataDir.renameTo(aside)) { tr("{0}: yarım kalmış kurulum klasörü kenara alınamadı ({1})", id, dataDir.path) }
         dataDir.mkdirs()
-        log("$id: önceki yarım kalmış kurulumun dosyaları ${aside.name} klasörüne taşındı; ilk kurulum yeniden yapılıyor")
+        log(tr("{0}: önceki yarım kalmış kurulumun dosyaları {1} klasörüne taşındı; ilk kurulum yeniden yapılıyor", id, aside.name))
         dataRoot.listFiles { f -> f.isDirectory && f.name.startsWith("$id$ASIDE_SUFFIX") }.orEmpty()
             .sortedByDescending { it.name }.drop(2).forEach { it.deleteRecursively() }
     }
@@ -520,7 +520,7 @@ class ComponentManager(
         if (!dir.isDirectory || marker.exists()) return 0
         val width = TMP_PATHS.first().size
         if (target.length > width) {
-            log("Geçici klasör yolu çok uzun, binary'lere uygulanamıyor: $target")
+            log(tr("Geçici klasör yolu çok uzun, binary'lere uygulanamıyor: {0}", target))
             return 0
         }
         val replacement = ("/".repeat(width - target.length) + target).toByteArray()

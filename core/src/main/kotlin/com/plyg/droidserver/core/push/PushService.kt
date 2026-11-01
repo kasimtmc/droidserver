@@ -93,12 +93,12 @@ class PushService(
         val code = try {
             sender.send(sub, payload)
         } catch (e: Exception) {
-            log("Push gönderilemedi (${URI(sub.endpoint).host}): ${e.message}")
+            log(tr("Push gönderilemedi ({0}): {1}", URI(sub.endpoint).host, e.message))
             return
         }
         when {
             code == 404 || code == 410 -> runCatching { db.execute("DELETE FROM $table WHERE \"endpoint\" = ?", listOf(sub.endpoint)) }
-            code !in 200..299 -> log("Push servisi reddetti (${URI(sub.endpoint).host}): HTTP $code")
+            code !in 200..299 -> log(tr("Push servisi reddetti ({0}): HTTP {1}", URI(sub.endpoint).host, code))
         }
     }
 

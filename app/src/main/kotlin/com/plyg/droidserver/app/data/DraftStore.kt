@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import com.plyg.droidserver.core.i18n.tr
 
 /** Sihirbaz taslağının kalıcı saklandığı yer. Testlerde bellek içi sahtesi kullanılır. */
 interface DraftStore {
@@ -32,7 +33,7 @@ class FileDraftStore(
         scope.launch(Dispatchers.IO) {
             for (w in writes) {
                 runCatching { if (w.config == null) repo.clearDraft() else repo.saveDraft(w.config, w.base) }
-                    .onFailure { log("Taslak kaydedilemedi: ${it.message}") }
+                    .onFailure { log(tr("Taslak kaydedilemedi: {0}", it.message)) }
             }
         }
     }

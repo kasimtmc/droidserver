@@ -203,7 +203,7 @@ class AppGraph(context: Context, val profile: Profile, profiles: ProfileStore) {
                 withContext(Dispatchers.IO) { supervisor.stop(pkg.id) }
                 installComponent(activity, pkg) { _componentInstall.value = ComponentInstall(pkg.id, it) }
             }.exceptionOrNull()
-            failure?.let { logs.add("Bileşen hatası: ${it.message}") }
+            failure?.let { logs.add(tr("Bileşen hatası: {0}", it.message)) }
             _componentInstall.value = null
             onDone(failure)
         }

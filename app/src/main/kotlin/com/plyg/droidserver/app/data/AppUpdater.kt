@@ -78,7 +78,7 @@ class AppUpdater(
             _state.value = release?.let { UpdateState.Available(it) } ?: UpdateState.UpToDate(settings.lastUpdateCheck)
             if (release != null && notify && settings.notifiedVersion != release.version) {
                 settings.notifiedVersion = release.version
-                log("Yeni uygulama sürümü var: ${release.version}")
+                log(tr("Yeni uygulama sürümü var: {0}", release.version))
                 notifyAvailable(release)
             }
             release
@@ -112,7 +112,7 @@ class AppUpdater(
             _state.value = UpdateState.Installing(release)
             // Kurulumda uygulama kapanır; sunucu çalışıyorsa yeni sürüm açılınca yeniden başlatılır (BootReceiver).
             settings.restartAfterUpdate = engine.state.value is EngineState.Running
-            log("Güncelleme kuruluyor: ${release.version}")
+            log(tr("Güncelleme kuruluyor: {0}", release.version))
             install(apk)
         } catch (e: Exception) {
             _state.value = UpdateState.Failed(e.message ?: e.toString(), release)
@@ -123,11 +123,11 @@ class AppUpdater(
     fun onInstallResult(success: Boolean, message: String?) {
         val release = (state.value as? UpdateState.Installing)?.release
         if (success) {
-            log("Güncelleme kuruldu")
+            log(tr("Güncelleme kuruldu"))
             return
         }
         settings.restartAfterUpdate = false
-        log("Güncelleme kurulamadı: ${message ?: tr("bilinmeyen hata")}")
+        log(tr("Güncelleme kurulamadı: {0}", message ?: tr("bilinmeyen hata")))
         _state.value = if (message == null) {
             release?.let { UpdateState.Available(it) } ?: UpdateState.Idle // kullanıcı vazgeçti
         } else {
@@ -152,7 +152,7 @@ class AppUpdater(
                     "dışa aktarın, uygulamayı kaldırın, sürüm sayfasındaki APK'yı kurun ve yedeği geri yükleyin."),
             )
         }
-        if (next == null) log("Güncelleme: APK imzası bu Android sürümünde önceden okunamadı; denetimi Android yapacak")
+        if (next == null) log(tr("Güncelleme: APK imzası bu Android sürümünde önceden okunamadı; denetimi Android yapacak"))
     }
 
     private fun install(apk: File) {

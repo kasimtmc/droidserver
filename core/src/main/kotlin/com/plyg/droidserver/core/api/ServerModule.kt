@@ -505,11 +505,11 @@ fun Application.droidServerModule(
             while (true) {
                 if (!writes.isPaused) {
                     runCatching { writes.write { Retention.run(config, services, Instant.now(), log) } }
-                        .onSuccess { it.forEach { (c, n) -> log("Saklama süresi: '$c' koleksiyonunda $n eski kayıt silindi") } }
-                        .onFailure { log("Saklama süresi uygulanamadı: ${it.message}") }
+                        .onSuccess { it.forEach { (c, n) -> log(tr("Saklama süresi: '{0}' koleksiyonunda {1} eski kayıt silindi", c, n)) } }
+                        .onFailure { log(tr("Saklama süresi uygulanamadı: {0}", it.message)) }
                     runCatching { writes.write { RecordService.purgeExpired(db, files, Instant.now()) } }
-                        .onSuccess { if (it > 0) log("Çöp kutusu: süresi dolan $it kayıt kalıcı silindi") }
-                        .onFailure { log("Çöp kutusu temizlenemedi: ${it.message}") }
+                        .onSuccess { if (it > 0) log(tr("Çöp kutusu: süresi dolan {0} kayıt kalıcı silindi", it)) }
+                        .onFailure { log(tr("Çöp kutusu temizlenemedi: {0}", it.message)) }
                 }
                 delay(3_600_000)
             }
@@ -536,7 +536,7 @@ fun Application.droidServerModule(
                 // Yer tutucularda hem özgün hem API adları geçer.
                 val values = JsonObject(record + (names[collection]?.out(record) ?: record))
                 p.sendToUser(owner, p.message(PushService.fill(rule.title, values), PushService.fill(rule.body, values), rule.url?.let { PushService.fill(it, values) }, null))
-            }.onFailure { log("Push kuralı ($collection): ${it.message}") }
+            }.onFailure { log(tr("Push kuralı ({0}): {1}", collection, it.message)) }
         }
     }
 
@@ -598,12 +598,12 @@ fun Application.droidServerModule(
     }?.takeIf { b ->
         val ports = listOfNotNull(config.mqtt.port.takeIf { config.mqtt.plain || mqttTls == null }?.toString(), mqttTls?.let { "${config.mqtt.tlsPort} (TLS)" }).joinToString()
         runCatching { b.start() }
-            .onSuccess { log("MQTT $ports portunda dinliyor") }
-            .onFailure { log("MQTT başlatılamadı ($ports): ${it.message}") }
+            .onSuccess { log(tr("MQTT {0} portunda dinliyor", ports)) }
+            .onFailure { log(tr("MQTT başlatılamadı ({0}): {1}", ports, it.message)) }
             .isSuccess
     }
     if (mqtt != null) {
-        if (config.mqtt.homeAssistant.enabled) runCatching { HomeAssistant.announce(mqtt, config) }.onFailure { log("Home Assistant keşfi yayınlanamadı: ${it.message}") }
+        if (config.mqtt.homeAssistant.enabled) runCatching { HomeAssistant.announce(mqtt, config) }.onFailure { log(tr("Home Assistant keşfi yayınlanamadı: {0}", it.message)) }
         mqttHost?.broker = mqtt
         monitor.subscribe(ApplicationStopping) {
             mqtt.stop()
@@ -684,7 +684,7 @@ fun Application.droidServerModule(
                     textField?.let { put(it.name, ImageInsight.textValue(it, result.text)) }
                 })
                 writeInsight(c, id, body)
-            }.onFailure { log("Görsel incelenemedi (${c.name} #$id, ${f.name}): ${it.message}") }
+            }.onFailure { log(tr("Görsel incelenemedi ({0} #{1}, {2}): {3}", c.name, id, f.name, it.message)) }
         }
     }
 
@@ -751,7 +751,7 @@ fun Application.droidServerModule(
             while (true) {
                 if (!writes.isPaused) syncCollections.forEach { c ->
                     runCatching { writes.write { SyncLog.purge(db, c.name, c.sync!!.keepDays) } }
-                        .onFailure { log("Eşitleme izi temizlenemedi (${c.name}): ${it.message}") }
+                        .onFailure { log(tr("Eşitleme izi temizlenemedi ({0}): {1}", c.name, it.message)) }
                 }
                 delay(3_600_000)
             }
@@ -772,7 +772,7 @@ fun Application.droidServerModule(
         ChangeLog.install(db, ChangeLog.tables(config).map { it.name })
         val trimmer = launch(Dispatchers.IO) {
             while (true) {
-                runCatching { ChangeLog.trim(db, config.replication.keepDays) }.onFailure { log("Değişiklik günlüğü kısaltılamadı: ${it.message}") }
+                runCatching { ChangeLog.trim(db, config.replication.keepDays) }.onFailure { log(tr("Değişiklik günlüğü kısaltılamadı: {0}", it.message)) }
                 delay(3_600_000)
             }
         }
@@ -1449,7 +1449,7 @@ fun Application.droidServerModule(
                         failover.isFenced = true
                         stepDown.getAndSet(null)?.cancel()
                         io { runCatching { writes.pause(reason = tr("Bu sunucu devredildi; yeni ana sunucu: {0}", url)) } }
-                        log("Devredildi: yeni ana sunucu $url; bu sunucu onun kopyası olacak")
+                        log(tr("Devredildi: yeni ana sunucu {0}; bu sunucu onun kopyası olacak", url))
                         failover.fenced(url, key)
                     }
                     call.respond(HttpStatusCode.Accepted, buildJsonObject { put("status", JsonPrimitive("fenced")) })
@@ -1463,7 +1463,7 @@ fun Application.droidServerModule(
                         kotlinx.coroutines.delay(failover.timing.stepDownMs)
                         if (!failover.isFenced) writes.resume()
                     })?.cancel()
-                    log("Ana rol devrediliyor: yazmalar durdu")
+                    log(tr("Ana rol devrediliyor: yazmalar durdu"))
                     call.respond(buildJsonObject { put("latest", JsonPrimitive(io { ChangeLog.latest(db) })) })
                 }
                 endpoint(paths, Endpoint.REPLICATION_STEP_UP) {
@@ -1839,7 +1839,7 @@ fun Application.droidServerModule(
                         io { transfer.import(collection.name, format, text, mapping, ImportMode.of(q["mode"]), q["dryRun"] == "true") }
                     }
                     if (result.applied) {
-                        log("İçe aktarıldı: ${collection.name}, ${result.created} yeni, ${result.updated} güncellendi")
+                        log(tr("İçe aktarıldı: {0}, {1} yeni, {2} güncellendi", collection.name, result.created, result.updated))
                         call.audit("data.import", collection.name, tr("{0} yeni, {1} güncellendi", result.created, result.updated))
                     }
                     val status = if (result.errors.isNotEmpty()) HttpStatusCode.BadRequest else HttpStatusCode.OK

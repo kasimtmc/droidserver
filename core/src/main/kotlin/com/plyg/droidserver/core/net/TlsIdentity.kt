@@ -81,9 +81,9 @@ class TlsIdentity(val chain: List<X509Certificate>, val privateKey: PrivateKey) 
         /** Dosya varsa yükler; yoksa veya okunamıyorsa yeni kimlik üretip kaydeder. */
         fun loadOrCreate(file: File, password: CharArray, log: (String) -> Unit = {}): TlsIdentity {
             if (file.exists()) {
-                runCatching { return load(file, password) }.onFailure { log("HTTPS sertifikası okunamadı (${it.message}); yenisi üretiliyor") }
+                runCatching { return load(file, password) }.onFailure { log(tr("HTTPS sertifikası okunamadı ({0}); yenisi üretiliyor", it.message)) }
             }
-            return generate().also { it.save(file, password); log("HTTPS sertifikası üretildi: ${it.fingerprint}") }
+            return generate().also { it.save(file, password); log(tr("HTTPS sertifikası üretildi: {0}", it.fingerprint)) }
         }
 
         /** Yeni anahtar ve 2049'a kadar geçerli kendinden imzalı sertifika. */

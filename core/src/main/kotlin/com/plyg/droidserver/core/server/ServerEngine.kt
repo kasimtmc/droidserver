@@ -207,10 +207,10 @@ class ServerEngine(
 
     /** Bu ana sunucu devredildi: yeni ana sunucunun kopyası olur (önce yedek alınır). */
     private fun demote(url: String, key: String) {
-        val host = failover() ?: return log("Devredildi; bu sunucu salt okunur kaldı (konfigürasyon değiştirilemedi)")
+        val host = failover() ?: return log(tr("Devredildi; bu sunucu salt okunur kaldı (konfigürasyon değiştirilemedi)"))
         Thread({
             runCatching { host.change("replica.demoted", tr("Bu sunucu devredildi; {0} sunucusunun kopyası oluyor", url), true) { Failover.demote(it, url, key) } }
-                .onFailure { log("Kopyaya dönülemedi: ${it.message}") }
+                .onFailure { log(tr("Kopyaya dönülemedi: {0}", it.message)) }
         }, "ds-demote").apply { isDaemon = true; start() }
     }
 
@@ -235,12 +235,12 @@ class ServerEngine(
                         former.url, "/_replication/fence", former.key, "{}",
                         headers = mapOf("X-Replica-Port" to config.server.port.toString(), "X-Replica-Path" to config.server.basePath),
                     )
-                    log("Eski ana sunucu (${former.url}) devredildiğini öğrendi; bu sunucunun kopyası oluyor")
+                    log(tr("Eski ana sunucu ({0}) devredildiğini öğrendi; bu sunucunun kopyası oluyor", former.url))
                     audit.record(AuditLog.SYSTEM, "replica.fenced", former.url)
                     break
                 } catch (e: Exception) {
                     if (Thread.currentThread().isInterrupted) break
-                    if (!warned) log("Eski ana sunucuya (${former.url}) ulaşılamadı; dönünce kopyaya çevrilecek")
+                    if (!warned) log(tr("Eski ana sunucuya ({0}) ulaşılamadı; dönünce kopyaya çevrilecek", former.url))
                     warned = true
                 }
                 try {
@@ -361,10 +361,10 @@ class ServerEngine(
             throw t
         }
         log("Migration: $report")
-        report.warnings.forEach { log("Şema uyarısı: $it") }
+        report.warnings.forEach { log(tr("Şema uyarısı: {0}", it)) }
         runCatching { FieldEncryption.sync(newDriver, config, running) }
-            .onSuccess { if (it > 0) log("Alan şifreleme: $it değer dönüştürüldü") }
-            .onFailure { log("Alan şifreleme dönüştürülemedi: ${it.message}") }
+            .onSuccess { if (it > 0) log(tr("Alan şifreleme: {0} değer dönüştürüldü", it)) }
+            .onFailure { log(tr("Alan şifreleme dönüştürülemedi: {0}", it.message)) }
 
         // Script'ler eski sunucu kapanmadan derlenir: sözdizimi hatası deploy'u reddeder, çalışan sunucu sürer.
         val scripts = if (!config.scripts.enabled) null else try {
@@ -387,7 +387,7 @@ class ServerEngine(
             if (replaced != null) {
                 failoverPort.isFenced = true
                 gate.pause(reason = tr("Bu sunucu devredildi; yeni ana sunucu: {0}", replaced))
-                log("Bu sunucu yokken $replaced devraldı; yazmalar kapalı")
+                log(tr("Bu sunucu yokken {0} devraldı; yazmalar kapalı", replaced))
             }
             server = embeddedServer(CIO, port = config.server.port, host = config.server.host) {
                 droidServerModule(config, newDriver, startedAt, gate, fileStore, siteDir, resizer, scripts, metrics, adminSessions, adminHost, log = log, webhooks = webhooks, automationHost = automations, aiHost = ai, localAi = localAi, keyUsage = keyUsage, requestCounts = requestCounts, smsGuard = smsGuard, davDirs = mapOf("drive" to driveDir, "scripts" to scriptsDir), audit = audit, clientGuard = guard, health = health,
@@ -409,7 +409,7 @@ class ServerEngine(
             running = config
             _state.value = EngineState.Running(config.server.port, startedAt, report.toString())
             seedPendingPackages(newDriver, config, gate)
-            log("Sunucu ${config.server.host}:${config.server.port} üzerinde çalışıyor")
+            log(tr("Sunucu {0}:{1} üzerinde çalışıyor", config.server.host, config.server.port))
             audit.keepDays = config.audit.keepDays
             if (previous == null) {
                 audit.record(AuditLog.APP, "server.start", detail = "port ${config.server.port}")
@@ -630,12 +630,12 @@ class ServerEngine(
         val file = store.newFile(kind)
         try {
             val manifest = file.outputStream().buffered().use { BackupArchive.create(it, db, cfg, configText, backupDirs) }
-            log("Yedek alındı: ${file.name} (${manifest.tables.values.sum()} kayıt, ${file.length() / 1024} KB)")
+            log(tr("Yedek alındı: {0} ({1} kayıt, {2} KB)", file.name, manifest.tables.values.sum(), file.length() / 1024))
         } catch (t: Throwable) {
             file.delete()
             throw t
         }
-        if (kind == BackupKind.SCHEDULED) store.prune(cfg.backup.keep).forEach { log("Eski yedek silindi: ${it.name}") }
+        if (kind == BackupKind.SCHEDULED) store.prune(cfg.backup.keep).forEach { log(tr("Eski yedek silindi: {0}", it.name)) }
         return store.list().first { it.file == file }
     }
 
@@ -644,7 +644,7 @@ class ServerEngine(
         val gate = writes ?: return
         gate.pause()
         (_state.value as? EngineState.Running)?.let { _state.value = it.copy(writesPaused = true) }
-        log("Yazmalar geçici olarak kapatıldı (sunucu salt okunur)")
+        log(tr("Yazmalar geçici olarak kapatıldı (sunucu salt okunur)"))
     }
 
     @Synchronized
@@ -653,7 +653,7 @@ class ServerEngine(
         val gate = writes?.takeIf { it.isPaused } ?: return
         gate.resume()
         (_state.value as? EngineState.Running)?.let { _state.value = it.copy(writesPaused = false) }
-        log("Yazmalar yeniden açıldı")
+        log(tr("Yazmalar yeniden açıldı"))
     }
 
     @Synchronized

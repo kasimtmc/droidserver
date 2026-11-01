@@ -124,7 +124,7 @@ class AppManager(
             val release = AppRelease(id, Instant.now().toString(), source, commit, size)
             writeRelease(name, release)
             saveState(name, state(name).copy(pending = id))
-            log("[$name] yeni sürüm hazır: $id (${size / 1024} KB${commit?.let { ", commit ${it.take(12)}" } ?: ""}); deploy'da devreye girecek")
+            log(tr("[{0}] yeni sürüm hazır: {1} ({2} KB{3}); deploy'da devreye girecek", name, id, size / 1024, commit?.let { ", commit ${it.take(12)}" } ?: ""))
             return release
         } finally {
             work.deleteRecursively()
@@ -187,7 +187,7 @@ class AppManager(
         val st = state(app.name)
         if (st.current == releaseId && st.pending == null) return
         saveState(app.name, st.copy(current = releaseId, pending = st.pending?.takeIf { it != releaseId }))
-        log("[${app.name}] çalışan sürüm: $releaseId")
+        log(tr("[{0}] çalışan sürüm: {1}", app.name, releaseId))
         prune(app, releaseId)
     }
 
@@ -204,7 +204,7 @@ class AppManager(
         val pending = state(app.name).pending
         all.drop(app.keepReleases).filter { it.id != keep && it.id != pending }.forEach {
             releaseDir(app.name, it.id).deleteRecursively()
-            log("[${app.name}] eski sürüm silindi: ${it.id}")
+            log(tr("[{0}] eski sürüm silindi: {1}", app.name, it.id))
         }
     }
 
@@ -291,7 +291,7 @@ class AppManager(
 
     private fun runBuild(name: String, cmd: List<String>, dir: File, env: Map<String, String>, runtime: RuntimeInfo?) {
         val command = listOf(resolveProgram(cmd.first(), dir, runtime)) + cmd.drop(1)
-        log("[$name] kurulum: ${cmd.joinToString(" ")}")
+        log(tr("[{0}] kurulum: {1}", name, cmd.joinToString(" ")))
         val p = ProcessBuilder(command).directory(dir).redirectErrorStream(true).apply { environment().putAll(env) }.start()
         p.outputStream.close()
         val out = StringBuffer()
