@@ -1007,17 +1007,24 @@ fun Application.droidServerModule(
             endpoint(paths, Endpoint.SQL) {
                 requireAdmin(call.caller())
                 val body = call.receive<JsonObject>()
-                val sql = SqlConsole.check(body.text("query") ?: throw ApiException(400, tr("query gerekli")))
+                val raw = body.text("query") ?: throw ApiException(400, tr("query gerekli"))
                 val limit = (body["limit"] as? JsonPrimitive)?.intOrNull?.coerceIn(1, SqlConsole.MAX_LIMIT) ?: SqlConsole.DEFAULT_LIMIT
                 val started = System.nanoTime()
-                val result = try {
-                    io { db.readOnly(sql, limit, SqlConsole.TIMEOUT_SEC) }
+                // Reddedilen (yazma, sistem tablosu) ve hata veren sorgular da denetime yazılır, hata iletisiyle.
+                val (sql, result) = try {
+                    val sql = SqlConsole.check(raw)
+                    sql to try {
+                        io { db.readOnly(sql, limit, SqlConsole.TIMEOUT_SEC) }
+                    } catch (e: ApiException) {
+                        throw e
+                    } catch (e: UnsupportedOperationException) {
+                        throw ApiException(501, e.message ?: tr("Desteklenmiyor"))
+                    } catch (e: Exception) {
+                        throw ApiException(400, tr("Sorgu hatası: {0}", e.message.orEmpty().take(300)))
+                    }
                 } catch (e: ApiException) {
+                    call.audit("sql.query", raw.trim().take(200), e.message)
                     throw e
-                } catch (e: UnsupportedOperationException) {
-                    throw ApiException(501, e.message ?: tr("Desteklenmiyor"))
-                } catch (e: Exception) {
-                    throw ApiException(400, tr("Sorgu hatası: {0}", e.message.orEmpty().take(300)))
                 }
                 call.audit("sql.query", sql.take(200))
                 val masked = result.columns.map { it in encryptedColumns }

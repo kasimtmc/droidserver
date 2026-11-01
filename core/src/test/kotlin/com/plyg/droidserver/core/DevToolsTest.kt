@@ -92,7 +92,8 @@ class DevToolsTest {
     fun `sql ucu ve ornek veri`() = testApplication {
         val db = TestDb.create(Dialect.SQLITE).open()
         SchemaMigrator(db).migrate(config.schemaCollections())
-        application { droidServerModule(config, db) }
+        val audit = com.plyg.droidserver.core.audit.AuditLog(null)
+        application { droidServerModule(config, db, audit = audit) }
         suspend fun post(path: String, body: String, auth: String? = key) = client.post(path) { auth?.let(::bearerAuth); contentType(ContentType.Application.Json); setBody(body) }
 
         // Örnek veri: zorunlu ilişkinin hedefi boşken üretilemez.
@@ -124,6 +125,10 @@ class DevToolsTest {
         assertEquals(HttpStatusCode.Forbidden, post("/api/_sql", """{"query":"SELECT * FROM _ds_meta"}""").status)
         assertEquals(HttpStatusCode.BadRequest, post("/api/_sql", """{"query":"SELECT * FROM yok"}""").status, "sorgu hatası")
         assertEquals(HttpStatusCode.Unauthorized, post("/api/_sql", """{"query":"SELECT 1"}""", auth = null).status)
+        // Reddedilen yazma denemesi ve hata veren sorgu da denetimde (yetkisiz istek değil).
+        val logged = audit.list(action = "sql.query")
+        assertEquals(4, logged.size, logged.toString())
+        assertTrue(logged.any { it.target == "DELETE FROM tasks" && !it.detail.isNullOrBlank() }, logged.toString())
         db.close()
     }
 }
