@@ -106,6 +106,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 input, select, textarea {
   font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm);
   padding: 8px 12px; transition: border-color .15s;
+  /* size="40" gibi geniş alanlar dar ekranda satırı taşırmasın. */
+  max-width: 100%;
 }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: none; }
 input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); width: 16px; height: 16px; padding: 0; }
