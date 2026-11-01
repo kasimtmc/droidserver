@@ -528,7 +528,8 @@ class ServerEngine(
         val missing = template.collections().map { it.name }.filter { n -> cfg.collections.none { it.name == n } }
         if (missing.isNotEmpty()) throw IllegalStateException(tr("Şablonun koleksiyonları konfigürasyonda yok: {0}", missing.joinToString()))
         val done = mutableListOf<String>()
-        if (samples) {
+        // Örneği olmayan şablon (görev takibi: kayıtlar kullanıcıya özel) için örnek kayıt satırı yazılmaz.
+        if (samples && template.samples().isNotEmpty()) {
             val n = (writes ?: WriteGate()).write { template.seed(db, cfg) }
             done += if (n > 0) tr("{0} örnek kayıt", n) else tr("örnek kayıt eklenmedi (koleksiyonlar boş değil)")
         }

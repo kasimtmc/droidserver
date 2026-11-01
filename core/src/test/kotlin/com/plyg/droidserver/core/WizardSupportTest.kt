@@ -22,11 +22,13 @@ import com.plyg.droidserver.core.config.FieldDefaults
 import com.plyg.droidserver.core.config.FieldType
 import com.plyg.droidserver.core.config.HttpConfig
 import com.plyg.droidserver.core.config.ServerConfig
+import com.plyg.droidserver.core.config.UsersConfig
 import com.plyg.droidserver.core.config.accessToken
 import com.plyg.droidserver.core.config.withAccess
 import com.plyg.droidserver.core.config.withAccessToken
 import com.plyg.droidserver.core.db.JdbcSqlDriver
 import com.plyg.droidserver.core.server.ServerEngine
+import com.plyg.droidserver.core.templates.AppTemplate
 import kotlinx.serialization.json.JsonPrimitive
 import java.net.ServerSocket
 import java.nio.file.Files
@@ -194,6 +196,26 @@ class WizardSupportTest {
             // Filtre örneği cihaz içinden de denenebilir (köşeli parantezler kodlanır).
             val filtered = ApiProbe.get("http://127.0.0.1:$port${filter.path}", "Bearer $key")
             assertEquals(200, filtered.status, filtered.body)
+        } finally {
+            engine.stop()
+            file.delete()
+        }
+    }
+
+    @Test
+    fun `ornegi olmayan sablon ornek kayit iletisi yazmaz`() {
+        val file = Files.createTempFile("ds-tpl", ".db").toFile()
+        val port = ServerSocket(0).use { it.localPort }
+        val base = ServerConfig(
+            server = HttpConfig(host = "127.0.0.1", port = port),
+            auth = AuthConfig(AuthMode.API_KEY, apiKeys = listOf(ConfigDefaults.generateApiKey()), users = UsersConfig(sendVerification = false)),
+        )
+        val engine = ServerEngine({ JdbcSqlDriver(DriverManager.getConnection("jdbc:sqlite:${file.absolutePath}")) }) {}
+        try {
+            engine.deploy(AppTemplate.TASKS.apply(base))
+            assertEquals("yapılacak bir şey yok", engine.installTemplate(AppTemplate.TASKS, samples = true, site = false))
+            engine.deploy(AppTemplate.BLOG.apply(base))
+            assertEquals("7 örnek kayıt", engine.installTemplate(AppTemplate.BLOG, samples = true, site = false))
         } finally {
             engine.stop()
             file.delete()
