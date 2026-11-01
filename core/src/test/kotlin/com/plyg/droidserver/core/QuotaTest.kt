@@ -151,6 +151,17 @@ class QuotaTest(private val dialect: Dialect) {
     }
 
     @Test
+    fun `gunluk istek siniri yokken de istekler sayilir`() = testApplication {
+        val recordsOnly = config.copy(auth = config.auth.copy(users = config.auth.users.copy(quotas = QuotaConfig(records = 10))))
+        application { droidServerModule(recordsOnly, db, files = store) }
+        val ali = client.signup("ali@example.com")
+        repeat(3) { assertEquals(HttpStatusCode.Created, client.note(ali).status) }
+        val requests = client.usage(ali).getValue("requests").jsonObject
+        assertTrue(requests.getValue("today").jsonPrimitive.content.toInt() >= 3, "kullanıcı kartı 'bugün 0 istek' göstermesin: $requests")
+        assertEquals(JsonNull, requests.getValue("limit"))
+    }
+
+    @Test
     fun `kotasiz kullanim ozeti ve dogrulama`() = testApplication {
         val open = config.copy(auth = config.auth.copy(users = config.auth.users.copy(quotas = QuotaConfig())))
         application { droidServerModule(open, db, files = store) }

@@ -105,11 +105,15 @@ class QuotaService(
         }
     }
 
-    /** İstek başına bir kez (kullanıcı token'ı çözülünce): günlük sınır aşıldıysa 429. */
+    /**
+     * İstek başına bir kez (kullanıcı token'ı çözülünce): günlük sınır aşıldıysa 429. Sınır olmasa da sayılır; kullanım
+     * özetinde (Kullanıcılar ekranı) bugünkü istek sayısı görünsün.
+     */
     fun hit(user: Long, role: String? = null) {
         if (!active) return
+        val today = counter.hit(user)
         val limit = quotasFor(user, role).dailyRequests ?: return
-        if (counter.hit(user) > limit) {
+        if (today > limit) {
             throw ApiException(429, tr("Günlük istek kotası doldu ({0}); {1} itibarıyla sıfırlanır", limit, counter.resetsAt()), mapOf("quota" to "requests", "limit" to "$limit"))
         }
     }
