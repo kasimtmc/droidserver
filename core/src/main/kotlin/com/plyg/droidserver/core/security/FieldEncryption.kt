@@ -11,6 +11,7 @@ import com.plyg.droidserver.core.db.SqlDriver
 import com.plyg.droidserver.core.db.quoteIdent
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -86,7 +87,7 @@ object FieldEncryption {
             for (r in rows) {
                 val data = db.dialect.decode(FieldType.JSON, r["data"])?.toString()
                     ?.let { runCatching { Json.parseToJsonElement(it) as JsonObject }.getOrNull() } ?: continue
-                val value = data[f.name] ?: continue
+                val value = data[f.name]?.takeIf { it !is JsonNull } ?: continue
                 val raw = (value as? JsonPrimitive)?.takeIf { it.isString && f.type == FieldType.TEXT }?.content ?: value.toString()
                 val next = convert(f, raw, cipher, encrypt) ?: continue
                 val element: JsonElement = if (f.type == FieldType.TEXT) JsonPrimitive(next) else Json.parseToJsonElement(next)

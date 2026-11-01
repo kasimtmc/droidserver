@@ -32,6 +32,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -175,6 +176,21 @@ class FieldEncryptionTest(private val dialect: Dialect) {
         assertEquals("22222222222", raw("patients", "tc").single())
         assertTrue(raw("_history", "data").any { "11111111111" in it })
         assertEquals("""{"a":1}""", raw("patients", "notes").single().replace(" ", ""))
+    }
+
+    @Test
+    fun `gecmisteki bos deger sifrelenmez`() = testApplication {
+        val plain = config.copy(collections = listOf(patients.copy(fields = patients.fields.map { it.copy(encrypted = false) })))
+        application { droidServerModule(plain, db) }
+        client.send("POST", "/api/collections/patients/records", """{"name":"Ali"}""")
+        client.send("DELETE", "/api/collections/patients/records/1")
+
+        assertEquals(0, FieldEncryption.sync(db, config, null), "boş tc ve notes (JSON null) dönüştürülmez")
+        for (table in listOf("_history", "_trash")) {
+            val data = raw(table, "data").map { json(it) }
+            assertTrue(data.isNotEmpty())
+            assertTrue(data.all { it["tc"] is JsonNull && it["notes"] is JsonNull }, "$table: $data")
+        }
     }
 
     @Test
