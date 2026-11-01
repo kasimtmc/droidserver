@@ -4092,6 +4092,7 @@
  "Şifreleme parolası yanlış veya yedek dosyası bozuk": "Mot de passe de chiffrement incorrect ou fichier de sauvegarde corrompu",
  "Şifreli alan sensör olamaz: {0}": "Un champ chiffré ne peut pas être un capteur : {0}",
  "Şifreli alan var ama şifreleme anahtarı yok; sihirbaz anahtarı kendisi üretir": "Il y a des champs chiffrés mais aucune clé de chiffrement ; l'assistant génère la clé lui-même",
+ "Şifreli alan yok. Başka telefondan şifreli alanları olan bir yedek taşıyorsanız önce o anahtarı girip deploy edin, sonra geri yükleyin.": "Aucun champ chiffré. Si vous transférez une sauvegarde avec des champs chiffrés depuis un autre téléphone, saisissez d'abord cette clé et déployez, puis restaurez.",
  "Şifreli depoda saklanır, konfigürasyon dosyasına yazılmaz.": "Conservé dans le stockage chiffré, pas écrit dans le fichier de configuration.",
  "Şifreli depoda saklanır.": "Conservé dans le coffre chiffré.",
  "Şifreli depoda saklanır. Adlandırılmış tam yetkili bir anahtar önerilir (iptal edilebilir).": "Conservé dans le stockage chiffré. Une clé nommée avec toutes les permissions est recommandée (elle peut être révoquée).",

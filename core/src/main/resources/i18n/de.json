@@ -4092,6 +4092,7 @@
  "Şifreleme parolası yanlış veya yedek dosyası bozuk": "Falsches Verschlüsselungspasswort oder beschädigte Sicherungsdatei",
  "Şifreli alan sensör olamaz: {0}": "Ein verschlüsseltes Feld kann kein Sensor sein: {0}",
  "Şifreli alan var ama şifreleme anahtarı yok; sihirbaz anahtarı kendisi üretir": "Es gibt verschlüsselte Felder, aber keinen Verschlüsselungsschlüssel; der Assistent generiert den Schlüssel selbst",
+ "Şifreli alan yok. Başka telefondan şifreli alanları olan bir yedek taşıyorsanız önce o anahtarı girip deploy edin, sonra geri yükleyin.": "Keine verschlüsselten Felder. Wenn Sie ein Backup mit verschlüsselten Feldern von einem anderen Telefon übertragen, geben Sie zuerst diesen Schlüssel ein und deployen Sie, dann stellen Sie es wieder her.",
  "Şifreli depoda saklanır, konfigürasyon dosyasına yazılmaz.": "Im verschlüsselten Speicher gespeichert, nicht in die Konfigurationsdatei geschrieben.",
  "Şifreli depoda saklanır.": "Im verschlüsselten Tresor gespeichert.",
  "Şifreli depoda saklanır. Adlandırılmış tam yetkili bir anahtar önerilir (iptal edilebilir).": "Im verschlüsselten Speicher gespeichert. Ein benannter Schlüssel mit vollen Berechtigungen wird empfohlen (er kann widerrufen werden).",

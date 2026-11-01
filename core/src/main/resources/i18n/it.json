@@ -4092,6 +4092,7 @@
  "Şifreleme parolası yanlış veya yedek dosyası bozuk": "Password di cifratura errata o file di backup danneggiato",
  "Şifreli alan sensör olamaz: {0}": "Un campo cifrato non può essere un sensore: {0}",
  "Şifreli alan var ama şifreleme anahtarı yok; sihirbaz anahtarı kendisi üretir": "Ci sono campi cifrati ma nessuna chiave di cifratura; la procedura guidata genera la chiave da sola",
+ "Şifreli alan yok. Başka telefondan şifreli alanları olan bir yedek taşıyorsanız önce o anahtarı girip deploy edin, sonra geri yükleyin.": "Nessun campo cifrato. Se stai trasferendo un backup con campi cifrati da un altro telefono, inserisci prima quella chiave ed esegui il deploy, poi ripristina.",
  "Şifreli depoda saklanır, konfigürasyon dosyasına yazılmaz.": "Salvato nell'archivio cifrato, non scritto nel file di configurazione.",
  "Şifreli depoda saklanır.": "Salvato nell'archivio cifrato.",
  "Şifreli depoda saklanır. Adlandırılmış tam yetkili bir anahtar önerilir (iptal edilebilir).": "Salvata nell'archivio cifrato. Si consiglia una chiave con nome e permessi completi (può essere revocata).",

@@ -4092,6 +4092,7 @@
  "Şifreleme parolası yanlış veya yedek dosyası bozuk": "كلمة مرور التشفير خاطئة أو ملف النسخة الاحتياطية تالف",
  "Şifreli alan sensör olamaz: {0}": "لا يمكن أن يكون الحقل المشفّر مستشعرًا: {0}",
  "Şifreli alan var ama şifreleme anahtarı yok; sihirbaz anahtarı kendisi üretir": "توجد حقول مشفّرة لكن لا يوجد مفتاح تشفير؛ ينشئ المعالج المفتاح بنفسه",
+ "Şifreli alan yok. Başka telefondan şifreli alanları olan bir yedek taşıyorsanız önce o anahtarı girip deploy edin, sonra geri yükleyin.": "لا توجد حقول مشفرة. إذا كنت تنقل نسخة احتياطية تحتوي على حقول مشفرة من هاتف آخر، فأدخل ذلك المفتاح أولًا ونفّذ النشر (deploy)، ثم استعد النسخة.",
  "Şifreli depoda saklanır, konfigürasyon dosyasına yazılmaz.": "يُخزَّن في التخزين المشفّر، ولا يُكتب في ملف الإعدادات.",
  "Şifreli depoda saklanır.": "يُخزَّن في المخزن المشفّر.",
  "Şifreli depoda saklanır. Adlandırılmış tam yetkili bir anahtar önerilir (iptal edilebilir).": "يُخزَّن في التخزين المشفّر. يُنصح بمفتاح مسمّى بصلاحيات كاملة (يمكن إلغاؤه).",

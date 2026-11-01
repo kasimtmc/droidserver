@@ -4092,6 +4092,7 @@
  "Şifreleme parolası yanlış veya yedek dosyası bozuk": "Неверный пароль шифрования или повреждённый файл резервной копии",
  "Şifreli alan sensör olamaz: {0}": "Зашифрованное поле не может быть датчиком: {0}",
  "Şifreli alan var ama şifreleme anahtarı yok; sihirbaz anahtarı kendisi üretir": "Есть зашифрованные поля, но нет ключа шифрования; мастер сгенерирует ключ сам",
+ "Şifreli alan yok. Başka telefondan şifreli alanları olan bir yedek taşıyorsanız önce o anahtarı girip deploy edin, sonra geri yükleyin.": "Зашифрованных полей нет. Если вы переносите резервную копию с зашифрованными полями с другого телефона, сначала введите тот ключ и выполните деплой, затем восстановите копию.",
  "Şifreli depoda saklanır, konfigürasyon dosyasına yazılmaz.": "Хранится в зашифрованном хранилище, в файл конфигурации не записывается.",
  "Şifreli depoda saklanır.": "Хранится в зашифрованном хранилище.",
  "Şifreli depoda saklanır. Adlandırılmış tam yetkili bir anahtar önerilir (iptal edilebilir).": "Хранится в зашифрованном хранилище. Рекомендуется именованный ключ с полными правами (его можно отозвать).",

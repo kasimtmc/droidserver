@@ -35,9 +35,18 @@ internal fun FieldKeySection(vm: WizardViewModel, draft: ServerConfig) {
     val ctx = LocalContext.current
     val ref = draft.database.fieldKey
     val encrypted = draft.collections.sumOf { c -> c.fields.count { it.encrypted } }
-    if (ref == null && encrypted == 0) return
     var entering by remember { mutableStateOf(false) }
     Text(tr("Alan şifreleme"), style = MaterialTheme.typography.titleMedium)
+    if (ref == null && encrypted == 0) {
+        // Yeni telefonda şifreli alanlı yedeği geri yüklemek için anahtar önce burada girilir.
+        Text(
+            tr("Şifreli alan yok. Başka telefondan şifreli alanları olan bir yedek taşıyorsanız önce o anahtarı girip deploy edin, sonra geri yükleyin."),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        TextButton(onClick = { entering = true }) { Text(tr("Var olan anahtarı gir")) }
+        if (entering) ExistingKeyDialog(vm) { entering = false }
+        return
+    }
     val key = ref?.let(vm::secretValue)
     val keyId = key?.let { runCatching { FieldCipher.of(it).keyId }.getOrNull() }
     Text(
@@ -51,29 +60,32 @@ internal fun FieldKeySection(vm: WizardViewModel, draft: ServerConfig) {
         if (key != null) OutlinedButton(onClick = { copySecret(ctx, tr("şifreleme anahtarı"), key) }) { Text(tr("Anahtarı kopyala")) }
         TextButton(onClick = { entering = true }) { Text(tr("Var olan anahtarı gir")) }
     }
-    if (entering) {
-        var text by remember { mutableStateOf("") }
-        val valid = runCatching { FieldCipher.of(text) }.isSuccess
-        AlertDialog(
-            onDismissRequest = { entering = false },
-            title = { Text(tr("Var olan anahtarı gir")) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    WarningText(
-                        tr("Yalnızca başka telefondan taşınan yedek için. Bu sunucuda başka anahtarla şifrelenmiş kayıt varsa onlar açılamaz hale gelir."),
-                    )
-                    OutlinedTextField(
-                        value = text, onValueChange = { text = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                        label = { Text(tr("Anahtar (base64)")) }, isError = text.isNotEmpty() && !valid,
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                    )
-                    if (text.isNotEmpty() && !valid) ErrorText(tr("Şifreleme anahtarı 32 baytlık base64 olmalı"))
-                }
-            },
-            confirmButton = {
-                TextButton(enabled = valid, onClick = { vm.setFieldKey(text); entering = false }) { Text(tr("Kaydet")) }
-            },
-            dismissButton = { TextButton(onClick = { entering = false }) { Text(tr("Vazgeç")) } },
-        )
-    }
+    if (entering) ExistingKeyDialog(vm) { entering = false }
+}
+
+@Composable
+private fun ExistingKeyDialog(vm: WizardViewModel, close: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    val valid = runCatching { FieldCipher.of(text) }.isSuccess
+    AlertDialog(
+        onDismissRequest = close,
+        title = { Text(tr("Var olan anahtarı gir")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                WarningText(
+                    tr("Yalnızca başka telefondan taşınan yedek için. Bu sunucuda başka anahtarla şifrelenmiş kayıt varsa onlar açılamaz hale gelir."),
+                )
+                OutlinedTextField(
+                    value = text, onValueChange = { text = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    label = { Text(tr("Anahtar (base64)")) }, isError = text.isNotEmpty() && !valid,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                )
+                if (text.isNotEmpty() && !valid) ErrorText(tr("Şifreleme anahtarı 32 baytlık base64 olmalı"))
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = valid, onClick = { vm.setFieldKey(text); close() }) { Text(tr("Kaydet")) }
+        },
+        dismissButton = { TextButton(onClick = close) { Text(tr("Vazgeç")) } },
+    )
 }

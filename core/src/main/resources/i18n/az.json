@@ -4092,6 +4092,7 @@
  "Şifreleme parolası yanlış veya yedek dosyası bozuk": "Şifrələmə parolu səhvdir və ya ehtiyat nüsxə faylı zədələnib",
  "Şifreli alan sensör olamaz: {0}": "Şifrələnmiş sahə sensor ola bilməz: {0}",
  "Şifreli alan var ama şifreleme anahtarı yok; sihirbaz anahtarı kendisi üretir": "Şifrələnmiş sahələr var, lakin şifrələmə açarı yoxdur; sehrbaz açarı özü yaradır",
+ "Şifreli alan yok. Başka telefondan şifreli alanları olan bir yedek taşıyorsanız önce o anahtarı girip deploy edin, sonra geri yükleyin.": "Şifrələnmiş sahə yoxdur. Başqa telefondan şifrələnmiş sahələri olan ehtiyat nüsxəni köçürürsünüzsə, əvvəlcə həmin açarı daxil edib deploy edin, sonra bərpa edin.",
  "Şifreli depoda saklanır, konfigürasyon dosyasına yazılmaz.": "Şifrələnmiş yaddaşda saxlanılır, konfiqurasiya faylına yazılmır.",
  "Şifreli depoda saklanır.": "Şifrələnmiş yaddaşda saxlanılır.",
  "Şifreli depoda saklanır. Adlandırılmış tam yetkili bir anahtar önerilir (iptal edilebilir).": "Şifrələnmiş yaddaşda saxlanılır. Tam səlahiyyətli adlı açar tövsiyə olunur (ləğv edilə bilər).",
