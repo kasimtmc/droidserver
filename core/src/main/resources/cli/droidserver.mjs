@@ -345,7 +345,8 @@ const commands = {
     const s = session(opt);
     const health = await http(s, "GET", "/health");
     const metrics = await http(s, "GET", "/_metrics").catch(() => null);
-    const phone = await http(s, "GET", "/_phone/status").catch(() => null);
+    // Telefon özellikleri kapalıysa /_phone/status yoktur; pil ve boş alan metriklerde de var.
+    const phone = await http(s, "GET", "/_phone/status").catch(() => null) ?? metrics?.device ?? null;
     if (opt.json) return print({ health, metrics, phone }, opt);
     const up = Math.round((Date.now() - Date.parse(health.startedAt)) / 60000);
     process.stdout.write(`${health.name} · ${t("çalışıyor", "running")} · ${up} ${t("dk", "min")} · ${health.collections} ${t("koleksiyon", "collections")}\n`);

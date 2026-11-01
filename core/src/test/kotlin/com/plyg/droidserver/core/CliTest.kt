@@ -34,7 +34,11 @@ class CliTest {
         db = TestDb.create(Dialect.SQLITE).open()
         SchemaMigrator(db).migrate(SdkConfig.config.schemaCollections())
         dir = Files.createTempDirectory("ds-cli").toFile()
-        server = embeddedServer(CIO, port = 0) { droidServerModule(SdkConfig.config, db) }.start(wait = false)
+        // Telefon özellikleri kapalı (/_phone/status yok); cihaz durumu yalnızca metriklerde.
+        val metrics = com.plyg.droidserver.core.metrics.Metrics().apply {
+            sampleDevice(com.plyg.droidserver.core.metrics.DeviceSnapshot(batteryPercent = 87, charging = true, freeStorageBytes = 5L * 1024 * 1048576))
+        }
+        server = embeddedServer(CIO, port = 0) { droidServerModule(SdkConfig.config, db, metrics = metrics) }.start(wait = false)
         base = "http://127.0.0.1:${runBlocking { server.engine.resolvedConnectors().first().port }}/api"
     }
 
@@ -78,7 +82,7 @@ class CliTest {
         assertEquals(setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE), Files.getPosixFilePermissions(cfg.toPath()))
         assertTrue(SdkConfig.KEY !in ok("whoami"), "anahtar ekrana yazılmaz")
 
-        ok("status").let { assertTrue("running" in it, it) }
+        ok("status").let { assertTrue("running" in it && "battery 87% (charging)" in it && "free 5120 MB" in it, it) }
         ok("collections").let { assertTrue("todo_items" in it, it) }
 
         val created = Json.parseToJsonElement(ok("create", "todo_items", """{"title":"Milk","qty":2}""", "--json")).jsonObject
