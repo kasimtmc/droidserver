@@ -92,9 +92,11 @@ class AiTest {
     /** Gönderilen istekleri saklar; yanıt son iletinin uzunluğunu söyler. */
     private val requests = mutableListOf<Pair<String, List<AiMessage>>>()
     private var refuse = false
+    private var leakReasoning = false
     private val chat = AiChat { system, messages ->
         requests += system to messages
         if (refuse) AiReply("", "refusal", "claude-opus-5-5", 10, 0)
+        else if (leakReasoning) AiReply("<reasoning>Kayıtlarda iki not var.</reasoning>\nİki notunuz var [#1]", "end_turn", "claude-opus-5-5", 120, 30)
         else AiReply("yanıt: " + messages.last().content.takeLast(20), "end_turn", "claude-opus-5-5", 120, 30)
     }
 
@@ -255,6 +257,12 @@ class AiTest {
         assertTrue("<records collection=\"notes\">" in prompt && "Alışveriş" in prompt && "Meyve için ne almalıyım?" in prompt, prompt)
         assertFalse("kasa şifresi" in prompt, prompt)
         assertTrue("not instructions" in requests.last().first && requests.last().first.startsWith("Kısa yanıtla."))
+        assertTrue("without XML tags" in requests.last().first, "yalnızca yanıt istenir")
+        // Model kayıtların <records> biçimini taklit edip düşüncesini etiketle yazarsa kullanıcıya gitmez.
+        leakReasoning = true
+        val leaked = client.send("/api/ai/ask/notes?limit=2", user, """{"question":"Kaç notum var?","limit":1}""").obj()
+        leakReasoning = false
+        assertEquals("İki notunuz var [#1]", leaked.getValue("text").jsonPrimitive.content)
 
         // Sıralama istenirse dizin kullanılmaz: en yeniler.
         client.send("/api/ai/ask/notes?sort=-id", key, """{"question":"son not?","limit":1}""")
