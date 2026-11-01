@@ -87,6 +87,8 @@ android {
             // R8: küçültme ve karartma (Play "DEX kodu optimizasyonu"). Yansımayla çalışan kütüphanelerin kuralları
             // proguard-rules.pro'da; çözümleme dosyası build/outputs/mapping/<tür>Release/mapping.txt.
             isMinifyEnabled = true
+            // Kullanılmayan kaynaklar (kütüphanelerin görselleri, düzenleri) da çıkarılır.
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
             // Tekrarlanabilir derleme (F-Droid aynı kaynaktan aynı APK'yı üretebilsin): derleme ortamına bağlı Git bilgisi

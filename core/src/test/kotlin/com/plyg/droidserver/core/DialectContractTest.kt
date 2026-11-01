@@ -8,6 +8,7 @@ import com.plyg.droidserver.core.config.CollectionConfig
 import com.plyg.droidserver.core.config.Rules
 import com.plyg.droidserver.core.config.Rule
 import com.plyg.droidserver.core.config.FieldConfig
+import com.plyg.droidserver.core.config.SystemCollections
 import com.plyg.droidserver.core.config.FieldType
 import com.plyg.droidserver.core.config.ServerConfig
 import com.plyg.droidserver.core.db.SchemaMigrator
@@ -34,6 +35,7 @@ import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /** CRUD, kimlik doğrulama ve migration her iki lehçede aynı davranmalı: SQLite ve PostgreSQL. */
@@ -76,6 +78,32 @@ class DialectContractTest(private val dialect: Dialect) {
         assertEquals(4, r2.addedColumns.size)
         val r3 = SchemaMigrator(db).migrate(listOf(todos.copy(fields = todos.fields.drop(1))))
         assertEquals(listOf("todos.title"), r3.orphanColumns)
+    }
+
+    @Test
+    fun `kullanilmayan tablo yalnizca istenince ve kaldirilan koleksiyonsa silinir`() {
+        val notes = CollectionConfig("notes", listOf(FieldConfig("text", FieldType.TEXT)))
+        val m = SchemaMigrator(db)
+        m.migrate(listOf(todos, notes) + SystemCollections.history)
+        val t = "'2026-11-01T00:00:00Z', '2026-11-01T00:00:00Z'"
+        db.execute("""INSERT INTO "notes" ("text", "created_at", "updated_at") VALUES ('a', $t), ('b', $t)""")
+        db.execute("""INSERT INTO "_history" ("collection", "record", "version", "action", "created_at", "updated_at") VALUES ('notes', 1, 1, 'create', $t), ('todos', 1, 1, 'create', $t)""")
+        m.migrate(listOf(todos))
+        val inUse = setOf("todos")
+        if (dialect == Dialect.SQLITE) db.execute("""CREATE TABLE "android_metadata" ("locale" TEXT)""") // Android'in kendi tablosu
+
+        assertEquals(mapOf("notes" to 2L), m.unusedTables(inUse), "_history sistem tablosu: listede yok")
+        assertEquals(emptyMap(), m.unusedTables(inUse + "notes"), "taslakta geri eklenmiş koleksiyon silinmez")
+        assertFailsWith<IllegalArgumentException> { m.dropUnusedTables(listOf("notes", "todos"), inUse) }
+        assertFailsWith<IllegalArgumentException> { m.dropUnusedTables(listOf("_history"), inUse) }
+        assertTrue("notes" in db.dialect.listTables(db), "reddedilince hiçbir şey silinmez")
+
+        m.dropUnusedTables(listOf("notes"), inUse)
+        assertTrue("notes" !in db.dialect.listTables(db))
+        assertEquals(listOf("todos"), db.query("""SELECT "collection" FROM "_history"""").map { it["collection"] })
+        assertTrue(db.query("""SELECT "key" FROM "_ds_meta"""").none { (it["key"] as String).startsWith("field:notes.") })
+        // Aynı adla yeniden açılan koleksiyon eski alan tiplerine takılmadan kurulur.
+        m.migrate(listOf(todos, CollectionConfig("notes", listOf(FieldConfig("text", FieldType.INTEGER)))))
     }
 
     @Test

@@ -1286,6 +1286,11 @@ başlar (panel eşitleme ve güvenli bağlantılar bunların temelidir). Dört g
   Plan ve liste uçları kurulumla aynı konfigürasyondan, diskteki dosyadan okur (`AdminHost.planPackage`, `configText`;
   26 Ekim 2026'ya dek çalışan konfigürasyondan: son deploy başarısızsa kurulu paket listede yoktu, planda "zaten var"
   çakışmasıyla engelli görünüyordu).
+  Kullanılmayan tabloların silinmesi (1 Kasım 2026): sihirbazın Özet adımında "Kullanılmayan tablolar" kartı, kaldırılmış
+  koleksiyonlardan kalan tablolar kayıt sayısıyla, her biri onaylı "Sil" ile (`ServerEngine.unusedTables` /
+  `dropUnusedTables`, `SchemaMigrator`). Tabloyla birlikte geçmiş, çöp kutusu, tam metin dizini, alan tipleri ve dosyalar
+  silinir. Sistem tabloları (`_` ile başlar), çalışan sunucunun ve taslağın kullandıkları silinemez. Android'in
+  `android_metadata` tablosu da artık "kullanılmıyor" sayılmaz. Cihazda (Xiaomi): blog'un comments'i kaldırılıp silindi.
 
 ### Grup 4 — Ödemeler
 
@@ -1546,6 +1551,8 @@ modeller veri), ödemeler (Play'in ödeme kuralı uygulamanın kendi dijital sat
   SDK kendi R8 kurallarını getirir; bizim kuralı kaldırınca DEX 35 MB'tan 12 MB'a indi (Play şartı Şubat 2027'den, 10 MB
   üstü DEX'te en az %25). Cihazda (Xiaomi) sahte anahtarla Claude isteği: istek kuruldu, 401 yanıtı SDK'dan okundu.
   "Optimizasyon ekleme" (Play Console → Gelişmiş ayarlar) kapalı kalır: Play'in koda ne yaptığı belgelenmemiş.
+  Kaynak küçültme de açık (`isShrinkResources`): kütüphanelerin kullanılmayan kaynakları çıkar (55 → 10 dosya); ekran
+  yoğunluğu parçası artık oluşmaz. Cihazda bildirim simgesi ve iki ekran aracı denendi.
 
 ### Kabul (her grup)
 - İki tür de `:core:test`, `:app:testFullDebugUnitTest`, `:app:testPlayDebugUnitTest`, `:app:lintFullDebug`, `:app:lintPlayDebug` temiz; `full` türünün davranışı ve APK'sı

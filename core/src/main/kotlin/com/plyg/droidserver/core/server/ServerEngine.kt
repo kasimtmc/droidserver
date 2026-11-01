@@ -428,9 +428,28 @@ class ServerEngine(
      * onun bağlantısı, değilse geçici bir bağlantı kullanılır.
      */
     @Synchronized
-    fun plan(config: ServerConfig): MigrationPlan {
-        driver?.takeIf { database == config.database }?.let { return SchemaMigrator(it).plan(config.schemaCollections()) }
-        return openDatabase(config.database).use { SchemaMigrator(it).plan(config.schemaCollections()) }
+    fun plan(config: ServerConfig): MigrationPlan = withSchema(config) { it.plan(config.schemaCollections()) }
+
+    /**
+     * [config]'in veritabanında kaldırılmış koleksiyonlardan kalan tablolar ve satır sayıları. Kullanımda sayılanlar:
+     * [config], çalışan konfigürasyon ve [keep] (örn. sihirbaz taslağındaki koleksiyonlar). Bloklayıcıdır.
+     */
+    fun unusedTables(config: ServerConfig, keep: Set<String> = emptySet()): Map<String, Long> =
+        withSchema(config) { it.unusedTables(inUse(config, keep)) }
+
+    /** [unusedTables]'dakileri ve kayıtlarının dosyalarını kalıcı olarak siler (bkz. [SchemaMigrator.dropUnusedTables]). */
+    fun dropUnusedTables(config: ServerConfig, tables: Collection<String>, keep: Set<String> = emptySet()) {
+        withSchema(config) { it.dropUnusedTables(tables, inUse(config, keep)) }
+        fileStore?.let { fs -> tables.forEach { File(fs.root, it).deleteRecursively() } }
+        log(tr("Kullanılmayan tablolar silindi: {0}", tables.joinToString()))
+    }
+
+    private fun inUse(config: ServerConfig, keep: Set<String>) =
+        (config.schemaCollections() + running?.schemaCollections().orEmpty()).map { it.name }.toSet() + keep
+
+    private fun <T> withSchema(config: ServerConfig, block: (SchemaMigrator) -> T): T {
+        driver?.takeIf { database == config.database }?.let { return block(SchemaMigrator(it)) }
+        return openDatabase(config.database).use { block(SchemaMigrator(it)) }
     }
 
     /**

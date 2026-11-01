@@ -287,6 +287,36 @@ class SchemaMigrator(private val db: SqlDriver) {
         )
     }
 
+    /**
+     * Hiçbir koleksiyonun ([inUse]: tablo adları) kullanmadığı, kaldırılmış koleksiyonlardan kalan tablolar ve satır
+     * sayıları. Sistem tabloları (`_` ile başlar: hesaplar, ödemeler …) özellik kapatılınca da kullanılmıyor görünür ama
+     * yeniden açılınca gerekir; listeye girmez.
+     */
+    fun unusedTables(inUse: Set<String>): Map<String, Long> =
+        dialect.listTables(db).filter { it.matches(USER_TABLE) && it !in inUse }.sorted()
+            .associateWith { count("SELECT COUNT(*) AS n FROM ${quoteIdent(it)}") }
+
+    /**
+     * [unusedTables]'daki tabloları kalıcı olarak siler: tabloyla birlikte alan tipleri ve arama ayarları (`_ds_meta`),
+     * tam metin dizini, kayıt geçmişi ve çöp kutusundaki kayıtları da. Kullanımda olan ya da sistem tablosu için
+     * [IllegalArgumentException]; hiçbir şey silinmez. Kayıtların dosyalarını çağıran siler.
+     */
+    fun dropUnusedTables(tables: Collection<String>, inUse: Set<String>): Unit = db.transaction {
+        val unused = unusedTables(inUse).keys
+        val refused = tables.filterNot { it in unused }
+        require(refused.isEmpty()) { tr("Kullanılmayan tablo değil: {0}", refused.joinToString()) }
+        val allTables = dialect.listTables(db)
+        val metaKeys = if (META_TABLE in allTables) db.query("""SELECT "key" FROM ${quoteIdent(META_TABLE)}""").map { it["key"] as String } else emptyList()
+        for (t in tables) {
+            db.execute("DROP TABLE ${quoteIdent(t)}")
+            metaKeys.filter { it == SEARCH_KEY_PREFIX + t || it == FULLTEXT_KEY_PREFIX + t || it.startsWith("$FIELD_KEY_PREFIX$t.") }
+                .forEach { db.execute("""DELETE FROM ${quoteIdent(META_TABLE)} WHERE "key" = ?""", listOf(it)) }
+            for (s in listOf(SystemCollections.SEARCH_TERMS, SystemCollections.HISTORY, SystemCollections.TRASH)) {
+                if (s in allTables) db.execute("""DELETE FROM ${quoteIdent(s)} WHERE "collection" = ?""", listOf(t))
+            }
+        }
+    }
+
     /** Planı uygular. Plan veritabanı değişmeden hemen önce hesaplanmış olmalı (bkz. [migrate]). */
     fun apply(plan: MigrationPlan): Report = db.transaction {
         if (plan.hasBlockers) throw SchemaBlockedException(plan.blockers)
@@ -499,6 +529,8 @@ class SchemaMigrator(private val db: SqlDriver) {
 
     internal companion object {
         const val SYSTEM_PREFIX = "_ds_"
+        /** Koleksiyon tablosu adı (sistem tabloları `_` ile başlar); dosya klasörü adı olarak da güvenli. */
+        val USER_TABLE = Regex("^[A-Za-z][A-Za-z0-9_]*$")
         const val META_TABLE = "_ds_meta"
         const val FIELD_KEY_PREFIX = "field:"
         const val SEARCH_KEY_PREFIX = "search:"

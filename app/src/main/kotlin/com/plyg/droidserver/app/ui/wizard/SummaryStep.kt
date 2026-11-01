@@ -2,6 +2,7 @@ package com.plyg.droidserver.app.ui.wizard
 
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -9,6 +10,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -26,6 +28,7 @@ import com.plyg.droidserver.app.ui.common.WarningText
 import com.plyg.droidserver.app.ui.common.allowsDeploy
 import com.plyg.droidserver.app.ui.common.applyAndDeploy
 import com.plyg.droidserver.app.ui.common.planFor
+import com.plyg.droidserver.core.config.ConfigSecrets
 import com.plyg.droidserver.core.config.ConfigSummary
 import com.plyg.droidserver.core.config.DbEngine
 import com.plyg.droidserver.core.config.ServerConfig
@@ -35,7 +38,9 @@ import com.plyg.droidserver.core.i18n.tr
 import com.plyg.droidserver.core.server.DeployException
 import com.plyg.droidserver.core.server.DeployOrchestrator.DuringMove
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Son adım: okunur özet, çalışan veritabanına karşı şema planı ve "Kaydet ve deploy et". */
 @Composable
@@ -48,7 +53,9 @@ internal fun SummaryStep(
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val plan by produceState<Result<MigrationPlan>?>(null, draft) { value = null; value = planFor(g, draft) }
+    // Kullanılmayan tablolar silinince plan ve liste yeniden hesaplanır.
+    var dropped by remember { mutableIntStateOf(0) }
+    val plan by produceState<Result<MigrationPlan>?>(null, draft, dropped) { value = null; value = planFor(g, draft) }
     var deploying by remember { mutableStateOf(false) }
     var deployError by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableStateOf<String?>(null) }
@@ -73,6 +80,8 @@ internal fun SummaryStep(
         if (warnings.isNotEmpty()) SectionCard(tr("Uyarılar")) { warnings.forEach { WarningText(it) } }
 
         SectionCard(tr("Şema planı")) { PlanView(plan) }
+
+        UnusedTablesCard(g, vm.active.collectAsState().value, draft, dropped) { dropped++ }
 
         val upgrade = remember(active) { runCatching { g.configRepo.pendingUpgrade() }.getOrNull() }
         if (upgrade != null) {
@@ -149,4 +158,56 @@ internal fun SummaryStep(
 private fun describe(config: ServerConfig) = when (config.database.engine) {
     DbEngine.SQLITE -> "SQLite (${config.database.file})"
     DbEngine.POSTGRES -> "PostgreSQL"
+}
+
+/**
+ * Kaldırılmış koleksiyonlardan kalan tablolar (etkin veritabanında) ve onayla kalıcı silme. Taslakta ya da çalışan
+ * sunucuda kullanılan adlar listelenmez ([com.plyg.droidserver.core.server.ServerEngine.unusedTables]).
+ */
+@Composable
+private fun UnusedTablesCard(g: AppGraph, active: ServerConfig?, draft: ServerConfig, refresh: Int, onDropped: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val keep = draft.schemaCollections().map { it.name }.toSet()
+    val unused by produceState(emptyMap<String, Long>(), active, keep, refresh) {
+        value = active?.let { cfg ->
+            withContext(Dispatchers.IO) { runCatching { g.engine.unusedTables(ConfigSecrets.resolve(cfg, g.secrets::get), keep) }.getOrNull() }
+        }.orEmpty()
+    }
+    var confirm by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    if (unused.isEmpty() || active == null) return
+    SectionCard(tr("Kullanılmayan tablolar")) {
+        Text(tr("Kaldırılmış koleksiyonlardan kalan tablolar: verileri duruyor ama API'de görünmüyor."), style = MaterialTheme.typography.bodySmall)
+        unused.forEach { (table, rows) ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(tr("{0}: {1} kayıt", table, rows), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                TextButton(enabled = !busy, onClick = { confirm = table }) { Text(tr("Sil"), color = MaterialTheme.colorScheme.error) }
+            }
+        }
+        ErrorText(error)
+    }
+    confirm?.let { table ->
+        AlertDialog(
+            onDismissRequest = { confirm = null },
+            title = { Text(tr("'{0}' tablosu silinsin mi?", table)) },
+            text = {
+                Text(tr("{0} kayıt kalıcı olarak silinir; geçmişleri, çöp kutusundaki halleri ve dosyaları da. Geri alınamaz; gerekirse önce yedek alın (Sunucu → Yedekler).", unused[table] ?: 0))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirm = null
+                    busy = true
+                    scope.launch {
+                        error = runCatching {
+                            withContext(Dispatchers.IO) { g.engine.dropUnusedTables(ConfigSecrets.resolve(active, g.secrets::get), listOf(table), keep) }
+                        }.exceptionOrNull()?.message
+                        busy = false
+                        onDropped()
+                    }
+                }) { Text(tr("Sil"), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirm = null }) { Text(tr("Vazgeç")) } },
+        )
+    }
 }

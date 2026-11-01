@@ -123,7 +123,8 @@ object SqliteDialect : SqlDialect {
     override fun listTables(db: SqlDriver): Set<String> =
         db.query("SELECT name FROM sqlite_master WHERE type = 'table'")
             .map { it["name"] as String }
-            .filterNot { it.startsWith("sqlite_") }
+            // SQLite'ın ve Android'in kendi tabloları (android_metadata: Android'in SQLiteDatabase'i yerel ayarı yazar).
+            .filterNot { it.startsWith("sqlite_") || it == "android_metadata" }
             .toSet()
 
     override fun listColumns(db: SqlDriver, table: String): Map<String, String> =

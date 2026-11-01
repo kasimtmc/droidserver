@@ -4203,5 +4203,11 @@
  "Görüşünüzü Play'deki uygulama sayfasında yazın": "Write your review on the app's Play page",
  "Konfigürasyon siz düzenlerken başka yerden değişti (web paneli, paket ya da geri yükleme). Diğer değişiklikler taslağa eklendi; şu bölümlerde taslağınız kaldı, kaydederseniz oradaki yeni hal kaybolur: {0}": "The configuration changed elsewhere while you were editing (web panel, package or restore). The other changes were added to the draft; in these sections your draft was kept and saving will discard the new version there: {0}",
  "tümü": "all",
- "Taslağı at": "Discard draft"
+ "Taslağı at": "Discard draft",
+ "Kullanılmayan tablolar": "Unused tables",
+ "Kaldırılmış koleksiyonlardan kalan tablolar: verileri duruyor ama API'de görünmüyor.": "Tables left over from removed collections: their data is still there but no longer shown in the API.",
+ "Kullanılmayan tablo değil: {0}": "Not an unused table: {0}",
+ "Kullanılmayan tablolar silindi: {0}": "Unused tables deleted: {0}",
+ "'{0}' tablosu silinsin mi?": "Delete the '{0}' table?",
+ "{0} kayıt kalıcı olarak silinir; geçmişleri, çöp kutusundaki halleri ve dosyaları da. Geri alınamaz; gerekirse önce yedek alın (Sunucu → Yedekler).": "{0} record(s) will be deleted permanently, along with their history, trash and files. This cannot be undone; take a backup first if needed (Server → Backups)."
 }
