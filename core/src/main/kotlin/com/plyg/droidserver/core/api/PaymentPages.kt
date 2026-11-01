@@ -147,7 +147,7 @@ private suspend fun RoutingCall.page(server: String, title: String, body: String
     response.headers.append("X-Content-Type-Options", "nosniff")
     response.headers.append("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
     respondText(
-        """<!doctype html><html lang="${I18n.lang.code}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+        """<!doctype html><html ${I18n.lang.htmlAttrs}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
         |<meta name="robots" content="noindex"><title>${esc(title)} · ${esc(server)}</title><style>
         |:root{--bg:#f4faf8;--fg:#161d1c;--muted:#5b6563;--card:#fff;--line:#d5e0dd;--accent:#006a65;--on:#fff}
         |@media(prefers-color-scheme:dark){:root{--bg:#0f1514;--fg:#dde4e2;--muted:#9aa6a3;--card:#171d1c;--line:#2c3634;--accent:#82d5ce;--on:#003734}}

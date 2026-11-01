@@ -2103,16 +2103,19 @@ Android istemcide keşif için `WifiManager.MulticastLock` gerekebilir; Android'
 
 ### Dil / Language
 
-Durum ekranının altındaki **Dil / Language** seçimi: *Telefonun dili* (varsayılan; telefon Türkçe değilse İngilizce),
-**Türkçe** veya **English**. Seçilen dil uygulamanın kendisi, web paneli, API hata ve doğrulama iletileri, OpenAPI
+Durum ekranının altındaki **Dil / Language** seçimi: *Telefonun dili* (varsayılan; telefonun dili listede yoksa
+İngilizce), **Türkçe**, **English**, **Deutsch**, **Español**, **Français**, **Italiano**, **Русский**, **Azərbaycanca** veya
+**العربية** (Arapçada arayüz, web paneli ve sayfalar sağdan sola). Seçilen dil uygulamanın kendisi, web paneli, API hata ve doğrulama iletileri, OpenAPI
 belgesi ve gönderilen e-postalar için geçerlidir (uygulama ve sunucu aynı süreçte çalıştığı için tek dil). Değişince
-uygulama yeniden açılır; sunucu çalışıyorsa durdurulup yeniden başlatılır. Loglar ve kayıtlı veriler (örn. şablonların
-örnek kayıtları, denetim kaydındaki ayrıntılar) çevrilmez.
+uygulama yeniden açılır; sunucu çalışıyorsa durdurulup yeniden başlatılır. Loglar o anki dilde yazılır (dil değişince
+eski satırlar değişmez); kayıtlı veriler (örn. şablonların örnek kayıtları, denetim kaydındaki ayrıntılar) ve bileşenlerin
+kendi çıktıları çevrilmez. Yardım metni (bu README) Türkçe ve İngilizce; diğer dillerde İngilizcesi açılır.
 
 Kaynak metinler Türkçedir ve katalog anahtarıdır: Kotlin'de `tr("{0} kayıt silindi", n)`, panelde `T("Kaydet")`.
-Kataloglar `core/src/main/resources/i18n/` altında: `en.json` (uygulama + sunucu) ve `panel-en.json` (web paneli;
-`/_admin/i18n.js` ile yüklenir). Yeni dil: `Lang`'a bir satır ve iki katalog dosyası. `I18nTest` kaynaktaki her metnin
-katalogda olduğunu ve `{0}` yer tutucularının eşleştiğini denetler; yeni metin eklerken kataloğa da ekleyin.
+Kataloglar `core/src/main/resources/i18n/` altında, her dil için iki dosya: `<kod>.json` (uygulama + sunucu) ve
+`panel-<kod>.json` (web paneli; `/_admin/i18n.js` ile yüklenir). Ekran araçlarının adları `app/src/main/res/values-<kod>/`.
+Yeni dil: `Lang`'a bir satır ve iki katalog dosyası. `I18nTest` kaynaktaki her metnin her katalogda olduğunu ve `{0}` yer
+tutucularının eşleştiğini denetler; yeni metin eklerken bütün kataloglara da ekleyin.
 
 ## İnternetten erişim
 
@@ -2461,7 +2464,8 @@ tools/          package-postgres.sh, package-cloudflared.sh (Termux derlemelerin
 - [x] **Sosyal giriş:** Google ve GitHub (OAuth2 + PKCE)
 - [x] **Web push:** VAPID, RFC 8291, `ctx.push`, kayıt olayında bildirim
 - [x] **Sunucu profilleri:** aynı telefonda birden çok bağımsız sunucu
-- [x] **Dil:** Türkçe ve İngilizce arayüz (uygulama, web paneli, API iletileri, e-postalar)
+- [x] **Dil:** Türkçe, İngilizce, Almanca, İspanyolca, Fransızca, İtalyanca, Rusça, Azerbaycanca ve Arapça arayüz (uygulama,
+  web paneli, API iletileri, e-postalar)
 - [x] **Özel roller ve şifreli alanlar:** editör/moderatör gibi roller; AES-256-GCM ile alan şifreleme
 - [x] **Veri yaşam döngüsü:** saklama süresi, salt okunur görünümler ve raporlar (CSV)
 - [x] **WebSocket kanalları:** sohbet ve oyun için iki yönlü kanallar, çevrimiçi listesi

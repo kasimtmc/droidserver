@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description">Serverstatus, Adresse und Ein/Aus-Taste</string>
+    <string name="scene_widget_description">MQTT-Szenen mit einem Tippen ausführen</string>
+    <string name="scene_widget_label">DroidServer-Szenen</string>
+    <string name="component_cloudflared">Cloudflare-Tunnel</string>
+</resources>

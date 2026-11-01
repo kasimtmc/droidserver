@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description">Состояние сервера, адрес и кнопка включения</string>
+    <string name="scene_widget_description">Запуск сцен MQTT одним касанием</string>
+    <string name="scene_widget_label">Сцены DroidServer</string>
+    <string name="component_cloudflared">Туннель Cloudflare</string>
+</resources>

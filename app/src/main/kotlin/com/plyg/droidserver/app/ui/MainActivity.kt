@@ -6,6 +6,9 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -27,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.plyg.droidserver.app.graph
 import com.plyg.droidserver.app.service.ServerService
 import com.plyg.droidserver.app.ui.theme.DroidServerTheme
+import com.plyg.droidserver.core.i18n.I18n
 import com.plyg.droidserver.core.i18n.tr
 import com.plyg.droidserver.core.server.EngineState
 
@@ -58,7 +62,10 @@ class MainActivity : ComponentActivity() {
             notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         setContent {
-            DroidServerTheme { if (locked.value) LockScreen(::unlock) else AppNavigation(g) }
+            // Yön uygulamanın dilinden (Android'in dilinden değil): uygulamada Arapça seçilince sağdan sola.
+            CompositionLocalProvider(LocalLayoutDirection provides if (I18n.lang.rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
+                DroidServerTheme { if (locked.value) LockScreen(::unlock) else AppNavigation(g) }
+            }
         }
     }
 

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description">Estado del servidor, dirección y botón de encendido/apagado</string>
+    <string name="scene_widget_description">Ejecuta escenas MQTT con un toque</string>
+    <string name="scene_widget_label">Escenas de DroidServer</string>
+    <string name="component_cloudflared">Túnel de Cloudflare</string>
+</resources>

@@ -145,11 +145,13 @@ object Money {
 
     fun decimal(minor: Long, currency: String): BigDecimal = BigDecimal.valueOf(minor, digits(currency))
 
-    /** Gösterim: Türkçede `149,90 TRY`, diğer dillerde `149.90 TRY`. */
+    /** Gösterim: ondalık virgül kullanan dillerde `149,90 TRY`, İngilizce ve Arapçada `149.90 TRY`. */
     fun format(minor: Long, currency: String): String {
         val s = decimal(minor, currency).toPlainString()
-        return (if (I18n.lang == Lang.TR) s.replace('.', ',') else s) + " " + currency
+        return (if (I18n.lang in DECIMAL_COMMA) s.replace('.', ',') else s) + " " + currency
     }
+
+    private val DECIMAL_COMMA = setOf(Lang.TR, Lang.DE, Lang.ES, Lang.FR, Lang.IT, Lang.RU, Lang.AZ)
 }
 
 /** Uygulamanın çalışan sunucudaki ödemelere eriştiği yer (iade, son ödemeler). */

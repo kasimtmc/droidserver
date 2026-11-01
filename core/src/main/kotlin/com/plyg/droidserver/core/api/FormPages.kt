@@ -268,7 +268,7 @@ private suspend fun RoutingCall.formPage(status: HttpStatusCode, server: String,
         "Content-Security-Policy",
         "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'${redirectOrigin?.let { " $it" }.orEmpty()}; frame-ancestors 'none'; base-uri 'none'",
     )
-    val html = """<!doctype html><html lang="${I18n.lang.code}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    val html = """<!doctype html><html ${I18n.lang.htmlAttrs}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
         |<title>${esc(form.title)} · ${esc(server)}</title><style>
         |:root{--bg:#f4faf8;--fg:#161d1c;--muted:#5b6563;--card:#fff;--line:#d5e0dd;--accent:#006a65;--accent-fg:#fff;--err:#ba1a1a;--ok:#2e7d32}
         |@media(prefers-color-scheme:dark){:root{--bg:#0f1514;--fg:#dde4e2;--muted:#9aa6a3;--card:#171d1c;--line:#2c3634;--accent:#82d5ce;--accent-fg:#003734;--err:#ffb4ab;--ok:#8bd88f}}

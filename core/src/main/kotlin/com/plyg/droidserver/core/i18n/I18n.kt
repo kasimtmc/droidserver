@@ -10,9 +10,19 @@ import java.util.concurrent.ConcurrentHashMap
  * Arayüz dili. Kaynak metinler Türkçedir ve katalog anahtarıdır (`tr("Kaydet")`); diğer diller
  * `i18n/<kod>.json` (Türkçe → çeviri) kataloğundan. Yeni dil: buraya bir satır ve katalog dosyası.
  */
-enum class Lang(val code: String, val title: String) {
+enum class Lang(val code: String, val title: String, val rtl: Boolean = false) {
     TR("tr", "Türkçe"),
-    EN("en", "English");
+    EN("en", "English"),
+    DE("de", "Deutsch"),
+    ES("es", "Español"),
+    FR("fr", "Français"),
+    IT("it", "Italiano"),
+    RU("ru", "Русский"),
+    AZ("az", "Azərbaycanca"),
+    AR("ar", "العربية", rtl = true);
+
+    /** HTML sayfalarının kök öğesi için: `lang="…" dir="…"`. */
+    val htmlAttrs: String get() = """lang="$code" dir="${if (rtl) "rtl" else "ltr"}""""
 
     companion object {
         fun of(code: String?): Lang? = entries.firstOrNull { it.code.equals(code?.substringBefore('-')?.substringBefore('_'), ignoreCase = true) }

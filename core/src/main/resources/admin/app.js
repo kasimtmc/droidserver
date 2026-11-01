@@ -5,6 +5,7 @@
 const I18N = window.DS_I18N || {};
 function T(text) { return Object.prototype.hasOwnProperty.call(I18N, text) ? I18N[text] : text; }
 document.documentElement.lang = window.DS_LANG || "tr";
+document.documentElement.dir = window.DS_LANG === "ar" ? "rtl" : "ltr";
 document.title = T("DroidServer Paneli");
 
 const state = { token: sessionStorage.getItem("ds-token"), info: null, tab: null, abort: null };

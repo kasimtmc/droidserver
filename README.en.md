@@ -2139,16 +2139,20 @@ type (`_droidserver._tcp`).
 
 ### Language
 
-The **Dil / Language** selector at the bottom of the Status screen: *Phone language* (default; English if the phone is not
-in Turkish), **Türkçe** or **English**. The chosen language applies to the app itself, the web panel, API error and
+The **Dil / Language** selector at the bottom of the Status screen: *Phone language* (default; English if the phone's
+language isn't in the list), **Türkçe**, **English**, **Deutsch**, **Español**, **Français**, **Italiano**, **Русский**,
+**Azərbaycanca** or **العربية** (in Arabic the app, web panel and pages are right-to-left). The chosen language applies to the app itself, the web panel, API error and
 validation messages, the OpenAPI document and outgoing e-mails (a single language, since the app and server run in the same
-process). Changing it reopens the app; if the server is running, it is stopped and restarted. Logs and stored data (e.g.
-templates' sample records, audit log details) are not translated.
+process). Changing it reopens the app; if the server is running, it is stopped and restarted. Logs are written in the
+current language (earlier lines stay as they were when the language changes); stored data (e.g. templates' sample records,
+audit log details) and the components' own output are not translated. The help text (this README) is in Turkish and
+English; other languages show the English one.
 
 Source strings are Turkish and serve as catalog keys: `tr("{0} kayıt silindi", n)` in Kotlin, `T("Kaydet")` in the panel.
-The catalogs are under `core/src/main/resources/i18n/`: `en.json` (app + server) and `panel-en.json` (web panel; loaded
-via `/_admin/i18n.js`). A new language: one line in `Lang` and two catalog files. `I18nTest` checks that every source string
-is in the catalog and that `{0}` placeholders match; when adding new strings, add them to the catalog too.
+The catalogs are under `core/src/main/resources/i18n/`, two files per language: `<code>.json` (app + server) and
+`panel-<code>.json` (web panel; loaded via `/_admin/i18n.js`). The widgets' names are in `app/src/main/res/values-<code>/`.
+A new language: one line in `Lang` and two catalog files. `I18nTest` checks that every source string is in every catalog
+and that `{0}` placeholders match; when adding new strings, add them to all catalogs too.
 
 ## Internet access
 
@@ -2509,7 +2513,8 @@ tools/          package-postgres.sh, package-cloudflared.sh (component packages 
 - [x] **Social login:** Google and GitHub (OAuth2 + PKCE)
 - [x] **Web push:** VAPID, RFC 8291, `ctx.push`, notification on record events
 - [x] **Server profiles:** multiple independent servers on the same phone
-- [x] **Language:** Turkish and English UI (app, web panel, API messages, e-mails)
+- [x] **Language:** Turkish, English, German, Spanish, French, Italian, Russian, Azerbaijani and Arabic UI (app, web
+  panel, API messages, e-mails)
 - [x] **Custom roles and encrypted fields:** roles such as editor/moderator; field encryption with AES-256-GCM
 - [x] **Data lifecycle:** retention period, read-only views and reports (CSV)
 - [x] **WebSocket channels:** two-way channels for chat and games, online list

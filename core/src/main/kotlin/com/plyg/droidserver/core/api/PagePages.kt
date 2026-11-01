@@ -347,7 +347,7 @@ private suspend fun RoutingCall.html(
     response.headers.append("X-Content-Type-Options", "nosniff")
     response.headers.append("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
     val color = accent?.takeIf { PageConfig.COLOR.matches(it) }?.let { ":root{--accent:$it}" }.orEmpty()
-    val html = """<!doctype html><html lang="${I18n.lang.code}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    val html = """<!doctype html><html ${I18n.lang.htmlAttrs}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
         |<title>${esc(title)} · ${esc(server)}</title>${description?.takeIf { it.isNotBlank() }?.let { "<meta name=\"description\" content=\"${esc(it.take(300))}\">" }.orEmpty()}<style>
         |:root{--bg:#f4faf8;--fg:#161d1c;--muted:#5b6563;--card:#fff;--line:#d5e0dd;--accent:#006a65;--accent-fg:#fff;--err:#ba1a1a}
         |@media(prefers-color-scheme:dark){:root{--bg:#0f1514;--fg:#dde4e2;--muted:#9aa6a3;--card:#171d1c;--line:#2c3634;--accent:#82d5ce;--accent-fg:#003734;--err:#ffb4ab}}$color

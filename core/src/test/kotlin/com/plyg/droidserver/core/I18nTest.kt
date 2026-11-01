@@ -20,7 +20,8 @@ class I18nTest {
         assertEquals("katalogda yok {0}", I18n.translate("katalogda yok {0}", emptyArray(), Lang.EN), "bilinmeyen metin olduğu gibi")
         assertEquals(Lang.EN, Lang.of("en-US"))
         assertEquals(Lang.TR, Lang.of("tr_TR"))
-        assertEquals(null, Lang.of("de"))
+        assertEquals(Lang.DE, Lang.of("de-AT"))
+        assertEquals(null, Lang.of("ja"))
         val panel = I18n.panelScript(Lang.EN)
         assertTrue(panel.startsWith("window.DS_LANG=\"en\";window.DS_I18N={"))
         assertTrue("\"Kaydet\":\"Save\"" in panel)
@@ -29,15 +30,18 @@ class I18nTest {
 
     /**
      * Kaynaktaki her `tr("…")` (uygulama + core) ve panelin `T("…")` metni katalogda olmalı, yer tutucuları ve biçim
-     * belirteçleri aynı olmalı; katalogda kaynakta kalmamış metin olmamalı. Yeni metin eklenince `en.json`'a eklenir.
+     * belirteçleri aynı olmalı; katalogda kaynakta kalmamış metin olmamalı. Yeni metin eklenince her dilin kataloğuna
+     * (`<kod>.json`, panel için `panel-<kod>.json`) eklenir.
      */
     @Test
     fun `katalog kaynakla eslesiyor`() {
         val kotlin = (listOf("src/main/kotlin", "../app/src/main/kotlin", "../app/src/full/kotlin", "../app/src/play/kotlin").flatMap { sourceFiles(File(it)) }).flatMap { keys(it.readText(), KT_CALL, ::unescapeKotlin) }.toSet()
         val panel = keys(File("src/main/resources/admin/app.js").readText(), JS_CALL, ::unescapeJs).toSet()
         assertTrue(kotlin.size > 1000 && panel.size > 100, "kaynak taranamadı: ${kotlin.size}, ${panel.size}")
-        check("en.json", kotlin)
-        check("panel-en.json", panel)
+        for (lang in Lang.entries - Lang.TR) {
+            check("${lang.code}.json", kotlin)
+            check("panel-${lang.code}.json", panel)
+        }
     }
 
     private fun check(name: String, keys: Set<String>) {

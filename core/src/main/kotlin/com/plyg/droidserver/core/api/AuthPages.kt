@@ -1,6 +1,7 @@
 package com.plyg.droidserver.core.api
 
 import com.plyg.droidserver.core.auth.UserService
+import com.plyg.droidserver.core.i18n.I18n
 import com.plyg.droidserver.core.i18n.tr
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
@@ -95,7 +96,7 @@ internal suspend fun RoutingCall.page(status: HttpStatusCode, server: String, ti
         "Content-Security-Policy",
         "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
     )
-    val html = """<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    val html = """<!doctype html><html ${I18n.lang.htmlAttrs}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
         |<title>${esc(title)} · ${esc(server)}</title><style>
         |body{font:16px/1.5 system-ui,sans-serif;max-width:420px;margin:10vh auto;padding:0 16px;color:#1c1c1f;background:#f4faf8}
         |@media(prefers-color-scheme:dark){body{color:#ececef;background:#0f1514}input{background:#171d1c;color:#dde4e2}button{background:#82d5ce;color:#003734}}
