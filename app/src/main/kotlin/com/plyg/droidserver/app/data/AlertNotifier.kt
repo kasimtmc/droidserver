@@ -14,15 +14,20 @@ import com.plyg.droidserver.app.graph
 import com.plyg.droidserver.app.ui.MainActivity
 import com.plyg.droidserver.core.alerts.Alert
 import com.plyg.droidserver.core.alerts.AlertChannel
+import com.plyg.droidserver.core.i18n.I18n
 import com.plyg.droidserver.core.i18n.tr
 import java.io.File
 import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.util.Locale
 
 /** Sağlık uyarısını telefon bildirimi olarak gösterir (tür ve konu başına bir bildirim; "düzeldi" onu değiştirir). */
-class AlertNotifier(private val context: Context, private val serverName: () -> String) : AlertChannel {
+class AlertNotifier(private val context: Context, private val profile: () -> Profile) : AlertChannel {
     override fun send(alert: Alert) {
         // Otomasyon uygulamalarına da (köprü açıksa ve izinli uygulamalara).
-        runCatching { context.graph.automation.alert(serverName(), alert) }
+        runCatching { context.graph.automation.alert(profile().name, alert) }
         val nm = context.getSystemService(NotificationManager::class.java)
         if (nm.getNotificationChannel(CHANNEL) == null) {
             nm.createNotificationChannel(NotificationChannel(CHANNEL, tr("Uyarılar"), NotificationManager.IMPORTANCE_DEFAULT))
@@ -33,7 +38,7 @@ class AlertNotifier(private val context: Context, private val serverName: () -> 
             BASE_ID + (alert.kind.name + alert.subject).hashCode() % 1000,
             NotificationCompat.Builder(context, CHANNEL)
                 .setSmallIcon(R.drawable.ic_server)
-                .setContentTitle("${serverName()}: ${alert.title}")
+                .setContentTitle(profile().let { if (it.isDefault) "DroidServer: ${alert.title}" else "DroidServer · ${it.name}: ${alert.title}" })
                 .setContentText(alert.message)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(alert.message))
                 .setPriority(if (alert.critical) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
@@ -69,7 +74,7 @@ object CrashMarker {
         if (!file.isFile) return null
         val lines = runCatching { file.readLines() }.getOrDefault(emptyList())
         file.delete()
-        val at = lines.firstOrNull().orEmpty()
+        val at = lines.firstOrNull().orEmpty().let { runCatching { localTime(Instant.parse(it)) }.getOrDefault(it) }
         val error = lines.drop(1).take(2).joinToString("\n").ifBlank { tr("bilinmeyen hata") }
         return tr("{0} tarihinde uygulama bir hatayla kapandı.\n{1}", at, error)
     }
@@ -85,7 +90,7 @@ object ServiceRestart {
         private set
 
     fun record(context: Context): String =
-        (tr("{0} tarihinde sistem sunucu servisini durdurup yeniden başlattı.", Instant.now()) + (exitReason(context)?.let { "\n$it" }.orEmpty()))
+        (tr("{0} tarihinde sistem sunucu servisini durdurup yeniden başlattı.", localTime(Instant.now())) + (exitReason(context)?.let { "\n$it" }.orEmpty()))
             .also { last = it }
 
     /** Önceki sürecin bitiş nedeni (Android 11+). */
@@ -104,7 +109,12 @@ object ServiceRestart {
             ApplicationExitInfo.REASON_PERMISSION_CHANGE -> tr("izin değişti")
             else -> tr("kod {0}", info.reason)
         }
-        return tr("Önceki süreç {0} tarihinde bitti: {1}.", Instant.ofEpochMilli(info.timestamp), reason) +
+        return tr("Önceki süreç {0} tarihinde bitti: {1}.", localTime(Instant.ofEpochMilli(info.timestamp)), reason) +
             (info.description?.takeIf { it.isNotBlank() }?.let { " ($it)" }.orEmpty())
     }
 }
+
+/** Uyarı metinlerindeki zaman: telefonun saat diliminde, arayüz dilinin biçiminde. */
+private fun localTime(at: Instant): String =
+    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM).withLocale(Locale.forLanguageTag(I18n.lang.code))
+        .withZone(ZoneId.systemDefault()).format(at)

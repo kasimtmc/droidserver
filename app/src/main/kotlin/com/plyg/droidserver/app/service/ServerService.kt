@@ -209,7 +209,7 @@ class ServerService : Service() {
         if (maintenanceJob?.isActive == true) return
         val g = owner
         val device = AndroidDeviceStats(this)
-        val notifier = AlertNotifier(this) { g.profile.name }
+        val notifier = AlertNotifier(this) { g.profile }
         maintenanceJob = scope.launch {
             var schedule: BackupSchedule? = null
             var expression: String? = null
