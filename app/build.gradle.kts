@@ -2,7 +2,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 // Sürüm: `-PappVersion=1.2.3` (yayın iş akışı etiketten verir). versionCode sürümden türetilir ve her yeni sürümde
 // büyür: 1.2.3 → 1020399, 1.3.0-beta.2 → 1030002 (ön sürümler aynı sürümün kararlısından küçük). Alt sürüm ve yama < 100.
-val appVersion: String = providers.gradleProperty("appVersion").orNull ?: "0.9.9"
+val appVersion: String = providers.gradleProperty("appVersion").orNull ?: "1.0.0"
 
 fun versionCodeOf(version: String): Int {
     val m = Regex("""^(\d+)\.(\d+)\.(\d+)(?:-[A-Za-z]*\.?(\d+)?)?$""").matchEntire(version)
@@ -63,9 +63,9 @@ android {
             ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
             buildConfigField("boolean", "SELF_UPDATE", "false")
             buildConfigField("boolean", "SIM_SMS", "false")
-            // Tam sürüm (1 hafta deneme + tek seferlik satın alma): Play'de ilk üretim sürümüyle açılacak. Kapalıyken deneme
-            // başlamaz, arayüz kilitlenmez (kapalı testteki sürümler, Play Console'da ürün yokken).
-            buildConfigField("boolean", "LICENSE_REQUIRED", "false")
+            // Tam sürüm (1 hafta deneme + tek seferlik satın alma, 1.0.0'dan beri). Kapatılırsa deneme başlamaz, arayüz
+            // kilitlenmez (örn. Play Console'da ürün yokken).
+            buildConfigField("boolean", "LICENSE_REQUIRED", "true")
         }
     }
 

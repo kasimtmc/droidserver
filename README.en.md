@@ -2205,12 +2205,12 @@ With your own domain: create a tunnel under Zero Trust > Networks > Tunnels, set
 
 ## Full version (Play version)
 
-Coming with the first production release on Play: the Play version can be tried for a week from the first launch; after
-that it is unlocked with a one-time purchase (no subscription). When the trial ends, the app shows a purchase screen on
-launch: it describes what the app offers, **Buy** opens Play's payment dialog and **Restore purchase** finds a purchase
-made with the same Google account. The server, sites, API, components and automations keep running meanwhile; only the
-app's interface is locked (and, since the pairing code for the web panel comes from the app, new panel sign-ins too).
-During the trial, Settings → Google Play → **Full version** shows the days left and lets you buy early.
+Since 1.0.0, the Play version can be tried for a week from the first launch; after that it is unlocked with a one-time
+purchase (no subscription). When the trial ends, the app shows a purchase screen on launch: it describes what the app
+offers, **Buy** opens Play's payment dialog and **Restore purchase** finds a purchase made with the same Google account.
+The server, sites, API, components and automations keep running meanwhile; only the app's interface is locked (and,
+since the pairing code for the web panel comes from the app, new panel sign-ins too). During the trial, Settings →
+Google Play → **Full version** shows the days left and lets you buy early.
 
 The trial start is stored on the phone and in Google's Block Store (tied to the Google account), so uninstalling and
 reinstalling doesn't renew the trial. A purchase is also recorded on the phone, so the app doesn't lock while Play is

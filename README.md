@@ -2163,12 +2163,12 @@ yapın, token'ı sihirbaza girin.
 
 ## Tam sürüm (Play sürümü)
 
-Play'deki ilk üretim sürümüyle gelecek: Play sürümü ilk açılıştan itibaren bir hafta denenebilir; sonra tek seferlik
-satın almayla açılır (abonelik yok). Deneme bitince uygulama açılışta satın alma penceresini gösterir: uygulamanın
-sunduklarını anlatır, **Satın al** Play'in ödeme penceresini açar, **Satın alımı geri yükle** aynı Google hesabıyla
-yapılmış satın alımı bulur. Bu sırada sunucu, siteler, API, bileşenler ve otomasyonlar çalışmaya devam eder; yalnızca
-uygulamanın arayüzü kilitlenir (web paneline girişin eşleştirme kodu da uygulamadan alındığı için yeni panel girişi de).
-Denemedeyken Ayarlar → Google Play → **Tam sürüm** kalan günü gösterir ve erken satın almayı açar.
+1.0.0'dan itibaren Play sürümü ilk açılıştan itibaren bir hafta denenebilir; sonra tek seferlik satın almayla açılır
+(abonelik yok). Deneme bitince uygulama açılışta satın alma penceresini gösterir: uygulamanın sunduklarını anlatır,
+**Satın al** Play'in ödeme penceresini açar, **Satın alımı geri yükle** aynı Google hesabıyla yapılmış satın alımı
+bulur. Bu sırada sunucu, siteler, API, bileşenler ve otomasyonlar çalışmaya devam eder; yalnızca uygulamanın arayüzü
+kilitlenir (web paneline girişin eşleştirme kodu da uygulamadan alındığı için yeni panel girişi de). Denemedeyken
+Ayarlar → Google Play → **Tam sürüm** kalan günü gösterir ve erken satın almayı açar.
 
 Deneme başlangıcı telefonda ve Google'ın Block Store'unda (Google hesabına bağlı) saklanır; uygulamayı kaldırıp kurmak
 denemeyi yenilemez. Satın alındığı telefonda da işaretlenir, Play'e ulaşılamazken uygulama kilitlenmez. GitHub

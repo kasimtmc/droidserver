@@ -103,9 +103,8 @@ Secret yoksa iş akışı Play adımını atlar (AAB yine Artifacts'ta).
 ## 8. Tam sürüm ürünü
 
 Play sürümü bir haftalık denemeden sonra tek seferlik satın almayla açılır; uygulama `droidserver_full` kimlikli ürünü
-arar (bkz. README "Tam sürüm"). Bu sürüm Play'de ilk üretim sürümüyle yayınlanacak: o zamana kadar
-`app/build.gradle.kts`'te play türündeki `LICENSE_REQUIRED` kapalıdır (deneme başlamaz, arayüz kilitlenmez). Ürün
-oluşturulup lisans testiyle denendikten sonra üretim sürümünden önce `true` yapın.
+arar (bkz. README "Tam sürüm"). 1.0.0'dan beri açık: `app/build.gradle.kts`'te play türündeki `LICENSE_REQUIRED`;
+`false` yapılırsa deneme başlamaz, arayüz kilitlenmez (örn. ürün geçici olarak kaldırıldığında).
 
 1. Para kazanma kurulumu: Console → **Para kazanma** (Monetize) için ödeme profili (satıcı hesabı) bağlı olmalı.
 2. Satın alma özelliği içeren paketi (Play Billing'li AAB) en az bir kanala yükleyin; Console ürün oluşturmayı ancak
