@@ -103,6 +103,12 @@ class ScreenshotTest {
     }
 
     @Test
+    fun satinAlma() {
+        compose.setContent { DroidServerTheme { PaywallScreen(com.plyg.droidserver.app.data.License.Required("₺249,99"), onBuy = {}, onRestore = {}) } }
+        shot("30-satin-alma")
+    }
+
+    @Test
     fun calisanSunucu() {
         running()
         render()

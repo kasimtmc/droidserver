@@ -99,3 +99,21 @@ Secret yoksa iş akışı Play adımını atlar (AAB yine Artifacts'ta).
    14 gün kayıtlı kalmalı. Katılma bağlantısını paylaşın.
 2. 14 gün dolunca Console'dan üretim erişimi başvurusu (birkaç soru: test nasıl yapıldı, geri bildirimler).
 3. Onaydan sonra kapalı testteki sürümü üretime yükseltin (Sürümü tanıt → Üretim), aşamalı kullanıma sunma oranıyla.
+
+## 8. Tam sürüm ürünü
+
+Play sürümü bir haftalık denemeden sonra tek seferlik satın almayla açılır; uygulama `droidserver_full` kimlikli ürünü
+arar (bkz. README "Tam sürüm"). Bu sürüm Play'de ilk üretim sürümüyle yayınlanacak: o zamana kadar
+`app/build.gradle.kts`'te play türündeki `LICENSE_REQUIRED` kapalıdır (deneme başlamaz, arayüz kilitlenmez). Ürün
+oluşturulup lisans testiyle denendikten sonra üretim sürümünden önce `true` yapın.
+
+1. Para kazanma kurulumu: Console → **Para kazanma** (Monetize) için ödeme profili (satıcı hesabı) bağlı olmalı.
+2. Satın alma özelliği içeren paketi (Play Billing'li AAB) en az bir kanala yükleyin; Console ürün oluşturmayı ancak
+   BILLING izinli bir paketten sonra açar.
+3. **Para kazanma → Ürünler → Uygulama içi ürünler** (tek seferlik ürünler) → Ürün oluştur: kimlik **`droidserver_full`**
+   (sonradan değiştirilemez), ad ve açıklama; satın alma seçeneğinde fiyat ve ülkeler. Etkinleştirin.
+4. Deneme: **Ayarlar → Lisans testi**'ne test hesaplarını ekleyin; bu hesaplar test kartıyla ücret ödemeden satın alır.
+   Satın alımı Console'daki **Sipariş yönetimi**'nden iade edince uygulama bir sonraki açılışta yeniden satın alma ister.
+5. Veri güvenliği formu: satın alma Play Billing ile yapılır, geliştiriciye veri gelmez; formdaki "Finansal bilgi →
+   Satın alma geçmişi" sorusunu Play'in güncel yönergesine göre yanıtlayın ([play-console.md](play-console.md)).
+

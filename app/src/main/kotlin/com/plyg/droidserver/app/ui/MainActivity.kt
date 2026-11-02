@@ -23,10 +23,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.plyg.droidserver.app.data.License
 import com.plyg.droidserver.app.graph
 import com.plyg.droidserver.app.service.ServerService
 import com.plyg.droidserver.app.ui.theme.DroidServerTheme
@@ -64,7 +66,15 @@ class MainActivity : ComponentActivity() {
         setContent {
             // Yön uygulamanın dilinden (Android'in dilinden değil): uygulamada Arapça seçilince sağdan sola.
             CompositionLocalProvider(LocalLayoutDirection provides if (I18n.lang.rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
-                DroidServerTheme { if (locked.value) LockScreen(::unlock) else AppNavigation(g) }
+                // Play sürümünde deneme bitip satın alma yoksa uygulama yerine satın alma penceresi (sunucu çalışır).
+                val license = g.store?.license?.collectAsState()?.value
+                DroidServerTheme {
+                    when {
+                        locked.value -> LockScreen(::unlock)
+                        license is License.Required -> PaywallScreen(license, onBuy = { g.store?.purchase(this) }, onRestore = { g.store?.refreshLicense() })
+                        else -> AppNavigation(g)
+                    }
+                }
             }
         }
     }
@@ -83,6 +93,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         val g = graph
         val store = g.store ?: return
+        store.refreshLicense()
         store.checkForUpdate()
         // Değerlendirme bir kez, uygulama bir haftadır kuruluyken ve sunucu çalışırken istenir (Play penceresi göstermeyebilir).
         val installedAt = packageManager.getPackageInfo(packageName, 0).firstInstallTime

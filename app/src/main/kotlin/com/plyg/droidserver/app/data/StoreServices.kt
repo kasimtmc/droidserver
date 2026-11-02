@@ -7,8 +7,8 @@ import androidx.activity.result.IntentSenderRequest
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * Play sürümünde Play'in uygulama içi güncellemesi ve değerlendirmesi. GitHub sürümünde yok ([storeServices] null);
- * orada uygulamanın kendi güncelleyicisi (AppUpdater) çalışır.
+ * Play sürümünde Play'in uygulama içi güncellemesi, değerlendirmesi ve tam sürüm satın alması. GitHub sürümünde yok
+ * ([storeServices] null); orada uygulamanın kendi güncelleyicisi (AppUpdater) çalışır ve satın alma yoktur.
  */
 interface StoreServices {
     /** Durum ekranındaki güncelleme kartının durumu. */
@@ -28,6 +28,15 @@ interface StoreServices {
 
     /** Uygulamanın Play sayfası (Ayarlar'daki "Play'de değerlendir"). */
     fun storePage(): Intent
+
+    /** Tam sürüm: tek seferlik satın alma ya da ilk açılıştan itibaren [TrialPolicy.DAYS] günlük deneme. */
+    val license: StateFlow<License>
+
+    /** Satın alımları Play'den yeniden sorar (açılışta, ekrana dönüşte ve "Satın alımı geri yükle"). */
+    fun refreshLicense()
+
+    /** Play'in satın alma penceresini açar; sonuç [license]'a yansır. */
+    fun purchase(activity: Activity)
 }
 
 sealed interface StoreUpdate {

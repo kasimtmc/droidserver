@@ -52,6 +52,7 @@ android {
             targetSdk = 28
             buildConfigField("boolean", "SELF_UPDATE", "true")
             buildConfigField("boolean", "SIM_SMS", "true")
+            buildConfigField("boolean", "LICENSE_REQUIRED", "false")
         }
         // Play Store sürümü: güncel hedef API; uygulama içi güncelleyici, doğrudan SIM ile SMS ve bileşen indirme yok
         // (izinleri src/play/AndroidManifest.xml kaldırır). Bileşenler Play modülleriyle gelir (src/play/.../Modules.kt).
@@ -62,6 +63,9 @@ android {
             ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
             buildConfigField("boolean", "SELF_UPDATE", "false")
             buildConfigField("boolean", "SIM_SMS", "false")
+            // Tam sürüm (1 hafta deneme + tek seferlik satın alma): Play'de ilk üretim sürümüyle açılacak. Kapalıyken deneme
+            // başlamaz, arayüz kilitlenmez (kapalı testteki sürümler, Play Console'da ürün yokken).
+            buildConfigField("boolean", "LICENSE_REQUIRED", "false")
         }
     }
 
@@ -177,6 +181,9 @@ dependencies {
     // Play sürümünde uygulama içi güncelleme ve değerlendirme (bkz. src/play/.../Store.kt).
     "playImplementation"(libs.play.app.update)
     "playImplementation"(libs.play.review)
+    // Tam sürüm: tek seferlik satın alma ve yeniden kurulumda da kalan deneme başlangıcı (Block Store).
+    "playImplementation"(libs.play.billing)
+    "playImplementation"(libs.play.blockstore)
     // feature-delivery fragment 1.0'ı getiriyor; registerForActivityResult en az 1.3 ister (lint hatası).
     "playImplementation"(libs.androidx.fragment)
 

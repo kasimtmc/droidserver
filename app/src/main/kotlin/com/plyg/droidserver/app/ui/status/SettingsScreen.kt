@@ -1,7 +1,9 @@
 package com.plyg.droidserver.app.ui.status
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.ContextWrapper
 import android.os.Build
 import android.os.PowerManager
 import androidx.compose.foundation.layout.Arrangement
@@ -16,12 +18,14 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +35,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.plyg.droidserver.app.AppGraph
 import com.plyg.droidserver.app.BuildConfig
+import com.plyg.droidserver.app.data.License
+import com.plyg.droidserver.app.data.TrialPolicy
 import com.plyg.droidserver.app.ui.common.ListRow
 import com.plyg.droidserver.app.ui.common.RowGroup
 import com.plyg.droidserver.app.ui.common.ScreenScaffold
@@ -108,6 +114,18 @@ fun SettingsScreen(g: AppGraph, onBack: () -> Unit) {
             g.store?.let { store ->
                 SectionHeader("Google Play")
                 RowGroup {
+                    // Denemede de satın alınabilsin; deneme bitince uygulama zaten satın alma penceresine kilitlenir.
+                    val license by store.license.collectAsState()
+                    val activity = generateSequence(ctx) { (it as? ContextWrapper)?.baseContext }.filterIsInstance<Activity>().firstOrNull()
+                    if (BuildConfig.LICENSE_REQUIRED) ListRow(
+                        Icons.Default.Verified, tr("Tam sürüm"),
+                        subtitle = when (val l = license) {
+                            License.Owned -> tr("Satın alındı, teşekkürler")
+                            is License.Trial -> tr("Deneme: {0} gün kaldı · satın almak için dokunun", TrialPolicy.daysLeft(l, System.currentTimeMillis()))
+                            else -> tr("Denetleniyor…")
+                        },
+                        onClick = if (license is License.Trial && activity != null) ({ store.purchase(activity) }) else null,
+                    )
                     ListRow(
                         Icons.Default.Star, tr("Play'de değerlendir"),
                         subtitle = tr("Görüşünüzü Play'deki uygulama sayfasında yazın"),

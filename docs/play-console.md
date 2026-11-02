@@ -73,6 +73,10 @@ gelmese de). Aşağıdakiler yalnızca kullanıcı ilgili özelliği açarsa olu
 | Kişisel bilgiler → E-posta adresi | Hayır | Evet | Ödemede alıcı e-postası Stripe / iyzico / Paddle'a; e-posta açıksa sahibin SMTP sunucusuna |
 | Uygulama içeriği → Kullanıcının oluşturduğu diğer içerik | Hayır | Evet | YZ açıksa istemler ve kayıtlar (sahibin anahtarıyla) Claude / OpenAI / Gemini'ye |
 
+Tam sürüm satın alması Google Play Billing ile yapılır: ödeme ve satın alma kaydı Google'dadır, uygulama yalnızca
+satın alımın var olduğunu Play'e sorar; deneme başlangıcı Block Store'da (Google hesabının uçtan uca şifreli yedeği).
+"Finansal bilgi → Satın alma geçmişi"nin bildirilip bildirilmeyeceğini gönderimde Play'in yönergesiyle denetleyin.
+
 Bildirilmeyenler: bulut yedeği (uçtan uca şifreli; Play toplama saymaz), kart bilgisi (telefondan geçmez), harita
 karoları (yalnızca görüntülenen bölge), Telegram uyarıları ve webhook'lar (sunucu durumu, sahibin kendi verisi), onaylı
 SIM kipi (numara ve metin telefonda kalır, kullanıcı kendisi gönderir).

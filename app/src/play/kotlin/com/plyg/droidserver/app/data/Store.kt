@@ -6,6 +6,7 @@ import android.content.Intent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.IntentSenderRequest
 import androidx.core.net.toUri
+import com.plyg.droidserver.app.BuildConfig
 import com.google.android.play.core.appupdate.AppUpdateInfo
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.appupdate.AppUpdateOptions
@@ -23,10 +24,13 @@ import kotlinx.coroutines.flow.StateFlow
 fun storeServices(context: Context): StoreServices? =
     instance ?: synchronized(PlayStore::class) { instance ?: PlayStore(context.applicationContext).also { instance = it } }
 
-/** Play In-App Updates (esnek: kullanıcı kullanmaya devam ederken iner) ve Play In-App Review. */
+/** Play In-App Updates (esnek: kullanıcı kullanmaya devam ederken iner), Play In-App Review ve tam sürüm ([PlayLicense]). */
 private class PlayStore(private val context: Context) : StoreServices {
     private val updates = AppUpdateManagerFactory.create(context)
     private val reviews = ReviewManagerFactory.create(context)
+    // Bayrak kapalıyken satın alma ve deneme hiç başlamaz (deneme başlangıcı da yazılmaz).
+    private val purchases = if (BuildConfig.LICENSE_REQUIRED) PlayLicense(context) else null
+    override val license: StateFlow<License> = purchases?.license ?: MutableStateFlow(License.Owned)
     private val state = MutableStateFlow<StoreUpdate>(StoreUpdate.None)
     override val update: StateFlow<StoreUpdate> = state
     private var info: AppUpdateInfo? = null
@@ -70,6 +74,14 @@ private class PlayStore(private val context: Context) : StoreServices {
 
     override fun requestReview(activity: Activity) {
         reviews.requestReviewFlow().addOnSuccessListener { flow -> reviews.launchReviewFlow(activity, flow) }
+    }
+
+    override fun refreshLicense() {
+        purchases?.refresh()
+    }
+
+    override fun purchase(activity: Activity) {
+        purchases?.purchase(activity)
     }
 
     override fun storePage(): Intent =

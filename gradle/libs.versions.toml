@@ -23,6 +23,8 @@ roborazzi = "1.77.0"
 playFeatureDelivery = "2.1.0"
 playAppUpdate = "2.1.0"
 playReview = "2.0.2"
+playBilling = "9.1.0"
+blockstore = "16.4.0"
 fragment = "1.9.1"
 
 [libraries]
@@ -71,6 +73,8 @@ androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-
 play-feature-delivery = { module = "com.google.android.play:feature-delivery", version.ref = "playFeatureDelivery" }
 play-app-update = { module = "com.google.android.play:app-update", version.ref = "playAppUpdate" }
 play-review = { module = "com.google.android.play:review", version.ref = "playReview" }
+play-billing = { module = "com.android.billingclient:billing", version.ref = "playBilling" }
+play-blockstore = { module = "com.google.android.gms:play-services-auth-blockstore", version.ref = "blockstore" }
 androidx-fragment = { module = "androidx.fragment:fragment", version.ref = "fragment" }
 
 [plugins]
