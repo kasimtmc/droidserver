@@ -280,7 +280,8 @@ class SchemaMigrator(private val db: SqlDriver) {
             fullTextMeta = fullTextMeta,
             changeTypes = changeTypes,
             orphanColumns = orphanColumns,
-            orphanTables = (existingTables - collections.map { it.name }.toSet()).sorted(),
+            // Sistem tabloları (`_` ile başlar: eşitleme günlüğü, ödemeler …) koleksiyon olmasa da kullanılmıyor sayılmaz.
+            orphanTables = (existingTables - collections.map { it.name }.toSet()).filter { it.matches(USER_TABLE) }.sorted(),
             blockers = blockers,
             warnings = warnings,
             recordFieldTypes = recordTypes,

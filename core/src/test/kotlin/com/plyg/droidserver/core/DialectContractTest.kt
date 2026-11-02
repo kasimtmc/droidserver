@@ -93,6 +93,7 @@ class DialectContractTest(private val dialect: Dialect) {
         if (dialect == Dialect.SQLITE) db.execute("""CREATE TABLE "android_metadata" ("locale" TEXT)""") // Android'in kendi tablosu
 
         assertEquals(mapOf("notes" to 2L), m.unusedTables(inUse), "_history sistem tablosu: listede yok")
+        assertEquals(listOf("notes"), m.plan(listOf(todos)).orphanTables, "plan özeti de sistem tablolarını saymaz")
         assertEquals(emptyMap(), m.unusedTables(inUse + "notes"), "taslakta geri eklenmiş koleksiyon silinmez")
         assertFailsWith<IllegalArgumentException> { m.dropUnusedTables(listOf("notes", "todos"), inUse) }
         assertFailsWith<IllegalArgumentException> { m.dropUnusedTables(listOf("_history"), inUse) }
