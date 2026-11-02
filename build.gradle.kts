@@ -26,6 +26,6 @@ subprojects {
             // veri dosyaları da ".so" adını taşıdığı için derleme soymaya çalışmasın.
             packaging { jniLibs { useLegacyPackaging = true; keepDebugSymbols += "**/*.so" } }
         }
-        dependencies.add("implementation", project(":app"))
+        dependencies.add("implementation", dependencies.project(":app"))
     }
 }
