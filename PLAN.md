@@ -942,7 +942,7 @@ oturtmasın), sonra panelin eksiklerini kapatma, sonra güvenlik, en son yeni ö
 - Karar: sürüm numaralandırması (0.x mi 1.0 mı) ve ilk sürümde hangi özelliklerin "deneysel" işaretleneceği.
   *Karar (kullanıcı, 23 Ekim 2026):* ilk sürüm **0.9.0**; cihaz testinde henüz denenmemiş her özellik "deneysel"
   (test geçtikçe listeden çıkar), targetSdk 28'de kalır.
-  *Durum:* sürüm notu şablonu (`.github/release-notes/TEMPLATE.md`) ve `0.9.0.md` hazır; `release.yml` `<sürüm>.md`'yi
+  *Durum:* sürüm notu şablonu (`release-notes/TEMPLATE.md`) ve `0.9.0.md` hazır; `release.yml` `<sürüm>.md`'yi
   notun başına koyar. Kalan (kullanıcıda): imza anahtarı ve dört secret (şu an tanımlı değil), `v0.9.0` etiketi, ardından
   `v0.9.1` ile uygulama içi güncellemenin gerçek sürümle denenmesi (cihaz testi g2'nin imzalı yolu).
   *Durum (24 Ekim 2026):* `0.9.0.md`'nin "Deneysel" listesi Faz 17-18 ve MQTT TLS ile güncellendi; README'de `gh` ile

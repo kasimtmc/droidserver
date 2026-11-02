@@ -2243,7 +2243,7 @@ English texts for Console). Why the GitHub build stays at 28: see Why targetSdk 
 
 `.github/workflows/release.yml`: when a `v1.2.3` tag is pushed (or manually from Actions, entering a version), tests run,
 a signed release APK is built, checked with `apksigner` and uploaded to the release as `droidserver-1.2.3.apk` +
-`.apk.sha256` (versions with a suffix like `-beta.1` become pre-releases). If `.github/release-notes/<version>.md` exists
+`.apk.sha256` (versions with a suffix like `-beta.1` become pre-releases). If `release-notes/<version>.md` exists
 the release notes start with it (template: `TEMPLATE.md`; the in-app update shows this text), followed by notes generated
 from commits. The version
 name and code come from the tag (`-PappVersion=1.2.3`; code `1.2.3 → 1020399`, pre-releases are lower than the stable

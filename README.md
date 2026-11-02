@@ -2199,7 +2199,7 @@ Play Uygulama İmzalama, mağaza kaydı, beyanlar ve servis hesabı: [docs/play-
 
 `.github/workflows/release.yml`: `v1.2.3` etiketi gönderilince (veya Actions'tan elle, sürüm girerek) testler koşar,
 imzalı yayın APK'sı üretilir, `apksigner` ile denetlenir ve sürüme `droidserver-1.2.3.apk` + `.apk.sha256` olarak
-yüklenir (`-beta.1` gibi ekli sürümler ön sürüm olur). Sürüm notu `.github/release-notes/<sürüm>.md` varsa onunla başlar
+yüklenir (`-beta.1` gibi ekli sürümler ön sürüm olur). Sürüm notu `release-notes/<sürüm>.md` varsa onunla başlar
 (şablon: `TEMPLATE.md`; uygulama içi güncelleme bu metni gösterir), altına commit'lerden üretilen notlar eklenir. Sürüm adı ve kodu etiketten
 gelir (`-PappVersion=1.2.3`; kod `1.2.3 → 1020399`, ön sürümler aynı sürümün kararlısından küçük).
 
