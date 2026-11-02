@@ -139,7 +139,7 @@ kotlin {
 
 // Uygulama içi yardım: README'ler derlemede `assets/help/` altına kopyalanır (çevrimdışı; bölümlere uygulama ayırır).
 val helpAssets = layout.buildDirectory.dir("generated/help-assets")
-val copyHelp by tasks.registering(Copy::class) {
+val copyHelp = tasks.register<Copy>("copyHelp") {
     from(rootProject.file("README.md"), rootProject.file("README.en.md"))
     into(helpAssets.map { it.dir("help") })
 }
