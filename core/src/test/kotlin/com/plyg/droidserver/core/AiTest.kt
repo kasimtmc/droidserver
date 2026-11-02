@@ -300,7 +300,8 @@ class AiTest {
             server.stop(0)
         }
         val (headers, body) = seen.first()
-        assertEquals("sk-ant-deneme", headers["x-api-key"])
+        // SDK 3.x anahtarı Authorization: Bearer ile gönderir; API bunu x-api-key gibi kabul eder.
+        assertEquals("Bearer sk-ant-deneme", headers["authorization"], headers.toString())
         assertTrue(ClaudeChat.FALLBACK_BETA in headers["anthropic-beta"].orEmpty(), headers.toString())
         assertEquals("claude-opus-5-5", body.getValue("model").jsonPrimitive.content)
         assertEquals("2000", body.getValue("max_tokens").toString())

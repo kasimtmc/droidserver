@@ -72,7 +72,7 @@ class ClaudeChat(
         for (m in messages) when {
             m.role == "assistant" -> params.addAssistantMessage(m.content)
             m.images.isEmpty() -> params.addUserMessage(m.content)
-            else -> params.addUserMessageOfBetaContentBlockParams(
+            else -> params.addUserMessageOfContentBlockParams(
                 m.images.map { img ->
                     BetaContentBlockParam.ofImage(BetaBase64ImageSource.builder().data(img.base64).mediaType(BetaBase64ImageSource.MediaType.of(img.mime)).build())
                 } + BetaContentBlockParam.ofText(m.content),
