@@ -131,6 +131,7 @@ class PagesTest {
         assertTrue("Elma" in detail && "&lt;b&gt;kalın&lt;/b&gt; satır<br>ikinci" in detail, detail)
         assertFalse("çok gizli" in detail || "secret" in detail)
         assertEquals(404, client.get("/pages/blog/999").status.value)
+        assertEquals(404, client.get("/pages/blog/4").status.value, "süzgece uymayan kayıt (taslak) detayda da yok")
         // Tablo düzeni; detay kapalı.
         val table = client.get("/pages/tablo").bodyAsText()
         assertTrue("<table>" in table && "/pages/tablo/1" !in table, table)

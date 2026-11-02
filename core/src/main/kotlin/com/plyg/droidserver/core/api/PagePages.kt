@@ -133,6 +133,10 @@ internal fun Route.pagePages(
                 .map { it.substringBefore('=').trim() to it.substringAfter('=', "").trim().split(',').joinToString(",") { v -> if (v.trim() == "@me") me else v } }
         }
 
+        /** Kayıt sayfanın sabit süzgecine uyuyor mu; uymayan kayıt (örn. taslak) detayda ve dosyada da yok sayılır. */
+        suspend fun visible(caller: Caller, id: Long, scope: Scope): Boolean =
+            page.filter.isNullOrBlank() || io { svc.list(1, 1, null, fixed(caller) + ("id" to id.toString()), scope = scope) }.totalItems > 0
+
         get(page.path) {
             val (caller, scope) = call.scope(Rules.Op.LIST) ?: return@get
             val q = call.request.queryParameters["q"]?.trim()?.takeIf { it.isNotEmpty() && c.search.isNotEmpty() }
@@ -192,6 +196,7 @@ internal fun Route.pagePages(
             get("${page.path}/{id}") {
                 val id = call.parameters["id"]?.toLongOrNull() ?: return@get call.notFound(serverName, page)
                 val (caller, scope) = call.scope(Rules.Op.VIEW) ?: return@get
+                if (!visible(caller, id, scope)) return@get call.notFound(serverName, page)
                 val record = try {
                     io { svc.present(svc.get(id, expand = expand(c, detailFields, caller, collections), scope = scope), scope) }
                 } catch (e: ApiException) {
@@ -211,7 +216,8 @@ internal fun Route.pagePages(
             }
             get("${page.path}/{id}/files/{name}") {
                 val id = call.parameters["id"]?.toLongOrNull() ?: return@get call.notFound(serverName, page)
-                val (_, scope) = call.scope(Rules.Op.VIEW) ?: return@get
+                val (caller, scope) = call.scope(Rules.Op.VIEW) ?: return@get
+                if (!visible(caller, id, scope)) return@get call.notFound(serverName, page)
                 with(host) { call.sendFile(c, id, call.parameters["name"].orEmpty(), scope) }
             }
         }
