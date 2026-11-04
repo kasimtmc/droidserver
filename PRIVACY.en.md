@@ -2,6 +2,8 @@
 
 [Türkçe](PRIVACY.md) | **English**
 
+Publisher: plyGround · Last updated: 4 November 2026
+
 DroidServer is a server that runs on your phone. The developer collects no data: the app has no analytics, ads, crash
 report uploads or usage tracking. Your server's data (records, files, user accounts, logs, backups) stays on your phone;
 only features you turn on send data, and only to the places you choose.
@@ -14,6 +16,11 @@ only features you turn on send data, and only to the places you choose.
 - **Component catalog:** in the GitHub version, when you open the Components screen, the list of side services and the
   package you pick are downloaded from GitHub. In the Play version the list ships with the app and the component you
   pick is downloaded from Google Play.
+- **Full version (Play version):** the app asks Google Play whether DroidServer has been purchased and what it costs.
+  Google Play handles the payment and the purchase record entirely; your payment details never reach the app or the
+  developer. The moment the one-week trial started is stored in Google's Block Store (tied to your Google account,
+  end-to-end encrypted backup where the device supports it), so uninstalling and reinstalling doesn't restart the trial.
+  This record contains only a timestamp. The GitHub version has no purchase or trial.
 - **Maps:** when you show records with a location on a map (Map and dashboards in the app, the web panel), map tiles are
   loaded from OpenStreetMap (`tile.openstreetmap.org`). If a dashboard you share has a map, the browser of whoever opens
   it loads the tiles from there too.
@@ -61,6 +68,7 @@ configuration file or to backups.
 | Send SMS (GitHub version only) | SMS login codes and SMS from scripts/automations, directly from the SIM (only if you turn it on; asked for then). The Play version doesn't have this permission |
 | Location | Letting scripts and the API read the phone's last known location (only if you turn it on; asked for then). Background location isn't requested; in the Play version the location is only read while the app is on screen |
 | Install packages (GitHub version only) | In-app updates (you confirm every installation) |
+| Google Play billing (Play version only) | The one-time purchase of the full version |
 
 The Play version doesn't have the battery optimization exemption permission either; you grant the exemption in
 Android's battery settings.

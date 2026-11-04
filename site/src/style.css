@@ -1,0 +1,96 @@
+/* plyground.org/droidserver: uygulamanın renkleri, açık ve koyu tema; harici font ve betik yok. */
+:root {
+  --bg: #f5fbf9;
+  --fg: #171d1c;
+  --muted: #3f4947;
+  --card: #ffffff;
+  --line: #d6e3e0;
+  --accent: #006a63;
+  --accent-fg: #ffffff;
+  --accent-soft: #cce8e3;
+  --radius: 16px;
+  --max: 1040px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1514;
+    --fg: #dee4e2;
+    --muted: #bec9c6;
+    --card: #1a2120;
+    --line: #2f3836;
+    --accent: #82d5cb;
+    --accent-fg: #003733;
+    --accent-soft: #1f3532;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+}
+a { color: var(--accent); }
+img { max-width: 100%; height: auto; }
+
+.top {
+  max-width: var(--max); margin: 0 auto; padding: 16px 20px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+}
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.15rem; color: var(--fg); text-decoration: none; }
+.brand img { border-radius: 8px; }
+.top nav { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.top nav a { color: var(--muted); text-decoration: none; padding: 4px 0; }
+.top nav a:hover, .top nav a[aria-current] { color: var(--accent); }
+.top nav a[aria-current] { font-weight: 600; }
+.top nav .lang { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; }
+
+main { max-width: var(--max); margin: 0 auto; padding: 8px 20px 48px; }
+section { margin: 48px 0; }
+h1, h2, h3 { line-height: 1.25; }
+h2 { font-size: 1.6rem; margin: 0 0 16px; }
+
+.hero { display: flex; flex-wrap: wrap; align-items: center; gap: 32px; margin-top: 16px; }
+.hero-text { flex: 1 1 380px; }
+.hero h1 { font-size: clamp(2rem, 6vw, 3.2rem); margin: 0 0 16px; }
+.lead { font-size: 1.15rem; color: var(--muted); margin: 0 0 24px; }
+.shot { flex: 0 1 300px; border-radius: 24px; box-shadow: 0 12px 40px rgb(0 0 0 / 15%); }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.button {
+  display: inline-block; padding: 12px 22px; border-radius: 999px; background: var(--accent); color: var(--accent-fg);
+  font-weight: 600; text-decoration: none; border: 1px solid var(--accent);
+}
+.button.ghost { background: transparent; color: var(--accent); }
+.note { color: var(--muted); font-size: 0.95rem; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
+.grid.two { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; }
+.card h3 { margin: 0 0 8px; font-size: 1.05rem; }
+.card p { margin: 0; color: var(--muted); }
+
+.steps { padding-left: 1.4em; }
+.steps li { margin: 8px 0; }
+.gallery { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; }
+.gallery img { flex: 0 1 220px; border-radius: 18px; box-shadow: 0 8px 28px rgb(0 0 0 / 12%); }
+
+/* Belgeler: rehber, SSS, gizlilik, koşullar */
+.doc { max-width: 760px; }
+.doc h1 { font-size: 2rem; }
+.doc h2 { font-size: 1.4rem; margin-top: 40px; padding-top: 8px; border-top: 1px solid var(--line); }
+.doc h3 { font-size: 1.1rem; margin-top: 28px; }
+.doc img { display: block; max-width: 280px; margin: 16px 0; border-radius: 18px; box-shadow: 0 8px 28px rgb(0 0 0 / 12%); }
+.doc li { margin: 6px 0; }
+.doc a { overflow-wrap: anywhere; }
+code { font: 0.9em ui-monospace, "SF Mono", Menlo, Consolas, monospace; background: var(--accent-soft); padding: 1px 5px; border-radius: 6px; overflow-wrap: anywhere; }
+pre { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; overflow-x: auto; }
+pre code { background: none; padding: 0; overflow-wrap: normal; }
+.table { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+th { font-weight: 600; }
+
+footer {
+  max-width: var(--max); margin: 0 auto; padding: 24px 20px 40px; border-top: 1px solid var(--line);
+  display: flex; flex-wrap: wrap; gap: 8px 20px; color: var(--muted); font-size: 0.95rem;
+}
+footer a { color: var(--muted); }

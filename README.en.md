@@ -2244,7 +2244,8 @@ from the release page and restore the backup.
 The Play store listing is in `fastlane/metadata/android/` (title, descriptions, icon, feature graphic, screenshots; graphic
 sources in `fastlane/graphics/`). The F-Droid release was dropped (`docs/fdroid/` is kept for the record). The release build is set up to be reproducible (the build machine's Git
 info and Google's encrypted dependency block are not written into the APK): two clean builds from the same source give a
-byte-identical APK. Privacy policy and permission rationale: [PRIVACY.en.md](PRIVACY.en.md). License: GPL-3.0-or-later ([LICENSE](LICENSE)).
+byte-identical APK. Privacy policy and permission rationale: [PRIVACY.en.md](PRIVACY.en.md); terms of use: [TERMS.en.md](TERMS.en.md); the
+website (plyground.org/droidserver) is generated into `site/dist/` with `python3 site/build.py`. License: GPL-3.0-or-later ([LICENSE](LICENSE)).
 
 **Play version:** the same workflow also builds the `play` AAB (Artifacts) and, if the `PLAY_SERVICE_ACCOUNT_JSON` secret is
 set, uploads it to Play: stable releases to closed testing (alpha), pre-releases to internal testing; promotion to

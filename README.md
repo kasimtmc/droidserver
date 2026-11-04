@@ -2201,7 +2201,8 @@ APK'yı kurun ve yedeği geri yükleyin.
 Play mağaza kaydı `fastlane/metadata/android/` altındadır (başlık, açıklamalar, simge, öne çıkan görsel, ekran
 görüntüleri; görsel kaynakları `fastlane/graphics/`). F-Droid yayını bırakıldı (`docs/fdroid/` kayıt için duruyor). Yayın derlemesi tekrarlanabilir olacak şekilde ayarlıdır
 (APK'ya derleme ortamının Git bilgisi ve Google'ın şifreli bağımlılık bloğu yazılmaz): aynı kaynaktan iki temiz derleme
-bayt bayt aynı APK'yı verir. Gizlilik politikası ve izin gerekçeleri: [PRIVACY.md](PRIVACY.md). Lisans: GPL-3.0-or-later ([LICENSE](LICENSE)).
+bayt bayt aynı APK'yı verir. Gizlilik politikası ve izin gerekçeleri: [PRIVACY.md](PRIVACY.md); kullanım koşulları: [TERMS.md](TERMS.md); web sitesi
+(plyground.org/droidserver) `python3 site/build.py` ile `site/dist/` altına üretilir. Lisans: GPL-3.0-or-later ([LICENSE](LICENSE)).
 
 **Play sürümü:** aynı iş akışı `play` AAB'sini de üretir (Artifacts) ve `PLAY_SERVICE_ACCOUNT_JSON` secret'ı varsa Play'e
 yükler: kararlı sürüm kapalı test (alpha), ön sürüm dahili test kanalına; üretime geçiş Play Console'dan elle. İlk paket,

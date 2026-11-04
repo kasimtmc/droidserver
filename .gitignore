@@ -14,3 +14,5 @@ CLAUDE.md
 # Android Studio'nun imzalı paket çıktısı (Build → Generate Signed App Bundle): app/<tür>/release/
 app/full/
 app/play/
+# plyground.org/droidserver sitesi: python3 site/build.py üretir
+site/dist/
