@@ -162,6 +162,9 @@ def images():
     sources = [(ROOT / "fastlane/metadata/android/tr-TR/images/icon.png", "icon.png", 192)] + [
         (ROOT / "screenshots" / n, n, 720) for n in IMAGES
     ]
+    # İngilizce sayfalar: gerçek telefondan İngilizce arayüz görüntüleri (durum çubuğu kırpılmış).
+    (dst / "en").mkdir(exist_ok=True)
+    sources += [(f, f"en/{f.name}", 720) for f in sorted((ROOT / "screenshots" / "en").glob("*.jpg"))]
     for src, name, width in sources:
         if Image is None:
             shutil.copy(src, dst / name)
@@ -169,7 +172,7 @@ def images():
         im = Image.open(src)
         if im.width > width:
             im = im.resize((width, round(im.height * width / im.width)), Image.LANCZOS)
-        im.save(dst / name, optimize=True)
+        im.save(dst / name, optimize=True, **({"quality": 85} if name.endswith(".jpg") else {}))
 
 
 def main():

@@ -24,8 +24,6 @@ After a short introduction comes the **How would you like to start?** page:
   records and a simple site are set up for you. This is the quickest way to try it out.
 - **Start empty (wizard):** you choose everything step by step.
 
-![Welcome screen](../img/01-karsilama.png)
-
 ## 3. The wizard
 
 The wizard asks what your server should do in seven steps. Fill in only what you need at each step; you can change
@@ -41,7 +39,7 @@ everything later with **Server → Edit with wizard**.
 7. **Summary and deploy:** a summary of the changes and the schema plan. **Save and deploy** starts the server with the
    new settings.
 
-![Wizard](../img/09-sihirbaz.png)
+![Wizard, General step](../img/en/wizard-general.jpg)
 
 ## 4. Starting the server
 
@@ -52,7 +50,7 @@ The Status screen summarizes the last hour's requests and errors, the battery, r
 something isn't working, the **Troubleshooter** checks connectivity, access and permissions on one screen and tells you
 what to do about each finding.
 
-![Status screen](../img/02-durum.png)
+![Status screen](../img/en/status.jpg)
 
 ## 5. Connecting your app
 
@@ -70,11 +68,15 @@ curl -H "Authorization: Bearer <key>" http://192.168.1.20:8080/api/collections/t
 To add a record, send JSON to the same address with `POST`. The server describes all its endpoints at
 `/api/_openapi.json`; you can also try requests from inside the app with **Server → API explorer**.
 
+![API explorer](../img/en/api-explorer.jpg)
+
 ## 6. Publishing a site
 
 Put your site's files (`index.html`, CSS, JavaScript, images) in a zip file and pick it with **Server → Static site →
 Upload zip**. Once the upload finishes the site is live; there's no need to restart the server. For no-code list and
 detail pages use **Server → Pages**, and for dashboards with numbers and charts **Server → Dashboards**.
+
+![Server screen with the static site](../img/en/server.jpg)
 
 ## 7. The web panel
 
@@ -98,6 +100,8 @@ At first the server can only be reached from your home network. In **Wizard → 
 - **Directly from the internet (IP address):** HTTPS on the phone's internet address; on Wi-Fi a port is opened on the
   router.
 
+![Wizard, Access step](../img/en/wizard-access.jpg)
+
 Before opening the server to the internet, review your collections' access rules and your API key.
 
 ## 9. Components
@@ -105,6 +109,8 @@ Before opening the server to the internet, review your collections' access rules
 From the **Components** tab you can install side services such as PostgreSQL, Redis and Cloudflare Tunnel, and runtimes
 for your own Node.js, Python or Java apps. **Install and run** downloads the component (from Google Play in the Play
 version) and manages it together with the server.
+
+![Components](../img/en/components.jpg)
 
 ## 10. Backups
 
@@ -131,6 +137,8 @@ Android may stop background apps to save battery. To keep the server running wit
 
 The **Troubleshooter** points out missing Android settings such as battery optimization; check the manufacturer's
 autostart setting yourself.
+
+![Troubleshooter](../img/en/troubleshooter.jpg)
 
 ## 12. Alerts and remote management
 
