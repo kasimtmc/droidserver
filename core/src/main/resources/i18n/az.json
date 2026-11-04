@@ -4354,5 +4354,9 @@
  "Güncelleme kurulamadı: {0}": "Yeniləmə quraşdırıla bilmədi: {0}",
  "Güncelleme: APK imzası bu Android sürümünde önceden okunamadı; denetimi Android yapacak": "Yeniləmə: bu Android versiyası APK imzasını əvvəlcədən oxuya bilmir; yoxlamanı Android edəcək",
  "Otomasyon komutu: {0}": "Avtomatlaşdırma əmri: {0}",
- "Otomasyon komutu ({0}): önce sihirbazı tamamlayın": "Avtomatlaşdırma əmri ({0}): əvvəlcə sehrbazı tamamlayın"
+ "Otomasyon komutu ({0}): önce sihirbazı tamamlayın": "Avtomatlaşdırma əmri ({0}): əvvəlcə sehrbazı tamamlayın",
+ "{0} adresi bulunamadı; internet bağlantısını denetleyip yeniden deneyin": "{0} ünvanı tapılmadı; internet bağlantısını yoxlayıb yenidən cəhd edin",
+ "{0} zamanında yanıt vermedi; bağlantı yavaş olabilir, yeniden deneyin": "{0} vaxtında cavab vermədi; bağlantı yavaş ola bilər, yenidən cəhd edin",
+ "{0} adresine bağlanılamadı; internet bağlantısını denetleyip yeniden deneyin": "{0} ünvanına qoşulmaq mümkün olmadı; internet bağlantısını yoxlayıb yenidən cəhd edin",
+ "{0} ile güvenli bağlantı kurulamadı; telefonun tarih ve saatini denetleyin": "{0} ilə təhlükəsiz bağlantı qurulmadı; telefonun tarix və saatını yoxlayın"
 }

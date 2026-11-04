@@ -5,10 +5,12 @@ import com.plyg.droidserver.core.config.ConfigJson
 import com.plyg.droidserver.core.config.PostgresDefaults
 import com.plyg.droidserver.core.db.PostgresAdmin
 import com.plyg.droidserver.core.i18n.tr
+import com.plyg.droidserver.core.net.readableNetError
 import com.plyg.droidserver.core.process.ProcessSupervisor
 import com.plyg.droidserver.core.process.Readiness
 import kotlinx.serialization.Serializable
 import java.io.File
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
 import java.nio.file.Files
@@ -502,6 +504,8 @@ class ComponentManager(
         try {
             check(conn.responseCode == 200) { tr("İndirme başarısız ({0}): {1}", conn.responseCode, url) }
             return conn.inputStream.use { it.readBytes() }
+        } catch (e: IOException) {
+            throw readableNetError(e, url)
         } finally {
             conn.disconnect()
         }

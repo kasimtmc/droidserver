@@ -14,6 +14,7 @@ import com.plyg.droidserver.core.config.PostgresUrl
 import com.plyg.droidserver.core.config.RestartPolicy
 import com.plyg.droidserver.core.config.ServerConfig
 import com.plyg.droidserver.core.db.PostgresDriver
+import com.plyg.droidserver.core.net.readableNetError
 import com.plyg.droidserver.core.process.ProcessSupervisor
 import com.plyg.droidserver.core.process.ReadinessProbe
 import com.plyg.droidserver.core.server.DeployOrchestrator
@@ -25,9 +26,11 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.URI
+import java.net.UnknownHostException
 import java.nio.file.Files
 import java.security.MessageDigest
 import java.util.zip.ZipEntry
@@ -51,6 +54,23 @@ class ComponentManagerTest {
         srv.createContext("/pkg.zip") { ex -> ex.sendResponseHeaders(200, bytes.size.toLong()); ex.responseBody.use { it.write(bytes) } }
         srv.start()
         return srv to "http://127.0.0.1:${srv.address.port}/pkg.zip"
+    }
+
+    @Test
+    fun `ag hatasi anlasilir iletiyle doner`() {
+        val root = Files.createTempDirectory("comp").toFile()
+        try {
+            val mgr = ComponentManager(root, "arm64-v8a") {}
+            val port = ServerSocket(0).use { it.localPort }
+            val closed = assertFailsWith<IOException> { mgr.fetchManifest("http://127.0.0.1:$port/components.json") }
+            assertEquals("127.0.0.1 adresine bağlanılamadı; internet bağlantısını denetleyip yeniden deneyin", closed.message)
+            val unknown = readableNetError(UnknownHostException("Unable to resolve host \"github.com\""), "https://github.com/x/components.json")
+            assertEquals("github.com adresi bulunamadı; internet bağlantısını denetleyip yeniden deneyin", unknown.message)
+            val other = IllegalStateException("x")
+            assertTrue(readableNetError(other, "https://github.com") === other)
+        } finally {
+            root.deleteRecursively()
+        }
     }
 
     @Test

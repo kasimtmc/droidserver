@@ -1,6 +1,7 @@
 package com.plyg.droidserver.core.update
 
 import com.plyg.droidserver.core.i18n.tr
+import com.plyg.droidserver.core.net.readableNetError
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -82,7 +83,7 @@ class ReleaseChecker(
             return dest
         } catch (e: Exception) {
             dest.delete()
-            throw e
+            throw readableNetError(e, release.apkUrl)
         } finally {
             c.disconnect()
         }
@@ -103,6 +104,8 @@ class ReleaseChecker(
         try {
             if (c.responseCode != 200) throw IOException(tr("GitHub yanıt vermedi (HTTP {0})", c.responseCode))
             return c.inputStream.use { it.readBytes().decodeToString() }
+        } catch (e: IOException) {
+            throw readableNetError(e, url)
         } finally {
             c.disconnect()
         }
