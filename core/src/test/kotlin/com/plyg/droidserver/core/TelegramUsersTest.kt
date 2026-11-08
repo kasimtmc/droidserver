@@ -9,11 +9,14 @@ import com.plyg.droidserver.core.config.AlertsConfig
 import com.plyg.droidserver.core.config.AuthConfig
 import com.plyg.droidserver.core.config.AuthMode
 import com.plyg.droidserver.core.config.ConfigValidator
+import com.plyg.droidserver.core.config.ScriptsConfig
 import com.plyg.droidserver.core.config.ServerConfig
 import com.plyg.droidserver.core.config.TelegramConfig
 import com.plyg.droidserver.core.config.UserTelegramConfig
 import com.plyg.droidserver.core.config.UsersConfig
 import com.plyg.droidserver.core.db.SchemaMigrator
+import com.plyg.droidserver.core.script.ScriptRuntime
+import com.plyg.droidserver.core.script.ScriptSource
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
@@ -50,7 +53,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Faz 20.1-20.2: kullanıcıların Telegram hesaplarını botla bağlaması ve Telegram ile giriş. */
+/** Faz 20.1-20.3: Telegram hesabını bağlama, Telegram ile giriş ve script'ten mesaj. */
 class TelegramUsersTest {
     private val token = "123456789:" + "A".repeat(35)
     private val config = ServerConfig(
@@ -241,7 +244,11 @@ class TelegramUsersTest {
         testApplication {
             val db = TestDb.create(Dialect.SQLITE).open()
             SchemaMigrator(db).migrate(config.schemaCollections())
-            application { droidServerModule(config, db, telegramApi = tg.base) }
+            val scripts = ScriptRuntime.load(
+                listOf(ScriptSource("t.js", """routerAdd("POST", "/tg", (req, ctx) => ({ sent: ctx.telegram.send(ctx.auth.id, "script'ten merhaba") }), "auth")""")),
+                ScriptsConfig(enabled = true), emptySet(),
+            )
+            application { droidServerModule(config, db, scripts = scripts, telegramApi = tg.base) }
             suspend fun post(path: String, body: String = "{}", token: String? = null) =
                 client.post(path) { token?.let(::bearerAuth); contentType(ContentType.Application.Json); setBody(body) }
             suspend fun status(token: String) = Json.parseToJsonElement(client.get("/api/auth/telegram") { bearerAuth(token) }.bodyAsText()).jsonObject
@@ -266,8 +273,14 @@ class TelegramUsersTest {
             repeat(100) { if (!status(user).getValue("linked").jsonPrimitive.boolean) delay(50) }
             assertEquals("ayse_tg", status(user).getValue("username").jsonPrimitive.content)
 
+            // Script'ten mesaj: bağlıyken gider.
+            tg.texts("555")
+            assertEquals("true", Json.parseToJsonElement(post("/api/tg", token = user).bodyAsText()).jsonObject.getValue("sent").jsonPrimitive.content)
+            assertEquals(listOf("script'ten merhaba"), tg.texts("555"))
+
             assertEquals(HttpStatusCode.NoContent, client.delete("/api/auth/telegram") { bearerAuth(user) }.status)
             assertEquals(false, status(user).getValue("linked").jsonPrimitive.boolean)
+            assertEquals("false", Json.parseToJsonElement(post("/api/tg", token = user).bodyAsText()).jsonObject.getValue("sent").jsonPrimitive.content)
         }
     }
 }

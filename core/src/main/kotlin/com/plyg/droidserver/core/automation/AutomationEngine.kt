@@ -68,6 +68,8 @@ class AutomationHost {
 class AutomationOutputs(
     val mail: ((to: String, subject: String, text: String) -> Unit)? = null,
     val push: ((user: Long, title: String, body: String, url: String?) -> Unit)? = null,
+    /** Kullanıcının bağlı Telegram sohbetine mesaj; bağlı değilse false. */
+    val telegram: ((user: Long, text: String) -> Boolean)? = null,
     val webhook: ((name: String, event: String, collection: String?, record: JsonObject) -> Unit)? = null,
     /** MQTT yayını (konu, içerik, tutulsun mu); kaç cihaza gittiği. */
     val mqtt: ((topic: String, payload: String, retain: Boolean) -> Int)? = null,
@@ -239,6 +241,16 @@ class AutomationEngine(
     /** UPDATE dışındaki eylemler; yapılanın kısa açıklaması. */
     private fun perform(rule: AutomationConfig, a: AutomationAction, collection: String?, rec: JsonObject, vars: MutableMap<String, String>, depth: Int): String {
         fun fill(t: String?) = fill(t.orEmpty(), rule, rec, vars)
+        /** Bildirimin gideceği kullanıcı: kaydın sahibi ya da kimlik / `{alan}`. */
+        fun target(): Long {
+            val target = a.to?.trim().orEmpty()
+            return if (target == AutomationAction.OWNER) {
+                val ownerField = byCollection[collection]?.ownerField
+                ownerField?.let { (rec[it] as? JsonPrimitive)?.longOrNull } ?: error(tr("Kaydın sahibi yok"))
+            } else {
+                fill(target).trim().toLongOrNull() ?: error(tr("Kullanıcı kimliği geçersiz: '{0}'", fill(target)))
+            }
+        }
         return when (a.type) {
             AutomationActionType.EMAIL -> {
                 val send = outputs.mail ?: error(tr("E-posta gönderimi kapalı"))
@@ -249,15 +261,15 @@ class AutomationEngine(
             }
             AutomationActionType.PUSH -> {
                 val send = outputs.push ?: error(tr("Web push kapalı"))
-                val target = a.to?.trim().orEmpty()
-                val user = if (target == AutomationAction.OWNER) {
-                    val ownerField = byCollection[collection]?.ownerField
-                    ownerField?.let { (rec[it] as? JsonPrimitive)?.longOrNull } ?: error(tr("Kaydın sahibi yok"))
-                } else {
-                    fill(target).trim().toLongOrNull() ?: error(tr("Kullanıcı kimliği geçersiz: '{0}'", fill(target)))
-                }
+                val user = target()
                 send(user, fill(a.subject), fill(a.body), a.url?.let(::fill)?.ifBlank { null })
                 tr("bildirim gönderildi (kullanıcı {0})", user)
+            }
+            AutomationActionType.TELEGRAM -> {
+                val send = outputs.telegram ?: error(tr("Telegram botu kapalı"))
+                val user = target()
+                if (send(user, fill(a.body))) tr("Telegram mesajı gönderildi (kullanıcı {0})", user)
+                else tr("Telegram mesajı gitmedi: kullanıcı {0} Telegram'ı bağlamamış", user)
             }
             AutomationActionType.WEBHOOK -> {
                 val send = outputs.webhook ?: error(tr("Webhook'lar kapalı"))

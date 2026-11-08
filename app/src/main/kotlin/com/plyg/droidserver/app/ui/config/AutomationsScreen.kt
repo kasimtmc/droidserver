@@ -307,6 +307,7 @@ private fun ActionCard(cfg: ServerConfig, collection: String?, scheduled: Boolea
             AutomationActionType.MQTT -> cfg.mqtt.enabled || a.type == t
             AutomationActionType.AI -> (cfg.ai.enabled && collection != null && !scheduled) || a.type == t
             AutomationActionType.PAYMENT -> (cfg.payments.enabled && collection != null && !scheduled) || a.type == t
+            AutomationActionType.TELEGRAM -> (cfg.auth.users.enabled && cfg.auth.users.telegram != null) || a.type == t
             else -> true
         }
     }
@@ -341,6 +342,14 @@ private fun ActionCard(cfg: ServerConfig, collection: String?, scheduled: Boolea
                     field(tr("Başlık"), a.subject) { a.copy(subject = it) }()
                     field(tr("Metin"), a.body) { a.copy(body = it) }()
                     field(tr("Açılacak adres (isteğe bağlı)"), a.url) { a.copy(url = it) }()
+                }
+                AutomationActionType.TELEGRAM -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (!scheduled) FilterChip(a.to == AutomationAction.OWNER, { onChange(a.copy(to = AutomationAction.OWNER)) }, label = { Text(tr("Kaydın sahibi")) })
+                        FilterChip(a.to != AutomationAction.OWNER, { onChange(a.copy(to = "")) }, label = { Text(tr("Belirli kullanıcı")) })
+                    }
+                    if (a.to != AutomationAction.OWNER) field(tr("Kullanıcı kimliği"), a.to, tr("Sayı veya kayıttaki alan, örn. {customer}")) { a.copy(to = it) }()
+                    field(tr("Metin"), a.body, tr("Kullanıcı Telegram'ı bağlamadıysa mesaj gitmez."), single = false) { a.copy(body = it) }()
                 }
                 AutomationActionType.WEBHOOK -> FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     cfg.webhooks.forEach { h -> FilterChip(a.webhook == h.name, { onChange(a.copy(webhook = h.name)) }, label = { Text(h.name) }) }

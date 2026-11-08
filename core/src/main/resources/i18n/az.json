@@ -4392,5 +4392,16 @@
  "Telegram ile giriş kapalı": "Telegram ilə giriş bağlıdır",
  "Bu adresle bir hesap varsa ve Telegram'ı bağlıysa giriş kodu Telegram'dan gönderildi": "Bu ünvanla hesab varsa və Telegram bağlıdırsa, giriş kodu Telegram-dan göndərildi",
  "Telegram ile giriş kodu iste (6 hane, 10 dk); hesabın Telegram'ı bağlı olmalı": "Telegram ilə giriş kodu istə (6 rəqəm, 10 dəq); hesaba Telegram bağlı olmalıdır",
- "Hesap varsa ve Telegram bağlıysa kod gönderildi": "Hesab varsa və Telegram bağlıdırsa kod göndərildi"
+ "Hesap varsa ve Telegram bağlıysa kod gönderildi": "Hesab varsa və Telegram bağlıdırsa kod göndərildi",
+ "Telegram mesajı gönder": "Telegram mesajı göndər",
+ "Telegram botu kapalı": "Telegram botu bağlıdır",
+ "Telegram mesajı gönderildi (kullanıcı {0})": "Telegram mesajı göndərildi (istifadəçi {0})",
+ "Telegram mesajı gitmedi: kullanıcı {0} Telegram'ı bağlamamış": "Telegram mesajı getmədi: istifadəçi {0} Telegram-ı bağlamayıb",
+ "{0}: Telegram eylemi için kullanıcı hesaplarını ve Telegram botunu açın": "{0}: Telegram əməliyyatı üçün istifadəçi hesablarını və Telegram botunu açın",
+ "{0}: mesajın gideceği kullanıcıyı seçin": "{0}: mesajın gedəcəyi istifadəçini seçin",
+ "{0}: mesaj metni boş": "{0}: mesaj mətni boşdur",
+ "ctx.telegram: Telegram botu kapalı (Sihirbaz → Kullanıcılar → Telegram)": "ctx.telegram: Telegram botu bağlıdır (Sehrbaz → İstifadəçilər → Telegram)",
+ "ctx.telegram.send: kullanıcı kimliği gerekli": "ctx.telegram.send: istifadəçi ID-si tələb olunur",
+ "ctx.telegram.send: metin gerekli": "ctx.telegram.send: mətn tələb olunur",
+ "Kullanıcı Telegram'ı bağlamadıysa mesaj gitmez.": "İstifadəçi Telegram-ı bağlamayıbsa mesaj getmir."
 }

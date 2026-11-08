@@ -1191,6 +1191,14 @@ object ConfigValidator {
                         else if (to == AutomationAction.OWNER && collection?.ownerField == null) error("$ap.to", tr("{0}: 'kaydın sahibi' için koleksiyonda sahip alanı olmalı", a.name))
                         if (act.subject.isNullOrBlank()) error("$ap.subject", tr("{0}: bildirim başlığı boş", a.name))
                     }
+                    AutomationActionType.TELEGRAM -> {
+                        if (!config.auth.users.enabled || config.auth.users.telegram == null) error(ap, tr("{0}: Telegram eylemi için kullanıcı hesaplarını ve Telegram botunu açın", a.name))
+                        val to = act.to?.trim().orEmpty()
+                        if (to.isEmpty()) error("$ap.to", tr("{0}: mesajın gideceği kullanıcıyı seçin", a.name))
+                        else if (to == AutomationAction.OWNER && t.scheduled) error("$ap.to", tr("{0}: zamanlanmış kuralda 'kaydın sahibi' kullanılamaz; bir kullanıcı kimliği girin", a.name))
+                        else if (to == AutomationAction.OWNER && collection?.ownerField == null) error("$ap.to", tr("{0}: 'kaydın sahibi' için koleksiyonda sahip alanı olmalı", a.name))
+                        if (act.body.isNullOrBlank()) error("$ap.body", tr("{0}: mesaj metni boş", a.name))
+                    }
                     AutomationActionType.WEBHOOK -> {
                         val hook = act.webhook
                         if (hook.isNullOrBlank() || config.webhooks.none { it.name == hook }) error("$ap.webhook", tr("{0}: tanımlı bir webhook seçin", a.name))

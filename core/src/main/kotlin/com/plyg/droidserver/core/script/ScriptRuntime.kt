@@ -23,6 +23,7 @@ import org.mozilla.javascript.ScriptableObject
 import org.mozilla.javascript.Undefined
 import org.mozilla.javascript.WrappedException
 import java.io.File
+import java.io.IOException
 
 /** Script kaynağı: ad (hata iletilerinde `ad:satır`) ve metin. */
 data class ScriptSource(val name: String, val text: String)
@@ -139,6 +140,10 @@ class ScriptRuntime private constructor(
     /** `ctx.push.send(kullanıcı, başlık, metin[, adres])`; push kapalıysa null. Cihaz sayısını döndürür. */
     @Volatile
     var push: ((user: Long, title: String, body: String?, url: String?) -> Int)? = null
+
+    /** `ctx.telegram.send(kullanıcı, metin)`; Telegram botu kapalıysa null. Kullanıcı bağlı değilse false. */
+    @Volatile
+    var telegram: ((user: Long, text: String) -> Boolean)? = null
 
     private val http = ScriptHttp(config.allowedHosts)
 
@@ -331,6 +336,19 @@ class ScriptRuntime private constructor(
             }
         })
         ScriptableObject.putProperty(ctx, "push", push)
+
+        val telegram = cx.newObject(scope)
+        ScriptableObject.putProperty(telegram, "send", fn("send") { _, a ->
+            val send = this.telegram ?: throw ScriptException(503, tr("ctx.telegram: Telegram botu kapalı (Sihirbaz → Kullanıcılar → Telegram)"))
+            val user = (a.getOrNull(0) as? Number)?.toLong() ?: str(a, 0).toLongOrNull() ?: throw ScriptException(400, tr("ctx.telegram.send: kullanıcı kimliği gerekli"))
+            val text = str(a, 1).ifBlank { throw ScriptException(400, tr("ctx.telegram.send: metin gerekli")) }
+            try {
+                send(user, text)
+            } catch (e: IOException) {
+                throw ScriptException(502, "ctx.telegram: ${e.message}")
+            }
+        })
+        ScriptableObject.putProperty(ctx, "telegram", telegram)
 
         val jobs = cx.newObject(scope)
         ScriptableObject.putProperty(jobs, "enqueue", fn("enqueue") { c, a ->

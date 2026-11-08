@@ -234,10 +234,30 @@ class AutomationTest {
         assertTrue(errors(ok.copy(actions = listOf(AutomationAction(AutomationActionType.CREATE, collection = "yok", values = mapOf("a" to "b"))))).any { "koleksiyonu seçin" in it })
         val push = ok.copy(trigger = AutomationTrigger(collection = "orders", schedule = "0 8 * * *"), actions = listOf(AutomationAction(AutomationActionType.PUSH, to = "owner", subject = "s")))
         assertTrue(errors(push).any { "kullanıcı hesaplarını ve web push'u açın" in it })
+        val telegram = ok.copy(actions = listOf(AutomationAction(AutomationActionType.TELEGRAM, to = "owner", body = "")))
+        assertTrue(errors(telegram).any { "Telegram botunu açın" in it })
+        assertTrue(errors(telegram).any { "mesaj metni boş" in it })
 
         // Dosyaya yazılıp okununca aynı kalır.
         val config = base.copy(automations = listOf(mail.copy(condition = "status=new")))
         assertEquals(config, ServerConfig.fromJson(config.toJson()))
+    }
+
+    @Test
+    fun `telegram eylemi kullaniciya mesaj gonderir`() {
+        val sent = mutableListOf<Pair<Long, String>>()
+        val engine = AutomationEngine(
+            listOf(AutomationConfig("tg", AutomationTrigger(collection = "orders", events = listOf("create")),
+                actions = listOf(AutomationAction(AutomationActionType.TELEGRAM, to = "{qty}", body = "Sipariş #{id}: {item}")))),
+            base.collections, services, WriteGate(),
+            // 99 numaralı kullanıcı Telegram'ı bağlamamış: mesaj gitmez ama kural hata vermez.
+            AutomationOutputs(telegram = { user, text -> sent += user to text; user != 99L }),
+            changed = { _, _, _, _ -> }, clock = { now }, synchronous = true,
+        )
+        val o = create(engine, "item" to "defter", "qty" to 7)
+        create(engine, "item" to "kalem", "qty" to 99)
+        assertEquals(listOf(7L to "Sipariş #${o["id"]}: defter", 99L to "Sipariş #${o["id"].toString().toLong() + 1}: kalem"), sent)
+        assertEquals(listOf(true, true), engine.runs().map { it.ok })
     }
 
     @Test

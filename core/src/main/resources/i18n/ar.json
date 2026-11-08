@@ -4392,5 +4392,16 @@
  "Telegram ile giriş kapalı": "تسجيل الدخول عبر Telegram معطّل",
  "Bu adresle bir hesap varsa ve Telegram'ı bağlıysa giriş kodu Telegram'dan gönderildi": "إن وُجد حساب بهذا العنوان ومرتبط بـ Telegram، فقد أُرسل رمز تسجيل الدخول عبر Telegram",
  "Telegram ile giriş kodu iste (6 hane, 10 dk); hesabın Telegram'ı bağlı olmalı": "طلب رمز تسجيل دخول عبر Telegram (6 أرقام، 10 دقائق)؛ يجب أن يكون الحساب مرتبطًا بـ Telegram",
- "Hesap varsa ve Telegram bağlıysa kod gönderildi": "أُرسل الرمز إن وُجد الحساب وكان مرتبطًا بـ Telegram"
+ "Hesap varsa ve Telegram bağlıysa kod gönderildi": "أُرسل الرمز إن وُجد الحساب وكان مرتبطًا بـ Telegram",
+ "Telegram mesajı gönder": "إرسال رسالة Telegram",
+ "Telegram botu kapalı": "بوت Telegram متوقف",
+ "Telegram mesajı gönderildi (kullanıcı {0})": "أُرسلت رسالة Telegram (المستخدم {0})",
+ "Telegram mesajı gitmedi: kullanıcı {0} Telegram'ı bağlamamış": "لم تُرسل رسالة Telegram: المستخدم {0} لم يربط Telegram",
+ "{0}: Telegram eylemi için kullanıcı hesaplarını ve Telegram botunu açın": "{0}: فعّل حسابات المستخدمين وبوت Telegram لإجراء Telegram",
+ "{0}: mesajın gideceği kullanıcıyı seçin": "{0}: اختر المستخدم المراد مراسلته",
+ "{0}: mesaj metni boş": "{0}: نص الرسالة فارغ",
+ "ctx.telegram: Telegram botu kapalı (Sihirbaz → Kullanıcılar → Telegram)": "ctx.telegram: بوت Telegram متوقف (المعالج ← المستخدمون ← Telegram)",
+ "ctx.telegram.send: kullanıcı kimliği gerekli": "ctx.telegram.send: معرّف المستخدم مطلوب",
+ "ctx.telegram.send: metin gerekli": "ctx.telegram.send: النص مطلوب",
+ "Kullanıcı Telegram'ı bağlamadıysa mesaj gitmez.": "إن لم يربط المستخدم Telegram فلن تُرسل الرسالة."
 }

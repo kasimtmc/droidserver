@@ -1617,9 +1617,13 @@ mesajları Telegram'dan gider. GitHub ve Play sürümünde aynı; izin gerektirm
 - Test: `TelegramUsersTest` (bağlı olmayan ve olmayan hesap, geçersiz adres, yanlış/doğru/yeniden kullanılan kod,
   dakikalık sınır).
 
-**20.3 Script ve otomasyon**
-- [ ] `ctx.telegram.send(kullanıcıId, metin)` → gönderildiyse `true`, kullanıcı bağlı değilse `false`.
-- [ ] Otomasyon eylemi "Telegram mesajı gönder": kaydın sahibine, metinde `{alan}` (web push kuralıyla aynı biçim).
+**20.3 Script ve otomasyon** (9 Kasım 2026)
+- [x] `ctx.telegram.send(kullanıcıId, metin)` → gönderildiyse `true`, kullanıcı bağlı değilse veya botu engellediyse
+  `false`; bot kapalıysa 503, Telegram'a ulaşılamazsa 502.
+- [x] Otomasyon eylemi `telegram` ("Telegram mesajı gönder"): kaydın sahibine ya da kullanıcı kimliğine / `{alan}`,
+  metinde `{alan}` (web push eylemiyle aynı biçim). Kullanıcı bağlı değilse kural hata vermez, sonuçta yazar. Uygulamadaki
+  ve web panelindeki otomasyon düzenleyicisinde; doğrulama bot ve metin ister.
+- Testler: `AutomationTest` (eylem ve doğrulama), `TelegramUsersTest` (script'ten bağlıyken ve bağsızken).
 
 **20.4 Arayüz, SDK, belgeler**
 - [ ] Sihirbaz → Kullanıcılar: "Telegram" bölümü (BotFather adımları, belirteç, "Telegram ile giriş"). Giriş seçenekleri

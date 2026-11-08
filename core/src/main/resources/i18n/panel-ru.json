@@ -682,5 +682,6 @@
  "Telegram bağını kaldır": "Отвязать Telegram",
  "Telegram bağlandı": "Telegram привязан",
  "Telegram bağı kaldırıldı": "Привязка Telegram удалена",
- "Kullanıcı Telegram botunu engelledi": "Пользователь заблокировал Telegram-бота"
+ "Kullanıcı Telegram botunu engelledi": "Пользователь заблокировал Telegram-бота",
+ "Telegram mesajı gönder": "Отправить сообщение в Telegram"
 }

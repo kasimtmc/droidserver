@@ -4392,5 +4392,16 @@
  "Telegram ile giriş kapalı": "Sign-in with Telegram is off",
  "Bu adresle bir hesap varsa ve Telegram'ı bağlıysa giriş kodu Telegram'dan gönderildi": "If an account with this address exists and has Telegram linked, a sign-in code was sent on Telegram",
  "Telegram ile giriş kodu iste (6 hane, 10 dk); hesabın Telegram'ı bağlı olmalı": "Request a Telegram sign-in code (6 digits, 10 min); the account must have Telegram linked",
- "Hesap varsa ve Telegram bağlıysa kod gönderildi": "Code sent if the account exists and has Telegram linked"
+ "Hesap varsa ve Telegram bağlıysa kod gönderildi": "Code sent if the account exists and has Telegram linked",
+ "Telegram mesajı gönder": "Send Telegram message",
+ "Telegram botu kapalı": "The Telegram bot is off",
+ "Telegram mesajı gönderildi (kullanıcı {0})": "Telegram message sent (user {0})",
+ "Telegram mesajı gitmedi: kullanıcı {0} Telegram'ı bağlamamış": "Telegram message not sent: user {0} hasn't linked Telegram",
+ "{0}: Telegram eylemi için kullanıcı hesaplarını ve Telegram botunu açın": "{0}: enable user accounts and the Telegram bot for the Telegram action",
+ "{0}: mesajın gideceği kullanıcıyı seçin": "{0}: choose the user to message",
+ "{0}: mesaj metni boş": "{0}: the message text is empty",
+ "ctx.telegram: Telegram botu kapalı (Sihirbaz → Kullanıcılar → Telegram)": "ctx.telegram: the Telegram bot is off (Wizard → Users → Telegram)",
+ "ctx.telegram.send: kullanıcı kimliği gerekli": "ctx.telegram.send: user ID is required",
+ "ctx.telegram.send: metin gerekli": "ctx.telegram.send: text is required",
+ "Kullanıcı Telegram'ı bağlamadıysa mesaj gitmez.": "If the user hasn't linked Telegram, the message isn't sent."
 }

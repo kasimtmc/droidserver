@@ -1883,7 +1883,7 @@ function when(iso) { return iso ? new Date(iso).toLocaleString() : "—"; }
 const EVENTS = [["create", T("eklenince")], ["update", T("değişince")], ["delete", T("silinince")]];
 const ACTION_TYPES = [["log", T("Loga yaz")], ["email", T("E-posta gönder")], ["push", T("Bildirim gönder")], ["webhook", T("Webhook'a gönder")],
   ["update", T("Kaydı güncelle")], ["create", T("Kayıt oluştur")], ["mqtt", T("MQTT mesajı gönder")], ["ai", T("YZ ile alan doldur")],
-  ["payment", T("Ödeme bağlantısı oluştur")]];
+  ["payment", T("Ödeme bağlantısı oluştur")], ["telegram", T("Telegram mesajı gönder")]];
 
 async function showAutomation() {
   const cfg = await loadConfig();
@@ -2135,6 +2135,7 @@ function actionRow(cfg, a, x, j, rerender) {
     log: [textIn(x, "body", { placeholder: T("metin") })],
     email: [textIn(x, "to", { placeholder: T("alıcı veya {email}") }), textIn(x, "subject", { placeholder: T("konu") }), textIn(x, "body", { placeholder: T("metin") })],
     push: [textIn(x, "to", { placeholder: T("owner veya kullanıcı kimliği") }), textIn(x, "subject", { placeholder: T("başlık") }), textIn(x, "body", { placeholder: T("metin") }), textIn(x, "url", { placeholder: T("adres (isteğe bağlı)") })],
+    telegram: [textIn(x, "to", { placeholder: T("owner veya kullanıcı kimliği") }), textIn(x, "body", { placeholder: T("metin") })],
     webhook: [pick((cfg.webhooks || []).map((w) => w.name), x.webhook, (v) => setProp(x, "webhook", v), T("(webhook seçin)"))],
     update: [values()],
     create: [pick(collectionNames(cfg), x.collection, (v) => setProp(x, "collection", v), T("(koleksiyon)")), values()],

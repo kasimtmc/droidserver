@@ -4392,5 +4392,16 @@
  "Telegram ile giriş kapalı": "El inicio de sesión con Telegram está desactivado",
  "Bu adresle bir hesap varsa ve Telegram'ı bağlıysa giriş kodu Telegram'dan gönderildi": "Si existe una cuenta con esta dirección y tiene Telegram vinculado, se envió un código de acceso por Telegram",
  "Telegram ile giriş kodu iste (6 hane, 10 dk); hesabın Telegram'ı bağlı olmalı": "Solicitar un código de acceso por Telegram (6 dígitos, 10 min); la cuenta debe tener Telegram vinculado",
- "Hesap varsa ve Telegram bağlıysa kod gönderildi": "Código enviado si la cuenta existe y tiene Telegram vinculado"
+ "Hesap varsa ve Telegram bağlıysa kod gönderildi": "Código enviado si la cuenta existe y tiene Telegram vinculado",
+ "Telegram mesajı gönder": "Enviar mensaje de Telegram",
+ "Telegram botu kapalı": "El bot de Telegram está desactivado",
+ "Telegram mesajı gönderildi (kullanıcı {0})": "mensaje de Telegram enviado (usuario {0})",
+ "Telegram mesajı gitmedi: kullanıcı {0} Telegram'ı bağlamamış": "mensaje de Telegram no enviado: el usuario {0} no ha vinculado Telegram",
+ "{0}: Telegram eylemi için kullanıcı hesaplarını ve Telegram botunu açın": "{0}: activa las cuentas de usuario y el bot de Telegram para la acción de Telegram",
+ "{0}: mesajın gideceği kullanıcıyı seçin": "{0}: elige el usuario al que enviar el mensaje",
+ "{0}: mesaj metni boş": "{0}: el texto del mensaje está vacío",
+ "ctx.telegram: Telegram botu kapalı (Sihirbaz → Kullanıcılar → Telegram)": "ctx.telegram: el bot de Telegram está desactivado (Asistente → Usuarios → Telegram)",
+ "ctx.telegram.send: kullanıcı kimliği gerekli": "ctx.telegram.send: se requiere el ID de usuario",
+ "ctx.telegram.send: metin gerekli": "ctx.telegram.send: se requiere el texto",
+ "Kullanıcı Telegram'ı bağlamadıysa mesaj gitmez.": "Si el usuario no ha vinculado Telegram, el mensaje no se envía."
 }

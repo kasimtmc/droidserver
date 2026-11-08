@@ -60,12 +60,14 @@ enum class AutomationActionType(val title: String) {
     @SerialName("mqtt") MQTT(tr("MQTT mesajı gönder")),
     @SerialName("ai") AI(tr("YZ ile alan doldur")),
     @SerialName("payment") PAYMENT(tr("Ödeme bağlantısı oluştur")),
+    @SerialName("telegram") TELEGRAM(tr("Telegram mesajı gönder")),
 }
 
 /**
  * Bir eylem. Hangi alanların kullanıldığı türe göre değişir:
  *  - `email`: [to] (adres veya `{email}` gibi bir alan), [subject], [body].
  *  - `push`: [to] (`owner`: kaydın sahibi, ya da kullanıcı kimliği / `{alan}`), [subject] başlık, [body], [url].
+ *  - `telegram`: [to] (`push` gibi) ve [body]; kullanıcı Telegram'ı bağlamadıysa mesaj gitmez (kural hata vermez).
  *  - `webhook`: [webhook] (tanımlı bir webhook'un adı); gövdeye kayıt ve kural adı konur.
  *  - `update`: [values] (alan → değer şablonu); olayda tetikleyen kayıt, zamanlamada koşula uyan tüm kayıtlar güncellenir.
  *  - `create`: [collection] ve [values].
@@ -95,7 +97,7 @@ data class AutomationAction(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val provider: PaymentProvider? = null,
 ) {
     companion object {
-        /** `push` eyleminde kaydın sahibi. */
+        /** `push` ve `telegram` eyleminde kaydın sahibi. */
         const val OWNER = "owner"
     }
 }

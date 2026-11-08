@@ -846,6 +846,7 @@ fun Application.droidServerModule(
     } else null
     scripts?.mail = mailer?.let { m -> m::custom }
     scripts?.push = push?.let { p -> { user, title, body, url -> p.sendToUser(user, p.message(title, body, url, null)) } }
+    scripts?.telegram = telegramBot?.let { b -> b::send }
 
     // Ödemeler: sağlayıcının ödeme sayfası, imzalı bildirimler, bağlı kayda durum, abonelikte rol.
     val payments = config.payments.takeIf { it.providers.isNotEmpty() }?.let { p ->
@@ -877,6 +878,7 @@ fun Application.droidServerModule(
             AutomationOutputs(
                 mail = mailer?.let { m -> { to, subject, text -> m.custom(to, subject, text, null) } },
                 push = push?.let { p -> { user, title, body, url -> p.sendToUser(user, p.message(title, body, url, null)) } },
+                telegram = telegramBot?.let { b -> b::send },
                 webhook = webhooks?.let { w -> { name, event, collection, record -> w.send(name, event, collection, collection?.let { names[it]?.out(record) } ?: record) } },
                 mqtt = mqtt?.let { b -> { topic, payload, retain -> b.publish(topic, payload.toByteArray(), retain) } },
                 ai = chat?.let { c ->

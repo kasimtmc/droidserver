@@ -4392,5 +4392,16 @@
  "Telegram ile giriş kapalı": "Вход через Telegram отключён",
  "Bu adresle bir hesap varsa ve Telegram'ı bağlıysa giriş kodu Telegram'dan gönderildi": "Если аккаунт с этим адресом существует и к нему привязан Telegram, код входа отправлен в Telegram",
  "Telegram ile giriş kodu iste (6 hane, 10 dk); hesabın Telegram'ı bağlı olmalı": "Запросить код входа в Telegram (6 цифр, 10 мин); к аккаунту должен быть привязан Telegram",
- "Hesap varsa ve Telegram bağlıysa kod gönderildi": "Код отправлен, если аккаунт существует и к нему привязан Telegram"
+ "Hesap varsa ve Telegram bağlıysa kod gönderildi": "Код отправлен, если аккаунт существует и к нему привязан Telegram",
+ "Telegram mesajı gönder": "Отправить сообщение в Telegram",
+ "Telegram botu kapalı": "Telegram-бот выключен",
+ "Telegram mesajı gönderildi (kullanıcı {0})": "сообщение в Telegram отправлено (пользователь {0})",
+ "Telegram mesajı gitmedi: kullanıcı {0} Telegram'ı bağlamamış": "сообщение в Telegram не отправлено: пользователь {0} не привязал Telegram",
+ "{0}: Telegram eylemi için kullanıcı hesaplarını ve Telegram botunu açın": "{0}: для действия Telegram включите аккаунты пользователей и Telegram-бота",
+ "{0}: mesajın gideceği kullanıcıyı seçin": "{0}: выберите пользователя, которому отправить сообщение",
+ "{0}: mesaj metni boş": "{0}: текст сообщения пуст",
+ "ctx.telegram: Telegram botu kapalı (Sihirbaz → Kullanıcılar → Telegram)": "ctx.telegram: Telegram-бот выключен (Мастер → Пользователи → Telegram)",
+ "ctx.telegram.send: kullanıcı kimliği gerekli": "ctx.telegram.send: нужен ID пользователя",
+ "ctx.telegram.send: metin gerekli": "ctx.telegram.send: нужен текст",
+ "Kullanıcı Telegram'ı bağlamadıysa mesaj gitmez.": "Если пользователь не привязал Telegram, сообщение не отправляется."
 }

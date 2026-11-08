@@ -682,5 +682,6 @@
  "Telegram bağını kaldır": "Unlink Telegram",
  "Telegram bağlandı": "Telegram linked",
  "Telegram bağı kaldırıldı": "Telegram link removed",
- "Kullanıcı Telegram botunu engelledi": "User blocked the Telegram bot"
+ "Kullanıcı Telegram botunu engelledi": "User blocked the Telegram bot",
+ "Telegram mesajı gönder": "Send Telegram message"
 }
