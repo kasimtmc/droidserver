@@ -1606,13 +1606,16 @@ mesajları Telegram'dan gider. GitHub ve Play sürümünde aynı; izin gerektirm
 - Testler: `TelegramUsersTest` (sahte Bot API: bağlama, yeniden kullanılan ve süresi dolmuş kod, grup, `/ayril`,
   engelleme, yönetici; doğrulama; HTTP uçları). Cihaz testi gerçek botla 20.4'teki sihirbaz bölümünden sonra.
 
-**20.2 Telegram ile giriş**
-- [ ] `POST /api/auth/request-telegram-code {email}` → 202; hesap varsa ve Telegram bağlıysa 6 haneli kod (10 dakika,
-  tek kullanımlık) gider; yanıt her durumda aynı.
-- [ ] `POST /api/auth/telegram-code {email, code}` → token çifti; iki adımlı doğrulama açıksa ikinci adım istenir
-  (e-posta koduyla girişte olduğu gibi).
-- [ ] Sınırlar SMS girişiyle aynı: hesap başına dakikada bir ve günde en çok 5 kod, istemci başına saatte 10 istek;
-  hatalı kod girişle aynı deneme sınırına tabi.
+**20.2 Telegram ile giriş** (8 Kasım 2026)
+- [x] `auth.users.telegram.login`. `POST /api/auth/request-telegram-code {email}` → 202; hesap varsa ve Telegram
+  bağlıysa 6 haneli kod (10 dakika, en çok 5 deneme, tek kullanımlık; veritabanında özeti) bota gider; yanıt her
+  durumda aynı. Geçersiz adres 400.
+- [x] `POST /api/auth/telegram-code {email, code}` → token çifti; iki adımlı doğrulama kuruluysa ikinci adım istenir.
+  E-posta doğrulanmış sayılmaz (Telegram e-postanın sahibi olduğunu göstermez).
+- [x] Sınırlar SMS girişiyle aynı (`SmsGuard.telegram()`, deploy'lar arasında sürer): hesap başına dakikada bir ve
+  günde en çok 5 kod, istemci başına saatte 10 istek; hatalı kod girişle aynı deneme sınırına tabi.
+- Test: `TelegramUsersTest` (bağlı olmayan ve olmayan hesap, geçersiz adres, yanlış/doğru/yeniden kullanılan kod,
+  dakikalık sınır).
 
 **20.3 Script ve otomasyon**
 - [ ] `ctx.telegram.send(kullanıcıId, metin)` → gönderildiyse `true`, kullanıcı bağlı değilse `false`.

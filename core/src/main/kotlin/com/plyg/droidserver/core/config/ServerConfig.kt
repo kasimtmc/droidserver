@@ -560,10 +560,15 @@ data class UsersConfig(
 /**
  * Kullanıcılar için Telegram botu (@BotFather verir; sağlık uyarılarının botundan ayrı olmalı: bir botun mesajlarını
  * aynı anda tek bir dinleyici alabilir). Kullanıcı hesabını bir kez bağlar (`/auth/telegram/link` → botta "Başlat");
- * sunucu çalışırken bot uzun yoklamayla dinlenir, telefona dışarıdan bağlantı gerekmez.
+ * sunucu çalışırken bot uzun yoklamayla dinlenir, telefona dışarıdan bağlantı gerekmez. [login]: Telegram'ı bağlı
+ * kullanıcı e-postasıyla kod isteyip parolasız girer (kod bota gelir).
  */
 @Serializable
-data class UserTelegramConfig(val botToken: String)
+data class UserTelegramConfig(
+    val botToken: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val login: Boolean = false,
+)
 
 /**
  * [allowCreate]: kullanıcılar kendi takımlarını kurabilir (kuran takımın sahibi olur); kapalıysa takımları yalnızca

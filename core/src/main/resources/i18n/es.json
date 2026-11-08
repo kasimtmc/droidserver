@@ -4384,5 +4384,13 @@
  "Telegram kullanıcı botu başlatılmadı: sağlık uyarılarının botuyla aynı; @BotFather'dan ayrı bir bot açın": "No se inició el bot de usuarios de Telegram: es el mismo que el bot de alertas de estado; crea un bot aparte con @BotFather",
  "Telegram'ı bağla: kullanıcı adresi açıp botta Başlat'a dokunur (10 dk, tek kullanımlık)": "Vincular Telegram: el usuario abre la dirección y toca Iniciar en el bot (10 min, un solo uso)",
  "Kaldırıldı": "Eliminado",
- "{0}: Telegram bağı kaldırıldı": "{0}: vinculación de Telegram eliminada"
+ "{0}: Telegram bağı kaldırıldı": "{0}: vinculación de Telegram eliminada",
+ "Bu hesaba az önce kod gönderildi; {0} saniye sonra tekrar deneyin": "Se acaba de enviar un código a esta cuenta; inténtalo de nuevo en {0} segundos",
+ "Bu hesap için bugünkü kod sınırı doldu": "Se alcanzó el límite de códigos de hoy para esta cuenta",
+ "Telegram ile giriş kodu iste": "Solicitar un código de acceso por Telegram",
+ "Telegram koduyla giriş": "Iniciar sesión con el código de Telegram",
+ "Telegram ile giriş kapalı": "El inicio de sesión con Telegram está desactivado",
+ "Bu adresle bir hesap varsa ve Telegram'ı bağlıysa giriş kodu Telegram'dan gönderildi": "Si existe una cuenta con esta dirección y tiene Telegram vinculado, se envió un código de acceso por Telegram",
+ "Telegram ile giriş kodu iste (6 hane, 10 dk); hesabın Telegram'ı bağlı olmalı": "Solicitar un código de acceso por Telegram (6 dígitos, 10 min); la cuenta debe tener Telegram vinculado",
+ "Hesap varsa ve Telegram bağlıysa kod gönderildi": "Código enviado si la cuenta existe y tiene Telegram vinculado"
 }

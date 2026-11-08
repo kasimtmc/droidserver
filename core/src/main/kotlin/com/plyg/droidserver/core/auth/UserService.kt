@@ -673,6 +673,41 @@ class UserService(
         return complete(id)
     }
 
+    // ---- Telegram ile kodla giriş ----
+
+    /**
+     * Telegram kodu üretir (6 hane, 10 dakika, en çok 5 deneme; hesap başına tek geçerli kod): kullanıcı kimliği ve kod.
+     * Hesap yoksa, Telegram'ı bağlı değilse veya özellik kapalıysa null (adresin kayıtlı olduğu sızmaz).
+     */
+    fun newTelegramCode(emailRaw: String?): Pair<Long, String>? {
+        if (users.telegram?.login != true) return null
+        val (id, _) = findByEmail(emailRaw?.trim()?.lowercase(Locale.ROOT)) ?: return null
+        if (telegram?.chatOf(id) == null) return null
+        val code = (1..6).map { random.nextInt(10) }.joinToString("")
+        metaPut("telegram_code:$id", "${sha256(code)}:${clock().plusSeconds(600).epochSecond}:0")
+        return id to code
+    }
+
+    /** Telegram'a gelen kodla giriş; iki adımlı doğrulama kuruluysa ikinci adım istenir. */
+    fun loginWithTelegram(client: String, emailRaw: String?, code: String?): LoginResult {
+        if (users.telegram?.login != true) throw ApiException(404, tr("Telegram ile giriş kapalı"))
+        val email = emailRaw?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        val key = "telegram:$email"
+        limiter.blockedFor(client, key)?.let { throw ApiException(429, tr("Çok fazla hatalı deneme; {0} saniye sonra tekrar deneyin", it)) }
+        val id = findByEmail(email)?.first
+        val stored = id?.let { metaGet("telegram_code:$it") }?.split(':')
+        val ok = stored != null && stored.size == 3 && (stored[1].toLongOrNull() ?: 0) >= clock().epochSecond &&
+            (stored[2].toIntOrNull() ?: 99) < 5 && MessageDigest.isEqual(stored[0].toByteArray(), sha256(code?.trim().orEmpty()).toByteArray())
+        if (!ok || id == null) {
+            limiter.failed(client, key)
+            if (id != null && stored != null && stored.size == 3) metaPut("telegram_code:$id", "${stored[0]}:${stored[1]}:${(stored[2].toIntOrNull() ?: 0) + 1}")
+            throw ApiException(401, tr("Kod hatalı veya süresi dolmuş; yeni kod isteyin"))
+        }
+        limiter.succeeded(client, key)
+        metaDelete("telegram_code:$id")
+        return complete(id)
+    }
+
     private val meta by lazy { signingKey(); quoteIdent(SchemaMigrator.META_TABLE) }
 
     private fun metaGet(key: String): String? =

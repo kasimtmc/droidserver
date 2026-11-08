@@ -264,6 +264,9 @@ class ServerEngine(
     /** SMS girişi sınırları: numara ve istemci başına (deploy'lar arasında sürer). */
     val smsGuard = SmsGuard()
 
+    /** Telegram ile giriş sınırları: hesap ve istemci başına (deploy'lar arasında sürer). */
+    private val telegramGuard = SmsGuard.telegram()
+
     private val usageFile: File? get() = dataDir?.let { File(it, "key-usage.json") }
 
     /** Son kullanım zamanlarını diske yazar (durdururken ve deploy'da). */
@@ -390,7 +393,7 @@ class ServerEngine(
                 log(tr("Bu sunucu yokken {0} devraldı; yazmalar kapalı", replaced))
             }
             server = embeddedServer(CIO, port = config.server.port, host = config.server.host) {
-                droidServerModule(config, newDriver, startedAt, gate, fileStore, siteDir, resizer, scripts, metrics, adminSessions, adminHost, log = log, webhooks = webhooks, automationHost = automations, aiHost = ai, localAi = localAi, keyUsage = keyUsage, requestCounts = requestCounts, smsGuard = smsGuard, davDirs = mapOf("drive" to driveDir, "scripts" to scriptsDir), audit = audit, clientGuard = guard, health = health,
+                droidServerModule(config, newDriver, startedAt, gate, fileStore, siteDir, resizer, scripts, metrics, adminSessions, adminHost, log = log, webhooks = webhooks, automationHost = automations, aiHost = ai, localAi = localAi, keyUsage = keyUsage, requestCounts = requestCounts, smsGuard = smsGuard, telegramGuard = telegramGuard, davDirs = mapOf("drive" to driveDir, "scripts" to scriptsDir), audit = audit, clientGuard = guard, health = health,
                     phone = PhoneService(config.phone, phone, device, dataDir?.let { File(it, "phone-sms.json") }, audit), appsHost = appsHost, failover = failoverPort, mqttHost = mqtt,
                     mqttRetained = dataDir?.let { File(it, "mqtt-retained.json") }, paymentHost = payments, mqttCa = mqttCa)
             }.start(wait = false)

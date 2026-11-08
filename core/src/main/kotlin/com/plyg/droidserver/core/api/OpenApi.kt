@@ -322,6 +322,11 @@ object OpenApi {
                 op("$auth/telegram", "get", operation(tr("Hesap"), tr("Telegram bağım"), public = false,
                     responses = ok(obj("type" to str("object"), "description" to str("{linked, username}")))))
                 op("$auth/telegram", "delete", operation(tr("Hesap"), tr("Telegram bağını kaldır"), public = false, responses = obj("204" to obj("description" to str(tr("Kaldırıldı"))))))
+                if (users.telegram.login) {
+                    op("$auth/request-telegram-code", "post", operation(tr("Hesap"), tr("Telegram ile giriş kodu iste (6 hane, 10 dk); hesabın Telegram'ı bağlı olmalı"), public = true,
+                        body = bodyOf("email" to "string"), responses = obj("202" to obj("description" to str(tr("Hesap varsa ve Telegram bağlıysa kod gönderildi"))))))
+                    op("$auth/telegram-code", "post", operation(tr("Hesap"), tr("Telegram koduyla giriş"), public = true, body = bodyOf("email" to "string", "code" to "string"), responses = ok(tokens)))
+                }
             }
             if (config.auth.passkeys.enabled) {
                 val options = obj("type" to str("object"), "description" to str(tr("navigator.credentials.create/get için publicKey seçenekleri (challenge ve kimlikler base64url)")))

@@ -111,6 +111,8 @@ enum class Endpoint(val key: String, val method: String, val path: String, val t
     AUTH_TELEGRAM("auth.telegram", "GET", "/auth/telegram", tr("Telegram bağım"), EndpointGroup.AUTH),
     AUTH_TELEGRAM_LINK("auth.telegram.link", "POST", "/auth/telegram/link", tr("Telegram'ı bağla"), EndpointGroup.AUTH),
     AUTH_TELEGRAM_UNLINK("auth.telegram.unlink", "DELETE", "/auth/telegram", tr("Telegram bağını kaldır"), EndpointGroup.AUTH),
+    AUTH_REQUEST_TELEGRAM_CODE("auth.requestTelegramCode", "POST", "/auth/request-telegram-code", tr("Telegram ile giriş kodu iste"), EndpointGroup.AUTH),
+    AUTH_TELEGRAM_CODE("auth.telegramCode", "POST", "/auth/telegram-code", tr("Telegram koduyla giriş"), EndpointGroup.AUTH),
     AUTH_PASSKEY_REGISTER_OPTIONS("auth.passkeys.registerOptions", "POST", "/auth/passkeys/register-options", tr("Passkey ekleme seçenekleri"), EndpointGroup.AUTH),
     AUTH_PASSKEY_REGISTER("auth.passkeys.register", "POST", "/auth/passkeys", tr("Passkey ekle"), EndpointGroup.AUTH),
     AUTH_PASSKEYS("auth.passkeys.list", "GET", "/auth/passkeys", tr("Passkey'lerim"), EndpointGroup.AUTH),
@@ -210,6 +212,7 @@ class ApiPaths(private val config: ServerConfig) {
         if (e in SMS_LOGIN_ENDPOINTS && !(users.smsLogin && config.phone.sms)) return null
         if (e in PASSKEY_ENDPOINTS && !(users.enabled && config.auth.passkeys.enabled)) return null
         if (e in TELEGRAM_ENDPOINTS && !(users.enabled && users.telegram != null)) return null
+        if (e in TELEGRAM_LOGIN_ENDPOINTS && !(users.enabled && users.telegram?.login == true)) return null
         if (e.group == EndpointGroup.TEAMS && !(users.enabled && users.teams.enabled)) return null
         if (e.group == EndpointGroup.PAYMENTS && !(users.enabled && config.payments.enabled && config.payments.plans.isNotEmpty())) return null
         if (e in PAYMENT_ADMIN_ENDPOINTS && !config.payments.enabled) return null
@@ -239,6 +242,7 @@ class ApiPaths(private val config: ServerConfig) {
             Endpoint.AUTH_PASSKEY_LOGIN_OPTIONS, Endpoint.AUTH_PASSKEY_LOGIN,
         )
         val TELEGRAM_ENDPOINTS = setOf(Endpoint.AUTH_TELEGRAM, Endpoint.AUTH_TELEGRAM_LINK, Endpoint.AUTH_TELEGRAM_UNLINK)
+        val TELEGRAM_LOGIN_ENDPOINTS = setOf(Endpoint.AUTH_REQUEST_TELEGRAM_CODE, Endpoint.AUTH_TELEGRAM_CODE)
         val PAYMENT_ADMIN_ENDPOINTS = setOf(Endpoint.PAYMENTS_LIST, Endpoint.PAYMENTS_CREATE, Endpoint.PAYMENTS_GET, Endpoint.PAYMENTS_REFUND)
 
         private val SEGMENT = Regex("^([A-Za-z0-9_.~-]+|\\{[A-Za-z]+\\})$")

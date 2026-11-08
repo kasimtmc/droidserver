@@ -50,7 +50,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Faz 20.1: kullanıcıların Telegram hesaplarını botla bağlaması. */
+/** Faz 20.1-20.2: kullanıcıların Telegram hesaplarını botla bağlaması ve Telegram ile giriş. */
 class TelegramUsersTest {
     private val token = "123456789:" + "A".repeat(35)
     private val config = ServerConfig(
@@ -168,6 +168,58 @@ class TelegramUsersTest {
             users.adminUpdate(id, Json.parseToJsonElement("""{"telegram":false}""").jsonObject)
             assertNull(accounts.chatOf(id))
             assertEquals(false, users.list(1, 10).items.single()["telegram"]?.jsonPrimitive?.boolean)
+        }
+    }
+
+    @Test
+    fun `telegram ile giris`() = FakeTelegram().use { tg ->
+        val login = config.copy(auth = config.auth.copy(users = config.auth.users.copy(telegram = UserTelegramConfig(token, login = true))))
+        testApplication {
+            val db = TestDb.create(Dialect.SQLITE).open()
+            SchemaMigrator(db).migrate(login.schemaCollections())
+            application { droidServerModule(login, db, telegramApi = tg.base) }
+            suspend fun post(path: String, body: String = "{}", token: String? = null) =
+                client.post(path) { token?.let(::bearerAuth); contentType(ContentType.Application.Json); setBody(body) }
+            val key = "yonetici-anahtari-1234567890"
+            for (who in listOf("ayse", "mehmet")) {
+                assertEquals(HttpStatusCode.Created, post("/api/auth/users", """{"email":"$who@example.com","password":"parola-12345"}""", key).status)
+            }
+            val user = Json.parseToJsonElement(post("/api/auth/login", """{"email":"ayse@example.com","password":"parola-12345"}""").bodyAsText())
+                .jsonObject.getValue("token").jsonPrimitive.content
+
+            // Ayşe Telegram'ı bağlar.
+            var url: String? = null
+            var tries = 0
+            while (url == null && tries++ < 100) {
+                val r = post("/api/auth/telegram/link", token = user)
+                if (r.status == HttpStatusCode.OK) url = Json.parseToJsonElement(r.bodyAsText()).jsonObject.getValue("url").jsonPrimitive.content else delay(50)
+            }
+            tg.updates += tg.message("/start ${url!!.substringAfter("start=")}", "555")
+            tries = 0
+            while (tg.texts("555").isEmpty() && tries++ < 100) delay(50)
+
+            // Telegram'ı bağlı olmayan ve olmayan hesap: aynı yanıt, kod gitmez. Geçersiz adres 400.
+            assertEquals(HttpStatusCode.Accepted, post("/api/auth/request-telegram-code", """{"email":"mehmet@example.com"}""").status)
+            assertEquals(HttpStatusCode.Accepted, post("/api/auth/request-telegram-code", """{"email":"kimse@example.com"}""").status)
+            assertEquals(HttpStatusCode.BadRequest, post("/api/auth/request-telegram-code", """{"email":"yok"}""").status)
+
+            // Kod Ayşe'nin sohbetine gelir (adres büyük harfle yazılsa da).
+            assertEquals(HttpStatusCode.Accepted, post("/api/auth/request-telegram-code", """{"email":"Ayse@Example.com"}""").status)
+            var text: String? = null
+            tries = 0
+            while (text == null && tries++ < 100) text = tg.texts("555").firstOrNull() ?: run { delay(50); null }
+            val code = Regex("\\b(\\d{6})\\b").find(text!!)!!.groupValues[1]
+            assertTrue(tg.sent.none { it.first == "sendMessage" }, "başka sohbete kod gitmedi")
+
+            // Yanlış kod 401; doğru kod token çifti; aynı kod ikinci kez geçmez.
+            assertEquals(HttpStatusCode.Unauthorized, post("/api/auth/telegram-code", """{"email":"ayse@example.com","code":"000000"}""").status)
+            val ok = post("/api/auth/telegram-code", """{"email":"ayse@example.com","code":"$code"}""")
+            assertEquals(HttpStatusCode.OK, ok.status, ok.bodyAsText())
+            assertTrue("refreshToken" in Json.parseToJsonElement(ok.bodyAsText()).jsonObject)
+            assertEquals(HttpStatusCode.Unauthorized, post("/api/auth/telegram-code", """{"email":"ayse@example.com","code":"$code"}""").status)
+
+            // Hesap başına dakikada bir kod.
+            assertEquals(HttpStatusCode.TooManyRequests, post("/api/auth/request-telegram-code", """{"email":"ayse@example.com"}""").status)
         }
     }
 

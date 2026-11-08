@@ -275,6 +275,8 @@ fun Application.droidServerModule(
     mqttRetained: File? = null,
     /** SMS girişi sınırları (deploy'lar arasında süren). */
     smsGuard: SmsGuard = SmsGuard(),
+    /** Telegram ile giriş sınırları (deploy'lar arasında süren). */
+    telegramGuard: SmsGuard = SmsGuard.telegram(),
     /** Yönetici işlemlerinin kaydı (deploy'lar arasında süren; ServerEngine tutar). */
     audit: AuditLog? = null,
     /** İstemci sınırları ve engeller (deploy'lar arasında süren). */
@@ -1629,7 +1631,7 @@ fun Application.droidServerModule(
                 val passkeys = config.auth.passkeys.takeIf { it.enabled }?.let {
                     PasskeyService(db, it, it.rpName?.takeIf(String::isNotBlank) ?: config.name, SystemCollections.PASSKEYS, "user")
                 }
-                authRoutes(users, writes, mailer, config, oauth, paths, userNames, phone?.takeIf { config.phone.sms }, smsGuard, passkeys, telegramBot) { call.caller() }
+                authRoutes(users, writes, mailer, config, oauth, paths, userNames, phone?.takeIf { config.phone.sms }, smsGuard, passkeys, telegramBot, telegramGuard) { call.caller() }
                 endpoint(paths, Endpoint.AUTH_USAGE) {
                     val id = requireUser(call.caller())
                     call.respond(io { quotas.usage(id) })
@@ -2061,6 +2063,7 @@ private fun Route.authRoutes(
     smsGuard: SmsGuard,
     passkeys: PasskeyService?,
     telegram: TelegramUserBot?,
+    telegramGuard: SmsGuard,
     caller: suspend RoutingContext.() -> Caller,
 ) {
     /** Gövde API adlarından özgün adlara; doğrulama hatalarındaki alan adları API adlarıyla. */
@@ -2260,6 +2263,28 @@ private fun Route.authRoutes(
                 val id = requireUser(caller())
                 io { telegram.unlink(id) }
                 call.respond(HttpStatusCode.NoContent)
+            }
+            // Telegram ile kodla giriş: hesap varsa ve Telegram'ı bağlıysa kod bota gider; yanıt her durumda aynıdır.
+            if (config.auth.users.telegram?.login == true) {
+                endpoint(paths, Endpoint.AUTH_REQUEST_TELEGRAM_CODE) {
+                    val email = call.body().text("email")?.trim()?.lowercase()?.takeIf { '@' in it }
+                        ?: throw ApiException(400, tr("Doğrulama hatası"), mapOf("email" to tr("geçerli bir e-posta adresi girin")))
+                    telegramGuard.check(email, origin(call.request).key)
+                    call.application.launch(Dispatchers.IO) {
+                        runCatching {
+                            val (id, code) = writes.write { users.newTelegramCode(email) } ?: return@runCatching
+                            telegram.send(id, tr("{0} giriş kodunuz: {1}. 10 dakika geçerli; kimseyle paylaşmayın.", config.name, code))
+                        }
+                    }
+                    call.respond(HttpStatusCode.Accepted, buildJsonObject {
+                        put("message", JsonPrimitive(tr("Bu adresle bir hesap varsa ve Telegram'ı bağlıysa giriş kodu Telegram'dan gönderildi")))
+                    })
+                }
+                endpoint(paths, Endpoint.AUTH_TELEGRAM_CODE) {
+                    val body = call.body()
+                    val client = origin(call.request).key
+                    call.respond(io { writes.write { users.loginWithTelegram(client, body.text("email"), body.text("code")).out(call) } })
+                }
             }
         }
         endpoint(paths, Endpoint.AUTH_REFRESH) {

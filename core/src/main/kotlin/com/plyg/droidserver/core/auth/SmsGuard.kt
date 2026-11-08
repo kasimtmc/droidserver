@@ -10,12 +10,15 @@ import java.util.concurrent.ConcurrentHashMap
  * [perNumberSeconds] saniyede bir ve günde en çok [perNumberDaily] kod, aynı istemciden saatte en çok [perClientHourly]
  * istek. Hesabın var olup olmadığından bağımsız uygulanır (numaranın kayıtlı olduğu sızmaz). Sunucunun toplam günlük
  * SMS sınırı ayrıca telefon özelliklerinde ([com.plyg.droidserver.core.config.PhoneConfig.smsDailyLimit]) uygulanır.
+ * Telegram ile girişte aynı sınırlar e-posta adresine uygulanır ([telegram]).
  */
 class SmsGuard(
     private val perNumberSeconds: Long = 60,
     private val perNumberDaily: Int = 5,
     private val perClientHourly: Int = 10,
     private val clock: () -> Instant = Instant::now,
+    private val tooSoon: (Long) -> String = { tr("Bu numaraya az önce kod gönderildi; {0} saniye sonra tekrar deneyin", it) },
+    private val dailyLimit: () -> String = { tr("Bu numara için bugünkü kod sınırı doldu") },
 ) {
     private val numbers = ConcurrentHashMap<String, MutableList<Long>>()
     private val clients = ConcurrentHashMap<String, MutableList<Long>>()
@@ -28,9 +31,9 @@ class SmsGuard(
             val c = clients.getOrPut(client) { mutableListOf() }.apply { removeAll { now - it >= 3_600 } }
             n.lastOrNull()?.let { last ->
                 val wait = perNumberSeconds - (now - last)
-                if (wait > 0) throw ApiException(429, tr("Bu numaraya az önce kod gönderildi; {0} saniye sonra tekrar deneyin", wait))
+                if (wait > 0) throw ApiException(429, tooSoon(wait))
             }
-            if (n.size >= perNumberDaily) throw ApiException(429, tr("Bu numara için bugünkü kod sınırı doldu"))
+            if (n.size >= perNumberDaily) throw ApiException(429, dailyLimit())
             if (c.size >= perClientHourly) throw ApiException(429, tr("Çok fazla kod isteği; bir saat sonra tekrar deneyin"))
             n += now
             c += now
@@ -38,6 +41,13 @@ class SmsGuard(
     }
 
     companion object {
+        /** Telegram ile giriş: sınırlar hesabın e-postasına. */
+        fun telegram(clock: () -> Instant = Instant::now) = SmsGuard(
+            clock = clock,
+            tooSoon = { tr("Bu hesaba az önce kod gönderildi; {0} saniye sonra tekrar deneyin", it) },
+            dailyLimit = { tr("Bu hesap için bugünkü kod sınırı doldu") },
+        )
+
         private val E164 = Regex("^\\+[1-9][0-9]{7,14}$")
 
         /** Boşluk, tire ve parantezleri atar; uluslararası biçim (+905551234567) değilse null. */

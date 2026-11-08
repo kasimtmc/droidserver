@@ -4384,5 +4384,13 @@
  "Telegram kullanıcı botu başlatılmadı: sağlık uyarılarının botuyla aynı; @BotFather'dan ayrı bir bot açın": "لم يبدأ بوت مستخدمي Telegram: إنه نفس بوت تنبيهات السلامة؛ أنشئ بوتًا منفصلًا عبر @BotFather",
  "Telegram'ı bağla: kullanıcı adresi açıp botta Başlat'a dokunur (10 dk, tek kullanımlık)": "ربط Telegram: يفتح المستخدم العنوان ويضغط «ابدأ» في البوت (10 دقائق، لمرة واحدة)",
  "Kaldırıldı": "أُزيل",
- "{0}: Telegram bağı kaldırıldı": "{0}: أُزيل ربط Telegram"
+ "{0}: Telegram bağı kaldırıldı": "{0}: أُزيل ربط Telegram",
+ "Bu hesaba az önce kod gönderildi; {0} saniye sonra tekrar deneyin": "أُرسل رمز إلى هذا الحساب للتو؛ حاول مجددًا بعد {0} ثانية",
+ "Bu hesap için bugünkü kod sınırı doldu": "بلغ هذا الحساب حدّ الرموز لهذا اليوم",
+ "Telegram ile giriş kodu iste": "طلب رمز تسجيل دخول عبر Telegram",
+ "Telegram koduyla giriş": "تسجيل الدخول برمز Telegram",
+ "Telegram ile giriş kapalı": "تسجيل الدخول عبر Telegram معطّل",
+ "Bu adresle bir hesap varsa ve Telegram'ı bağlıysa giriş kodu Telegram'dan gönderildi": "إن وُجد حساب بهذا العنوان ومرتبط بـ Telegram، فقد أُرسل رمز تسجيل الدخول عبر Telegram",
+ "Telegram ile giriş kodu iste (6 hane, 10 dk); hesabın Telegram'ı bağlı olmalı": "طلب رمز تسجيل دخول عبر Telegram (6 أرقام، 10 دقائق)؛ يجب أن يكون الحساب مرتبطًا بـ Telegram",
+ "Hesap varsa ve Telegram bağlıysa kod gönderildi": "أُرسل الرمز إن وُجد الحساب وكان مرتبطًا بـ Telegram"
 }
