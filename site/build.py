@@ -40,7 +40,7 @@ DESCRIPTION = {
 }
 # Depodaki Markdown bağlantıları sitedeki karşılıklarına.
 LINKS = {"PRIVACY.md": "gizlilik.html", "PRIVACY.en.md": "privacy.html", "TERMS.md": "kosullar.html", "TERMS.en.md": "terms.html"}
-IMAGES = ["01-karsilama.png", "02-durum.png", "06-sunucu.png", "07-bilesenler.png", "09-sihirbaz.png"]
+IMAGES = ["01-karsilama.png"]
 
 
 def slug(text):
@@ -162,9 +162,10 @@ def images():
     sources = [(ROOT / "fastlane/metadata/android/tr-TR/images/icon.png", "icon.png", 192)] + [
         (ROOT / "screenshots" / n, n, 720) for n in IMAGES
     ]
-    # İngilizce sayfalar: gerçek telefondan İngilizce arayüz görüntüleri (durum çubuğu kırpılmış).
-    (dst / "en").mkdir(exist_ok=True)
-    sources += [(f, f"en/{f.name}", 720) for f in sorted((ROOT / "screenshots" / "en").glob("*.jpg"))]
+    # Gerçek telefondan her dilin arayüz görüntüleri (durum çubuğu kırpılmış).
+    for lang in PAGES:
+        (dst / lang).mkdir(exist_ok=True)
+        sources += [(f, f"{lang}/{f.name}", 720) for f in sorted((ROOT / "screenshots" / lang).glob("*.jpg"))]
     for src, name, width in sources:
         if Image is None:
             shutil.copy(src, dst / name)

@@ -39,7 +39,7 @@ Sihirbaz sunucunuzun ne yapacağını yedi adımda sorar. Her adımda yalnızca 
 6. **Erişim:** sunucuya nereden ulaşılacağı (aşağıda "İnternetten erişim").
 7. **Özet ve deploy:** değişikliklerin özeti ve şema planı. **Kaydet ve deploy et** ile sunucu yeni ayarlarla açılır.
 
-![Sihirbaz](../img/09-sihirbaz.png)
+![Sihirbaz, Genel adımı](../img/tr/sihirbaz-genel.jpg)
 
 ## 4. Sunucuyu başlatma
 
@@ -50,7 +50,7 @@ Durum ekranında son bir saatin istekleri ve hataları, pil, çalışan süreçl
 gitmiyorsa **Sorun giderici** bağlantıyı, erişimi ve izinleri tek ekranda denetler, her bulgu için ne yapılacağını
 söyler.
 
-![Durum ekranı](../img/02-durum.png)
+![Durum ekranı](../img/tr/durum.jpg)
 
 ## 5. Uygulamanızı bağlama
 
@@ -68,11 +68,15 @@ curl -H "Authorization: Bearer <anahtar>" http://192.168.1.20:8080/api/collectio
 Kayıt eklemek için aynı adrese `POST` ile JSON gönderin. Sunucu `/api/_openapi.json` adresinde bütün uçların
 açıklamasını verir; **Sunucu → API gezgini** ile istekleri uygulamanın içinden de deneyebilirsiniz.
 
+![Durum ekranında Bağlan (QR) ve İstemci erişimi](../img/tr/durum-araclar.jpg)
+
 ## 6. Site yayınlama
 
 Sitenizin dosyalarını (`index.html`, CSS, JavaScript, görseller) bir zip dosyasına sıkıştırın, **Sunucu → Statik site →
 Zip yükle** ile seçin. Yükleme bitince site yayındadır; sunucuyu yeniden başlatmak gerekmez. Kodsuz liste ve detay
 sayfaları için **Sunucu → Sayfalar**, sayı ve grafikli panolar için **Sunucu → Panolar** kullanılabilir.
+
+![Sunucu ekranında statik site](../img/tr/sunucu.jpg)
 
 ## 7. Web paneli
 
@@ -93,6 +97,8 @@ Sunucu başlangıçta yalnızca ev ağınızdan erişilir. **Sihirbaz → Erişi
 - **Tailscale:** sunucu internete açılmaz; yalnızca Tailscale'e giriş yaptığınız kendi cihazlarınız ulaşır.
 - **İnternetten doğrudan (IP adresi):** telefonun internet adresiyle HTTPS; Wi-Fi'da modemde port açılır.
 
+![Sihirbaz, Erişim adımı](../img/tr/sihirbaz-erisim.jpg)
+
 Sunucuyu internete açmadan önce koleksiyonların erişim kurallarını ve API anahtarınızı gözden geçirin.
 
 ## 9. Bileşenler
@@ -100,6 +106,8 @@ Sunucuyu internete açmadan önce koleksiyonların erişim kurallarını ve API 
 **Bileşenler** sekmesinden PostgreSQL, Redis, Cloudflare tüneli gibi yan servisleri ve kendi Node.js, Python veya Java
 uygulamalarınız için çalışma ortamlarını kurabilirsiniz. **Kur ve çalıştır** bileşeni indirir (Play sürümünde Google
 Play'den) ve sunucuyla birlikte yönetir.
+
+![Bileşenler](../img/tr/bilesenler.jpg)
 
 ## 10. Yedekler
 
@@ -126,6 +134,8 @@ Android pil tasarrufu için arka plandaki uygulamaları durdurabilir. Sunucunun 
 
 **Sorun giderici** pil optimizasyonu gibi eksik Android ayarlarını gösterir; üreticinin otomatik başlatma ayarını
 kendiniz denetleyin.
+
+![Ayarlar: arka planda çalışma](../img/tr/ayarlar.jpg)
 
 ## 12. Uyarılar ve uzaktan yönetim
 
