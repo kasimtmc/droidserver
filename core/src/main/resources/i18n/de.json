@@ -2012,7 +2012,6 @@
  "Parolamı unuttum (e-posta gönderir)": "Passwort vergessen (sendet E-Mail)",
  "Parolanız değişti": "Ihr Passwort wurde geändert",
  "Parolasız giriş: kullanıcı e-postasına gelen 8 haneli kodla girer (10 dakika, tek kullanımlık). E-posta ayarı gerekir.": "Anmeldung ohne Passwort: Der Benutzer meldet sich mit einem 8-stelligen Code an, der an seine E-Mail gesendet wird (10 Minuten, einmalig). Erfordert E-Mail-Einstellungen.",
- "Parolasız giriş: kullanıcının telefonuna 6 haneli kod gider (10 dakika, tek kullanımlık). SMS bu telefonun kendi SIM'inden gönderilir; operatör ücreti size yansır.": "Anmeldung ohne Passwort: Ein 6-stelliger Code wird an das Telefon des Benutzers gesendet (10 Minuten, einmalig). Die SMS wird von der eigenen SIM dieses Telefons gesendet; Ihr Netzbetreiber kann dafür Gebühren berechnen.",
  "Parolayla kayıt, giriş ve sıfırlama uçları kapanır; kullanıcılar yalnızca sosyal girişle (Google/GitHub) girebilir": "Die Endpunkte für Registrierung, Anmeldung und Zurücksetzen per Passwort werden deaktiviert; Benutzer können sich nur per Social-Login (Google/GitHub) anmelden",
  "Parolayı kaydet": "Passwort speichern",
  "Parolayı kopyala": "Passwort kopieren",
@@ -4358,5 +4357,10 @@
  "{0} adresi bulunamadı; internet bağlantısını denetleyip yeniden deneyin": "{0} wurde nicht gefunden; Internetverbindung prüfen und erneut versuchen",
  "{0} zamanında yanıt vermedi; bağlantı yavaş olabilir, yeniden deneyin": "{0} hat nicht rechtzeitig geantwortet; die Verbindung ist möglicherweise langsam, erneut versuchen",
  "{0} adresine bağlanılamadı; internet bağlantısını denetleyip yeniden deneyin": "Keine Verbindung zu {0}; Internetverbindung prüfen und erneut versuchen",
- "{0} ile güvenli bağlantı kurulamadı; telefonun tarih ve saatini denetleyin": "Keine sichere Verbindung zu {0}; Datum und Uhrzeit des Telefons prüfen"
+ "{0} ile güvenli bağlantı kurulamadı; telefonun tarih ve saatini denetleyin": "Keine sichere Verbindung zu {0}; Datum und Uhrzeit des Telefons prüfen",
+ "Parolasız giriş: kullanıcının telefonuna 6 haneli kod gider (10 dakika, tek kullanımlık).": "Anmeldung ohne Passwort: Ein 6-stelliger Code wird an das Telefon des Benutzers gesendet (10 Minuten, einmalig).",
+ "Kod SMS sağlayıcınız üzerinden otomatik gider; ücreti sağlayıcıya ödenir.": "Der Code wird automatisch über Ihren SMS-Anbieter gesendet; der Anbieter berechnet die Gebühren.",
+ "SMS bu telefonun kendi SIM'inden otomatik gider; operatör ücreti size yansır.": "Die SMS wird automatisch von der eigenen SIM dieses Telefons gesendet; Ihr Netzbetreiber kann dafür Gebühren berechnen.",
+ "SMS bu telefonun SIM'inden gider ama her kod için bu telefonda onayınız gerekir; başında değilseniz kod gitmez. Otomatik gönderim için Genel → Telefon özellikleri'nde bir SMS sağlayıcısı seçin.": "Die SMS wird von der SIM dieses Telefons gesendet, aber jeder Code muss auf diesem Telefon bestätigt werden; sind Sie nicht am Telefon, wird der Code nicht gesendet. Für automatisches Senden wählen Sie unter Allgemein → Telefonfunktionen einen SMS-Anbieter.",
+ "SMS'in nasıl gideceği henüz seçilmedi: Genel → Telefon özellikleri'nde bir SMS sağlayıcısı ya da onaylı SIM gönderimini seçin.": "Wie die SMS gesendet wird, ist noch nicht gewählt: Wählen Sie unter Allgemein → Telefonfunktionen einen SMS-Anbieter oder bestätigtes Senden über die SIM."
 }

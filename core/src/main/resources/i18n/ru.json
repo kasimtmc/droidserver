@@ -2012,7 +2012,6 @@
  "Parolamı unuttum (e-posta gönderir)": "Забыли пароль (отправляет e-mail)",
  "Parolanız değişti": "Ваш пароль изменён",
  "Parolasız giriş: kullanıcı e-postasına gelen 8 haneli kodla girer (10 dakika, tek kullanımlık). E-posta ayarı gerekir.": "Вход без пароля: пользователь входит с 8-значным кодом, отправленным на его e-mail (10 минут, однократно). Требуются настройки e-mail.",
- "Parolasız giriş: kullanıcının telefonuna 6 haneli kod gider (10 dakika, tek kullanımlık). SMS bu telefonun kendi SIM'inden gönderilir; operatör ücreti size yansır.": "Вход без пароля: на телефон пользователя отправляется 6-значный код (10 минут, однократно). SMS отправляется с SIM-карты этого телефона; оператор может взимать плату.",
  "Parolayla kayıt, giriş ve sıfırlama uçları kapanır; kullanıcılar yalnızca sosyal girişle (Google/GitHub) girebilir": "Конечные точки регистрации, входа и сброса по паролю выключены; пользователи могут входить только через соцсети (Google/GitHub)",
  "Parolayı kaydet": "Сохранить пароль",
  "Parolayı kopyala": "Копировать пароль",
@@ -4358,5 +4357,10 @@
  "{0} adresi bulunamadı; internet bağlantısını denetleyip yeniden deneyin": "Адрес {0} не найден; проверьте подключение к интернету и повторите попытку",
  "{0} zamanında yanıt vermedi; bağlantı yavaş olabilir, yeniden deneyin": "{0} не ответил вовремя; соединение может быть медленным, повторите попытку",
  "{0} adresine bağlanılamadı; internet bağlantısını denetleyip yeniden deneyin": "Не удалось подключиться к {0}; проверьте подключение к интернету и повторите попытку",
- "{0} ile güvenli bağlantı kurulamadı; telefonun tarih ve saatini denetleyin": "Не удалось установить защищённое соединение с {0}; проверьте дату и время на телефоне"
+ "{0} ile güvenli bağlantı kurulamadı; telefonun tarih ve saatini denetleyin": "Не удалось установить защищённое соединение с {0}; проверьте дату и время на телефоне",
+ "Parolasız giriş: kullanıcının telefonuna 6 haneli kod gider (10 dakika, tek kullanımlık).": "Вход без пароля: на телефон пользователя отправляется 6-значный код (10 минут, однократно).",
+ "Kod SMS sağlayıcınız üzerinden otomatik gider; ücreti sağlayıcıya ödenir.": "Код отправляется автоматически через вашего SMS-провайдера; плату взимает провайдер.",
+ "SMS bu telefonun kendi SIM'inden otomatik gider; operatör ücreti size yansır.": "SMS отправляется автоматически с SIM-карты этого телефона; оператор может взимать плату.",
+ "SMS bu telefonun SIM'inden gider ama her kod için bu telefonda onayınız gerekir; başında değilseniz kod gitmez. Otomatik gönderim için Genel → Telefon özellikleri'nde bir SMS sağlayıcısı seçin.": "SMS отправляется с SIM-карты этого телефона, но каждый код нужно подтвердить на этом телефоне; если вас нет рядом, код не отправится. Для автоматической отправки выберите SMS-провайдера в разделе Общее → Функции телефона.",
+ "SMS'in nasıl gideceği henüz seçilmedi: Genel → Telefon özellikleri'nde bir SMS sağlayıcısı ya da onaylı SIM gönderimini seçin.": "Способ отправки SMS ещё не выбран: выберите SMS-провайдера или отправку с SIM с подтверждением в разделе Общее → Функции телефона."
 }

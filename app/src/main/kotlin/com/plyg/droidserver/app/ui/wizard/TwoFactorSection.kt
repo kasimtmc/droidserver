@@ -17,12 +17,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.core.net.toUri
+import com.plyg.droidserver.app.BuildConfig
 import com.plyg.droidserver.app.ui.common.ErrorText
 import com.plyg.droidserver.app.ui.common.copySecret
 import com.plyg.droidserver.core.auth.Totp
 import com.plyg.droidserver.core.config.FieldConfig
 import com.plyg.droidserver.core.config.FieldType
 import com.plyg.droidserver.core.config.ServerConfig
+import com.plyg.droidserver.core.config.SmsSim
 import com.plyg.droidserver.core.i18n.tr
 
 /** Kullanıcılar adımı: iki adımlı doğrulama, e-postayla ve SMS ile kodla giriş. */
@@ -70,9 +72,17 @@ internal fun TwoFactorSection(vm: WizardViewModel, draft: ServerConfig) {
 @Composable
 private fun SmsLoginSection(vm: WizardViewModel, draft: ServerConfig) {
     val users = draft.auth.users
+    // Kod Telefon özelliklerindeki SMS yoluyla gider: önce sağlayıcı, yoksa SIM (doğrudan yalnızca GitHub sürümünde).
+    val phone = draft.phone
+    val route = when {
+        phone.smsProvider != null -> tr("Kod SMS sağlayıcınız üzerinden otomatik gider; ücreti sağlayıcıya ödenir.")
+        phone.smsSim == SmsSim.DIRECT && BuildConfig.SIM_SMS -> tr("SMS bu telefonun kendi SIM'inden otomatik gider; operatör ücreti size yansır.")
+        phone.smsSim == SmsSim.CONFIRM -> tr("SMS bu telefonun SIM'inden gider ama her kod için bu telefonda onayınız gerekir; başında değilseniz kod gitmez. Otomatik gönderim için Genel → Telefon özellikleri'nde bir SMS sağlayıcısı seçin.")
+        else -> tr("SMS'in nasıl gideceği henüz seçilmedi: Genel → Telefon özellikleri'nde bir SMS sağlayıcısı ya da onaylı SIM gönderimini seçin.")
+    }
     SwitchRow(
         tr("SMS ile giriş"),
-        tr("Parolasız giriş: kullanıcının telefonuna 6 haneli kod gider (10 dakika, tek kullanımlık). SMS bu telefonun kendi SIM'inden gönderilir; operatör ücreti size yansır."),
+        tr("Parolasız giriş: kullanıcının telefonuna 6 haneli kod gider (10 dakika, tek kullanımlık).") + " " + route,
         users.smsLogin,
     ) { on ->
         vm.update { c ->

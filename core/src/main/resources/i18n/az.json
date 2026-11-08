@@ -2012,7 +2012,6 @@
  "Parolamı unuttum (e-posta gönderir)": "Parolu unutmuşam (e-poçt göndərir)",
  "Parolanız değişti": "Parolunuz dəyişdirildi",
  "Parolasız giriş: kullanıcı e-postasına gelen 8 haneli kodla girer (10 dakika, tek kullanımlık). E-posta ayarı gerekir.": "Parolsuz giriş: istifadəçi e-poçtuna gələn 8 rəqəmli kodla daxil olur (10 dəqiqə, birdəfəlik). E-poçt parametrləri tələb olunur.",
- "Parolasız giriş: kullanıcının telefonuna 6 haneli kod gider (10 dakika, tek kullanımlık). SMS bu telefonun kendi SIM'inden gönderilir; operatör ücreti size yansır.": "Parolsuz giriş: istifadəçinin telefonuna 6 rəqəmli kod göndərilir (10 dəqiqə, birdəfəlik). SMS bu telefonun öz SIM kartından göndərilir; operatorunuz bunun üçün ödəniş tuta bilər.",
  "Parolayla kayıt, giriş ve sıfırlama uçları kapanır; kullanıcılar yalnızca sosyal girişle (Google/GitHub) girebilir": "Parolla qeydiyyat, giriş və sıfırlama son nöqtələri söndürülür; istifadəçilər yalnız sosial giriş (Google/GitHub) ilə daxil ola bilər",
  "Parolayı kaydet": "Parolu yadda saxla",
  "Parolayı kopyala": "Parolu kopyala",
@@ -4358,5 +4357,10 @@
  "{0} adresi bulunamadı; internet bağlantısını denetleyip yeniden deneyin": "{0} ünvanı tapılmadı; internet bağlantısını yoxlayıb yenidən cəhd edin",
  "{0} zamanında yanıt vermedi; bağlantı yavaş olabilir, yeniden deneyin": "{0} vaxtında cavab vermədi; bağlantı yavaş ola bilər, yenidən cəhd edin",
  "{0} adresine bağlanılamadı; internet bağlantısını denetleyip yeniden deneyin": "{0} ünvanına qoşulmaq mümkün olmadı; internet bağlantısını yoxlayıb yenidən cəhd edin",
- "{0} ile güvenli bağlantı kurulamadı; telefonun tarih ve saatini denetleyin": "{0} ilə təhlükəsiz bağlantı qurulmadı; telefonun tarix və saatını yoxlayın"
+ "{0} ile güvenli bağlantı kurulamadı; telefonun tarih ve saatini denetleyin": "{0} ilə təhlükəsiz bağlantı qurulmadı; telefonun tarix və saatını yoxlayın",
+ "Parolasız giriş: kullanıcının telefonuna 6 haneli kod gider (10 dakika, tek kullanımlık).": "Parolsuz giriş: istifadəçinin telefonuna 6 rəqəmli kod göndərilir (10 dəqiqə, birdəfəlik).",
+ "Kod SMS sağlayıcınız üzerinden otomatik gider; ücreti sağlayıcıya ödenir.": "Kod SMS provayderiniz vasitəsilə avtomatik göndərilir; ödənişi provayder alır.",
+ "SMS bu telefonun kendi SIM'inden otomatik gider; operatör ücreti size yansır.": "SMS bu telefonun öz SIM kartından avtomatik göndərilir; operatorunuz bunun üçün ödəniş tuta bilər.",
+ "SMS bu telefonun SIM'inden gider ama her kod için bu telefonda onayınız gerekir; başında değilseniz kod gitmez. Otomatik gönderim için Genel → Telefon özellikleri'nde bir SMS sağlayıcısı seçin.": "SMS bu telefonun SIM kartından göndərilir, lakin hər kod üçün bu telefonda təsdiqiniz lazımdır; yanında deyilsinizsə kod getmir. Avtomatik göndərmə üçün Ümumi → Telefon xüsusiyyətləri bölməsində SMS provayderi seçin.",
+ "SMS'in nasıl gideceği henüz seçilmedi: Genel → Telefon özellikleri'nde bir SMS sağlayıcısı ya da onaylı SIM gönderimini seçin.": "SMS-in necə göndəriləcəyi hələ seçilməyib: Ümumi → Telefon xüsusiyyətləri bölməsində SMS provayderi və ya təsdiqli SIM göndərməni seçin."
 }

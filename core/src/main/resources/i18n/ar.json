@@ -2012,7 +2012,6 @@
  "Parolamı unuttum (e-posta gönderir)": "نسيت كلمة المرور (يرسل بريدًا إلكترونيًا)",
  "Parolanız değişti": "تم تغيير كلمة مرورك",
  "Parolasız giriş: kullanıcı e-postasına gelen 8 haneli kodla girer (10 dakika, tek kullanımlık). E-posta ayarı gerekir.": "تسجيل الدخول دون كلمة مرور: يسجّل المستخدم الدخول برمز من 8 أرقام يُرسل إلى بريده الإلكتروني (10 دقائق، لمرة واحدة). يتطلب إعدادات البريد الإلكتروني.",
- "Parolasız giriş: kullanıcının telefonuna 6 haneli kod gider (10 dakika, tek kullanımlık). SMS bu telefonun kendi SIM'inden gönderilir; operatör ücreti size yansır.": "تسجيل الدخول دون كلمة مرور: يُرسل رمز من 6 أرقام إلى هاتف المستخدم (10 دقائق، لمرة واحدة). تُرسل رسالة SMS من شريحة SIM الخاصة بهذا الهاتف؛ وقد تفرض شركة الاتصالات رسومًا عليها.",
  "Parolayla kayıt, giriş ve sıfırlama uçları kapanır; kullanıcılar yalnızca sosyal girişle (Google/GitHub) girebilir": "نقاط نهاية التسجيل وتسجيل الدخول وإعادة التعيين بكلمة المرور متوقفة؛ ولا يمكن للمستخدمين تسجيل الدخول إلا عبر تسجيل الدخول الاجتماعي (Google/GitHub)",
  "Parolayı kaydet": "حفظ كلمة المرور",
  "Parolayı kopyala": "نسخ كلمة المرور",
@@ -4358,5 +4357,10 @@
  "{0} adresi bulunamadı; internet bağlantısını denetleyip yeniden deneyin": "تعذّر العثور على {0}؛ تحقّق من الاتصال بالإنترنت وحاول مرة أخرى",
  "{0} zamanında yanıt vermedi; bağlantı yavaş olabilir, yeniden deneyin": "لم يستجب {0} في الوقت المحدد؛ قد يكون الاتصال بطيئًا، حاول مرة أخرى",
  "{0} adresine bağlanılamadı; internet bağlantısını denetleyip yeniden deneyin": "تعذّر الاتصال بـ {0}؛ تحقّق من الاتصال بالإنترنت وحاول مرة أخرى",
- "{0} ile güvenli bağlantı kurulamadı; telefonun tarih ve saatini denetleyin": "تعذّر إنشاء اتصال آمن مع {0}؛ تحقّق من تاريخ الهاتف ووقته"
+ "{0} ile güvenli bağlantı kurulamadı; telefonun tarih ve saatini denetleyin": "تعذّر إنشاء اتصال آمن مع {0}؛ تحقّق من تاريخ الهاتف ووقته",
+ "Parolasız giriş: kullanıcının telefonuna 6 haneli kod gider (10 dakika, tek kullanımlık).": "تسجيل الدخول دون كلمة مرور: يُرسل رمز من 6 أرقام إلى هاتف المستخدم (10 دقائق، لمرة واحدة).",
+ "Kod SMS sağlayıcınız üzerinden otomatik gider; ücreti sağlayıcıya ödenir.": "يُرسل الرمز تلقائيًا عبر مزود SMS لديك؛ ويتقاضى المزود رسومه.",
+ "SMS bu telefonun kendi SIM'inden otomatik gider; operatör ücreti size yansır.": "تُرسل رسالة SMS تلقائيًا من شريحة SIM الخاصة بهذا الهاتف؛ وقد تفرض شركة الاتصالات رسومًا عليها.",
+ "SMS bu telefonun SIM'inden gider ama her kod için bu telefonda onayınız gerekir; başında değilseniz kod gitmez. Otomatik gönderim için Genel → Telefon özellikleri'nde bir SMS sağlayıcısı seçin.": "تُرسل رسالة SMS من شريحة SIM لهذا الهاتف، لكن كل رمز يحتاج إلى تأكيدك على هذا الهاتف؛ وإن لم تكن بجانبه فلن يُرسل الرمز. للإرسال التلقائي اختر مزود SMS من عام ← ميزات الهاتف.",
+ "SMS'in nasıl gideceği henüz seçilmedi: Genel → Telefon özellikleri'nde bir SMS sağlayıcısı ya da onaylı SIM gönderimini seçin.": "لم يُحدَّد بعد كيف تُرسل الرسالة القصيرة: اختر مزود SMS أو الإرسال عبر SIM مع التأكيد من عام ← ميزات الهاتف."
 }

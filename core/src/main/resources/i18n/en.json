@@ -2012,7 +2012,6 @@
  "Parolamı unuttum (e-posta gönderir)": "Forgot password (sends e-mail)",
  "Parolanız değişti": "Your password was changed",
  "Parolasız giriş: kullanıcı e-postasına gelen 8 haneli kodla girer (10 dakika, tek kullanımlık). E-posta ayarı gerekir.": "Passwordless sign-in: the user signs in with an 8-digit code sent to their e-mail (10 minutes, single use). Requires e-mail settings.",
- "Parolasız giriş: kullanıcının telefonuna 6 haneli kod gider (10 dakika, tek kullanımlık). SMS bu telefonun kendi SIM'inden gönderilir; operatör ücreti size yansır.": "Passwordless sign-in: a 6-digit code is sent to the user's phone (10 minutes, single use). The SMS is sent from this phone's own SIM; your carrier may charge for it.",
  "Parolayla kayıt, giriş ve sıfırlama uçları kapanır; kullanıcılar yalnızca sosyal girişle (Google/GitHub) girebilir": "Password sign-up, sign-in and reset endpoints are turned off; users can only sign in with social sign-in (Google/GitHub)",
  "Parolayı kaydet": "Save password",
  "Parolayı kopyala": "Copy password",
@@ -4358,5 +4357,10 @@
  "{0} adresi bulunamadı; internet bağlantısını denetleyip yeniden deneyin": "Could not find {0}; check the internet connection and try again",
  "{0} zamanında yanıt vermedi; bağlantı yavaş olabilir, yeniden deneyin": "{0} did not respond in time; the connection may be slow, try again",
  "{0} adresine bağlanılamadı; internet bağlantısını denetleyip yeniden deneyin": "Could not connect to {0}; check the internet connection and try again",
- "{0} ile güvenli bağlantı kurulamadı; telefonun tarih ve saatini denetleyin": "Could not establish a secure connection with {0}; check the phone's date and time"
+ "{0} ile güvenli bağlantı kurulamadı; telefonun tarih ve saatini denetleyin": "Could not establish a secure connection with {0}; check the phone's date and time",
+ "Parolasız giriş: kullanıcının telefonuna 6 haneli kod gider (10 dakika, tek kullanımlık).": "Passwordless sign-in: a 6-digit code is sent to the user's phone (10 minutes, single use).",
+ "Kod SMS sağlayıcınız üzerinden otomatik gider; ücreti sağlayıcıya ödenir.": "The code is sent automatically through your SMS provider; the provider charges for it.",
+ "SMS bu telefonun kendi SIM'inden otomatik gider; operatör ücreti size yansır.": "The SMS is sent automatically from this phone's own SIM; your carrier may charge for it.",
+ "SMS bu telefonun SIM'inden gider ama her kod için bu telefonda onayınız gerekir; başında değilseniz kod gitmez. Otomatik gönderim için Genel → Telefon özellikleri'nde bir SMS sağlayıcısı seçin.": "The SMS is sent from this phone's SIM, but each code needs your confirmation on this phone; if you're not at it, the code isn't sent. For automatic sending, choose an SMS provider in General → Phone features.",
+ "SMS'in nasıl gideceği henüz seçilmedi: Genel → Telefon özellikleri'nde bir SMS sağlayıcısı ya da onaylı SIM gönderimini seçin.": "How the SMS is sent hasn't been chosen yet: choose an SMS provider or confirmed SIM sending in General → Phone features."
 }
