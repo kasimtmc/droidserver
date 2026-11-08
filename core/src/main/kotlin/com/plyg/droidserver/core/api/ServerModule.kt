@@ -24,6 +24,7 @@ import io.ktor.client.HttpClient
 import io.ktor.server.application.ApplicationStopped
 import com.plyg.droidserver.core.alerts.AlertKind
 import com.plyg.droidserver.core.alerts.HealthMonitor
+import com.plyg.droidserver.core.alerts.TelegramChannel
 import com.plyg.droidserver.core.audit.AuditLog
 import com.plyg.droidserver.core.ai.AiChat
 import com.plyg.droidserver.core.ai.AiImage
@@ -80,6 +81,8 @@ import com.plyg.droidserver.core.auth.OAuthService
 import com.plyg.droidserver.core.auth.PasskeyService
 import com.plyg.droidserver.core.config.OAuthProvider
 import com.plyg.droidserver.core.auth.UserService
+import com.plyg.droidserver.core.auth.TelegramAccounts
+import com.plyg.droidserver.core.auth.TelegramUserBot
 import com.plyg.droidserver.core.data.DataTransfer
 import com.plyg.droidserver.core.data.ImportMode
 import com.plyg.droidserver.core.data.TransferFormat
@@ -307,6 +310,8 @@ fun Application.droidServerModule(
     paymentHost: PaymentHost? = null,
     /** MQTT TLS'in yerel kökü (uygulama); yoksa TLS dinleyicisi açılmaz. */
     mqttCa: LocalCa? = null,
+    /** Telegram Bot API adresi (testlerde sahte sunucu). */
+    telegramApi: String = TelegramChannel.API,
 ) {
     if (metrics != null) {
         install(MetricsPlugin) {
@@ -433,6 +438,25 @@ fun Application.droidServerModule(
     val auth = config.auth
     val cipher = FieldEncryption.cipher(config)
     val users = if (auth.users.enabled) UserService(db, config, files = files, audit = audit) else null
+    // Kullanıcıların Telegram botu: sunucu çalışırken dinlenir. Canlı kopyada dinlenmez (yazmalar ana sunucuda).
+    val telegramBot = auth.users.telegram?.takeIf { users != null && config.replication.replicaOf == null }?.let { tg ->
+        if (tg.botToken == config.alerts.telegram?.botToken) {
+            log(tr("Telegram kullanıcı botu başlatılmadı: sağlık uyarılarının botuyla aynı; @BotFather'dan ayrı bir bot açın"))
+            return@let null
+        }
+        fun emailOf(id: Long) = runCatching { (users!!.me(id)["email"] as? JsonPrimitive)?.content }.getOrNull()
+        TelegramUserBot(
+            tg.botToken, TelegramAccounts(db), writes, config.name, ::emailOf, log,
+            audit = { action, id ->
+                val who = emailOf(id) ?: "#$id"
+                audit?.record(if (action == "user.telegram.blocked") AuditLog.SYSTEM else who, action, who)
+            },
+            base = telegramApi,
+        ).also { bot ->
+            val job = launch(Dispatchers.IO) { bot.run() }
+            monitor.subscribe(ApplicationStopping) { bot.stop(); job.cancel() }
+        }
+    }
     val quotas = QuotaService(db, config, files, requestCounts)
     val byName = config.collections.associateBy { it.name }
     val adminJwt = if (auth.mode == AuthMode.JWT) {
@@ -1605,7 +1629,7 @@ fun Application.droidServerModule(
                 val passkeys = config.auth.passkeys.takeIf { it.enabled }?.let {
                     PasskeyService(db, it, it.rpName?.takeIf(String::isNotBlank) ?: config.name, SystemCollections.PASSKEYS, "user")
                 }
-                authRoutes(users, writes, mailer, config, oauth, paths, userNames, phone?.takeIf { config.phone.sms }, smsGuard, passkeys) { call.caller() }
+                authRoutes(users, writes, mailer, config, oauth, paths, userNames, phone?.takeIf { config.phone.sms }, smsGuard, passkeys, telegramBot) { call.caller() }
                 endpoint(paths, Endpoint.AUTH_USAGE) {
                     val id = requireUser(call.caller())
                     call.respond(io { quotas.usage(id) })
@@ -2036,6 +2060,7 @@ private fun Route.authRoutes(
     phone: PhoneService?,
     smsGuard: SmsGuard,
     passkeys: PasskeyService?,
+    telegram: TelegramUserBot?,
     caller: suspend RoutingContext.() -> Caller,
 ) {
     /** Gövde API adlarından özgün adlara; doğrulama hatalarındaki alan adları API adlarıyla. */
@@ -2216,6 +2241,25 @@ private fun Route.authRoutes(
             endpoint(paths, Endpoint.AUTH_PASSKEY_LOGIN) {
                 val body = call.receive<JsonObject>()
                 call.respond(io { writes.write { users.loginWithPasskey(passkeys.login(body)).out(call) } })
+            }
+        }
+        // Telegram: kullanıcı hesabını botla bağlar (adres 10 dakika, tek kullanımlık), bağ durumu ve kaldırma.
+        if (telegram != null) {
+            endpoint(paths, Endpoint.AUTH_TELEGRAM) {
+                val id = requireUser(caller())
+                call.respond(io { telegram.accounts.status(id) })
+            }
+            endpoint(paths, Endpoint.AUTH_TELEGRAM_LINK) {
+                val id = requireUser(caller())
+                call.respond(buildJsonObject {
+                    put("url", JsonPrimitive(telegram.linkUrl(id)))
+                    put("expiresIn", JsonPrimitive(TelegramAccounts.LINK_TTL.seconds))
+                })
+            }
+            endpoint(paths, Endpoint.AUTH_TELEGRAM_UNLINK) {
+                val id = requireUser(caller())
+                io { telegram.unlink(id) }
+                call.respond(HttpStatusCode.NoContent)
             }
         }
         endpoint(paths, Endpoint.AUTH_REFRESH) {

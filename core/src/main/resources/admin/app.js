@@ -830,6 +830,7 @@ async function showUsers() {
                   if (p) userAction(u.id, { [passKey]: p });
                 } }, T("Parola")) : null, " ",
                 u.id !== undefined && gp("auth.users.sessions", { id: u.id }, null) ? el("button", { class: "ghost", onclick: () => sessionsDialog(who, u.id) }, T("Oturumlar")) : null, " ",
+                raw.telegram === true ? el("button", { class: "ghost", onclick: () => userAction(u.id, { telegram: false }) }, T("Telegram bağını kaldır")) : null, " ",
                 del ? el("button", { class: "ghost danger", onclick: async () => {
                   if (!confirm(who + T(" silinsin mi? Bağlı kayıtlar onDelete ayarına göre etkilenir."))) return;
                   await guard(out, async () => { await api(del, { method: "DELETE" }); await load(); });
@@ -1221,6 +1222,7 @@ const AUDIT_ACTIONS = {
   "replica.demoted": T("Bu sunucu devredildi, kopyaya döndü"), "replica.fenced": T("Eski ana sunucu kopyaya çevrildi"),
   "phone.sms": T("SMS gönderildi"),
   "sql.query": T("SQL sorgusu"), "broadcast.create": T("Toplu bildirim gönderildi"), "data.sample": T("Örnek veri eklendi"), "user.sessions.close": T("Kullanıcının oturumları kapatıldı"),
+  "user.telegram.link": T("Telegram bağlandı"), "user.telegram.unlink": T("Telegram bağı kaldırıldı"), "user.telegram.blocked": T("Kullanıcı Telegram botunu engelledi"),
   "panel.passkey.add": T("Panel passkey'i eklendi"), "panel.passkey.delete": T("Panel passkey'i silindi"),
   "mqtt.publish": T("MQTT mesajı gönderildi"), "mqtt.scene": T("Sahne çalıştırıldı"),
 };

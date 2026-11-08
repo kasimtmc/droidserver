@@ -378,7 +378,11 @@ class UserService(
         val params = email?.takeIf { it.isNotBlank() }?.let { listOf("email[like]" to it.trim()) }.orEmpty()
         val p = records.list(page, perPage, "-created_at", params)
         val enrolled = if (twoFactor.enabled) enrolledAmong(p.items.map { it.id() }) else emptySet()
-        return p.copy(items = p.items.map { u -> clean(u).let { if (twoFactor.enabled) JsonObject(it + ("twoFactor" to JsonPrimitive(u.id() in enrolled))) else it } })
+        val telegramLinked = telegram?.linkedAmong(p.items.map { it.id() })
+        return p.copy(items = p.items.map { u ->
+            clean(u).let { if (twoFactor.enabled) JsonObject(it + ("twoFactor" to JsonPrimitive(u.id() in enrolled))) else it }
+                .let { if (telegramLinked != null) JsonObject(it + ("telegram" to JsonPrimitive(u.id() in telegramLinked))) else it }
+        })
     }
 
     /**
@@ -391,11 +395,16 @@ class UserService(
     /** Yönetici günceller: e-posta, parola (sıfırlama: tüm oturumlar kapanır), rol, doğrulanmış, ek alanlar. */
     fun adminUpdate(id: Long, bodyRaw: JsonObject, by: String = AuditLog.APP, ip: String? = null): JsonObject {
         val body = withPhone(bodyRaw)
-        checkKeys(body, extraNames + setOf("email", "password", "role", "verified") + if (twoFactor.enabled) setOf("twoFactor") else emptySet())
+        checkKeys(body, extraNames + setOf("email", "password", "role", "verified") + (if (twoFactor.enabled) setOf("twoFactor") else emptySet()) + (if (telegram != null) setOf("telegram") else emptySet()))
         body["twoFactor"]?.let { v ->
             // Yönetici yalnızca kapatabilir (telefonunu kaybeden kullanıcı); kurmak kullanıcının işidir.
             if (verified(v)) throw ApiException(400, tr("Doğrulama hatası"), mapOf("twoFactor" to tr("yalnızca false (sıfırla) gönderilebilir")))
             db.execute("DELETE FROM $tfTable WHERE \"user\" = ?", listOf(dialect.encode(FieldType.RELATION, id)))
+        }
+        body["telegram"]?.let { v ->
+            // Yönetici yalnızca bağı kaldırabilir; bağlamak kullanıcının işidir (botta "Başlat").
+            if (verified(v)) throw ApiException(400, tr("Doğrulama hatası"), mapOf("telegram" to tr("yalnızca false (bağı kaldır) gönderilebilir")))
+            telegram?.unlink(id)
         }
         val fields = body.filterKeys { it in extraNames }.toMutableMap()
         body["email"]?.let { fields["email"] = JsonPrimitive(email(it)) }
@@ -408,6 +417,7 @@ class UserService(
             (fields["verified"] as? JsonPrimitive)?.let { tr("doğrulandı: {0}", it.content) },
             tr("parola sıfırlandı").takeIf { "password" in body },
             tr("iki adımlı doğrulama sıfırlandı").takeIf { "twoFactor" in body },
+            tr("Telegram bağı kaldırıldı").takeIf { "telegram" in body },
             (extraNames intersect body.keys).takeIf { it.isNotEmpty() }?.let { "alanlar: ${it.joinToString()}" },
         ).joinToString("; ")
         audit?.record(by, "user.update", out.str("email"), detail, ip)
@@ -433,6 +443,7 @@ class UserService(
     // ---- iki adımlı doğrulama ----
 
     private val twoFactor = users.twoFactor
+    private val telegram = users.telegram?.let { TelegramAccounts(db, clock) }
     private val tfTable = quoteIdent(TWO_FACTOR)
     private val box by lazy { SecretBox(signingKey() + "two-factor".toByteArray()) }
     private val challengeVerifier by lazy { JWT.require(algorithm).withIssuer(issuer).withAudience(CHALLENGE_AUDIENCE).build() }

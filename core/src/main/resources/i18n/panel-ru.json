@@ -678,5 +678,9 @@
  "Şu an engelli adres yok.": "Сейчас заблокированных адресов нет.",
  "— alma —": "— не переносить —",
  "‹ Önceki": "‹ Назад",
- "● canlı": "● в реальном времени"
+ "● canlı": "● в реальном времени",
+ "Telegram bağını kaldır": "Отвязать Telegram",
+ "Telegram bağlandı": "Telegram привязан",
+ "Telegram bağı kaldırıldı": "Привязка Telegram удалена",
+ "Kullanıcı Telegram botunu engelledi": "Пользователь заблокировал Telegram-бота"
 }

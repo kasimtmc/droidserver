@@ -678,5 +678,9 @@
  "Şu an engelli adres yok.": "No hay direcciones bloqueadas en este momento.",
  "— alma —": "— omitir —",
  "‹ Önceki": "‹ Anterior",
- "● canlı": "● en vivo"
+ "● canlı": "● en vivo",
+ "Telegram bağını kaldır": "Desvincular Telegram",
+ "Telegram bağlandı": "Telegram vinculado",
+ "Telegram bağı kaldırıldı": "Vinculación de Telegram eliminada",
+ "Kullanıcı Telegram botunu engelledi": "El usuario bloqueó el bot de Telegram"
 }

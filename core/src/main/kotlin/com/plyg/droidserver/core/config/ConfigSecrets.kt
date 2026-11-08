@@ -21,7 +21,7 @@ class MissingSecretsException(val names: List<String>) :
  * `"secret:<ad>"` referansı tutabilir. Referanslar deploy anında çözülür; çekirdek sırların nerede ve nasıl
  * saklandığını bilmez, yalnızca `(ad) -> değer?` çözücüsünü ve [SecretSink]'i kullanır.
  *
- * Kaydederken depoya otomatik taşınanlar `auth` sırları, `database.password`, `database.fieldKey`, DuckDNS token'ı, SMTP parolası (`email.password`), Telegram bot token'ı (`alerts.telegram.botToken`) ve uygulamaların Git token'ı ile webhook sırrı ve YZ anahtarları (`ai.apiKey`, `ai.embeddings.apiKey`) WebDAV parolası (`webdav.password`), MQTT parolası (`mqtt.password`), ödeme sağlayıcılarının anahtarları (`payments.providers[]`) ve SMS sağlayıcısının gizli anahtarıdır (`phone.smsProvider.secret`); bileşen, uygulama ve ortak
+ * Kaydederken depoya otomatik taşınanlar `auth` sırları, `database.password`, `database.fieldKey`, DuckDNS token'ı, SMTP parolası (`email.password`), Telegram bot token'ları (`alerts.telegram.botToken`, `auth.users.telegram.botToken`) ve uygulamaların Git token'ı ile webhook sırrı ve YZ anahtarları (`ai.apiKey`, `ai.embeddings.apiKey`) WebDAV parolası (`webdav.password`), MQTT parolası (`mqtt.password`), ödeme sağlayıcılarının anahtarları (`payments.providers[]`) ve SMS sağlayıcısının gizli anahtarıdır (`phone.smsProvider.secret`); bileşen, uygulama ve ortak
  * ortamdaki (`env`) hangi değerin sır olduğu bilinemez, oraya referansı sihirbaz (örn. tünel token'ı), Ortam ve sırlar
  * ekranı ([EnvFile.toConfig]) veya kullanıcı yazar.
  */
@@ -51,6 +51,7 @@ object ConfigSecrets {
                 jwtSecret = auth.jwtSecret?.let(::value),
                 users = auth.users.copy(
                     oauth = auth.users.oauth.copy(providers = auth.users.oauth.providers.map { it.copy(clientSecret = value(it.clientSecret)) }),
+                    telegram = auth.users.telegram?.let { it.copy(botToken = value(it.botToken)) },
                 ),
             ),
             database = config.database.copy(password = config.database.password?.let(::value), fieldKey = config.database.fieldKey?.let(::value)),
@@ -116,15 +117,21 @@ object ConfigSecrets {
                 newAuth["apiKeys"] = JsonArray(keys.map { el -> el.stringOrNull()?.let { JsonPrimitive(transform("api_key", it)) } ?: el })
             }
             auth["jwtSecret"]?.stringOrNull()?.let { newAuth["jwtSecret"] = JsonPrimitive(transform("jwt", it)) }
-            val users = auth["users"] as? JsonObject
-            val oauth = users?.get("oauth") as? JsonObject
-            (oauth?.get("providers") as? JsonArray)?.let { providers ->
-                val mapped = JsonArray(providers.map { p ->
-                    val o = p as? JsonObject ?: return@map p
-                    val secret = o["clientSecret"]?.stringOrNull() ?: return@map o
-                    JsonObject(o + ("clientSecret" to JsonPrimitive(transform("oauth_secret", secret))))
-                })
-                newAuth["users"] = JsonObject(users + ("oauth" to JsonObject(oauth + ("providers" to mapped))))
+            (auth["users"] as? JsonObject)?.let { users ->
+                val newUsers = users.toMutableMap()
+                val oauth = users["oauth"] as? JsonObject
+                (oauth?.get("providers") as? JsonArray)?.let { providers ->
+                    val mapped = JsonArray(providers.map { p ->
+                        val o = p as? JsonObject ?: return@map p
+                        val secret = o["clientSecret"]?.stringOrNull() ?: return@map o
+                        JsonObject(o + ("clientSecret" to JsonPrimitive(transform("oauth_secret", secret))))
+                    })
+                    newUsers["oauth"] = JsonObject(oauth + ("providers" to mapped))
+                }
+                (users["telegram"] as? JsonObject)?.let { t ->
+                    t["botToken"]?.stringOrNull()?.let { newUsers["telegram"] = JsonObject(t + ("botToken" to JsonPrimitive(transform("user_telegram_token", it)))) }
+                }
+                if (newUsers != users) newAuth["users"] = JsonObject(newUsers)
             }
             out["auth"] = JsonObject(newAuth)
         }

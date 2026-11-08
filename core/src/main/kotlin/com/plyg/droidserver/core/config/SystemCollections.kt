@@ -162,6 +162,18 @@ object SystemCollections {
         ),
     )
 
+    const val TELEGRAM = "_telegram"
+
+    /** Kullanıcıların bağlı Telegram sohbetleri (bkz. TelegramAccounts): kullanıcı başına bir, sohbet başına bir hesap. */
+    val telegram = CollectionConfig(
+        name = TELEGRAM,
+        fields = listOf(
+            FieldConfig("user", FieldType.RELATION, required = true, unique = true, collection = USERS, onDelete = OnDelete.CASCADE),
+            FieldConfig("chat_id", FieldType.TEXT, required = true, unique = true),
+            FieldConfig("username", FieldType.TEXT),
+        ),
+    )
+
     const val PASSKEYS = "_passkeys"
     const val PANEL_PASSKEYS = "_panel_passkeys"
 
@@ -265,6 +277,7 @@ object SystemCollections {
         else -> listOfNotNull(
             users(config), sessions, pushSubscriptions.takeIf { push }, twoFactor.takeIf { config.twoFactor.enabled },
             teams.takeIf { config.teams.enabled }, teamMembers.takeIf { config.teams.enabled },
+            telegram.takeIf { config.telegram != null },
         )
     }
 }

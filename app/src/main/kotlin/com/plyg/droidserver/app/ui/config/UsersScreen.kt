@@ -147,6 +147,7 @@ fun UsersScreen(g: AppGraph, onBack: () -> Unit) {
                                 roleLabel(role, users),
                                 tr("doğrulandı").takeIf { verified },
                                 tr("iki adımlı").takeIf { u.text("twoFactor") == "true" },
+                                "Telegram".takeIf { u.text("telegram") == "true" },
                                 tr("kayıt: {0}", u.text("created_at").take(10)),
                             ).joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall,
@@ -167,6 +168,11 @@ fun UsersScreen(g: AppGraph, onBack: () -> Unit) {
                                 TextButton(onClick = {
                                     act(tr("{0}: iki adımlı doğrulama sıfırlandı", email)) { it.adminUpdate(id, JsonObject(mapOf("twoFactor" to JsonPrimitive(false)))) }
                                 }) { Text(tr("2FA sıfırla")) }
+                            }
+                            if (u.text("telegram") == "true") {
+                                TextButton(onClick = {
+                                    act(tr("{0}: Telegram bağı kaldırıldı", email)) { it.adminUpdate(id, JsonObject(mapOf("telegram" to JsonPrimitive(false)))) }
+                                }) { Text(tr("Telegram bağını kaldır")) }
                             }
                             TextButton(onClick = { sessionsFor = u }) { Text(tr("Oturumlar")) }
                             TextButton(onClick = { deleting = u }) { Text(tr("Sil"), color = MaterialTheme.colorScheme.error) }

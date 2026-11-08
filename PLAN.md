@@ -1578,7 +1578,7 @@ mesajları Telegram'dan gider. GitHub ve Play sürümünde aynı; izin gerektirm
   (`TelegramBot`, uzun yoklama). Bir bot belirtecinin güncellemelerini aynı anda tek bir yoklayıcı alabilir.
 - Bot, kendisine hiç yazmamış birine mesaj gönderemez; bu yüzden kullanıcının bir kez bağlaması şart.
 
-**Önerilen kararlar (onay bekliyor)**
+**Kararlar (kullanıcı, 8 Kasım 2026)**
 - **Ayrı bot:** kullanıcılar için ayrı bir bot (`auth.users.telegram.botToken`, şifreli depoda); uyarı botuyla aynı
   belirteç doğrulamada reddedilir. Yönetim komutları ve sahibin uyarıları kullanıcıların konuştuğu botla karışmaz, bot
   adı ve fotoğrafı sunucunun uygulamasına göre seçilir, tek yoklayıcı sorunu çıkmaz.
@@ -1586,22 +1586,25 @@ mesajları Telegram'dan gider. GitHub ve Play sürümünde aynı; izin gerektirm
 - **Önce kodla giriş;** kod yazmadan "Telegram'da onayla" düğmesi sonraya.
 - **Mesaj dili** sunucunun arayüz dili; metinlerde sunucu adı geçer.
 
-**20.1 Bot ve bağlama**
-- [ ] Konfigürasyon: `auth.users.telegram { botToken, login }`; doğrulama (belirteç biçimi, uyarı botuyla aynı olmaması),
-  sihirbaz özeti.
-- [ ] Sunucu çalışırken kullanıcı botu `getUpdates` ile dinlenir (ağ ve geri çekilme kodu `TelegramBot` ile ortak).
-  Canlı kopyada yalnızca ana sunucu dinler.
-- [ ] Başlarken `getMe` ile botun kullanıcı adı alınır (bağlantı adresi için); belirteç yanlışsa Loglar'da ve sihirbazda
-  açık hata.
-- [ ] `POST /api/auth/telegram/link` (kullanıcı token'ı) → `{url: "https://t.me/<bot>?start=<kod>", expiresIn: 600}`;
-  kod rastgele ve tek kullanımlık, veritabanında yalnızca özeti durur.
-- [ ] Bot `/start <kod>` alınca sohbeti hesaba bağlar (sistem tablosu: kullanıcı, sohbet kimliği, Telegram kullanıcı
-  adı, tarih) ve "Hesabınız bağlandı" yazar. Bir sohbet tek hesaba bağlıdır; yeniden bağlama eskisinin yerine geçer.
-  Kodsuz `/start` gelirse botun ne için olduğunu ve uygulamadan nasıl bağlanılacağını yazar.
-- [ ] `GET /api/auth/telegram` → `{linked, username}`; `DELETE` bağı kaldırır; botta `/ayril` de kaldırır. Kullanıcı
-  botu engellerse (Telegram 403) bağ kendiliğinden düşer.
-- [ ] Yönetici: uygulamadaki Kullanıcılar ekranında ve web panelinde "Telegram bağlı" ve **Bağı kaldır**; bağlama ve
-  kaldırma denetim kaydına yazılır.
+**20.1 Bot ve bağlama** (8 Kasım 2026)
+- [x] Konfigürasyon: `auth.users.telegram { botToken }` (`UserTelegramConfig`; belirteç kaydederken şifreli depoya
+  taşınır, `user_telegram_token`). Doğrulama: hesaplar açık, belirteç biçimi, uyarı botuyla aynı olmaması (sır
+  deposundakiler deploy'da karşılaştırılır; aynıysa bot başlatılmaz, Loglar'da yazar). `login` bayrağı 20.2'de.
+- [x] Sunucu çalışırken kullanıcı botu `getUpdates` ile dinlenir (`TelegramUserBot`, sunucu modülünde; durunca durur,
+  yeniden deploy'da yeni dinleyici eskisinin yerine geçer). Canlı kopyada dinlenmez.
+- [x] Başlarken `getMe` ile botun adı alınır ve komut menüsüne `/ayril` yazılır; ulaşılamazsa Loglar'da yazar ve
+  giderek uzayan aralıkla yeniden dener (o sırada bağlama ucu 503).
+- [x] `POST /api/auth/telegram/link` (kullanıcı token'ı) → `{url: "https://t.me/<bot>?start=<kod>", expiresIn: 600}`.
+  Kod 24 rastgele bayt (base64url), tek kullanımlık; bellekte durur (sunucu yeniden başlarsa yenisi alınır).
+- [x] Bot `/start <kod>` alınca sohbeti hesaba bağlar (`_telegram`: kullanıcı, sohbet kimliği, Telegram kullanıcı adı)
+  ve sunucu adıyla "hesabınız bağlandı (e-posta)" yazar. Sohbet başına bir hesap, hesap başına bir sohbet; yeniden
+  bağlama eskisinin yerine geçer. Kodsuz `/start` ve başka mesajlara botun ne için olduğunu yazar; gruplar yok sayılır.
+- [x] `GET /api/auth/telegram` → `{linked, username}`; `DELETE` bağı kaldırır; botta `/ayril` de kaldırır. Kullanıcı
+  botu engellerse (Telegram 403) ilk mesajda bağ düşer (`TelegramUserBot.send`, 20.2 ve 20.3 kullanacak).
+- [x] Yönetici: Kullanıcılar ekranında ve web panelinde "Telegram" ve **Telegram bağını kaldır**
+  (`PATCH /auth/users/{id} {"telegram": false}`); bağlama, kaldırma ve engelleme denetim kaydına yazılır.
+- Testler: `TelegramUsersTest` (sahte Bot API: bağlama, yeniden kullanılan ve süresi dolmuş kod, grup, `/ayril`,
+  engelleme, yönetici; doğrulama; HTTP uçları). Cihaz testi gerçek botla 20.4'teki sihirbaz bölümünden sonra.
 
 **20.2 Telegram ile giriş**
 - [ ] `POST /api/auth/request-telegram-code {email}` → 202; hesap varsa ve Telegram bağlıysa 6 haneli kod (10 dakika,

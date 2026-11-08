@@ -316,6 +316,13 @@ object OpenApi {
                     responses = obj("202" to obj("description" to str(tr("Hesap varsa SMS gönderildi"))))))
                 op("$auth/sms-code", "post", operation(tr("Hesap"), tr("SMS koduyla giriş"), public = true, body = bodyOf("phone" to "string", "code" to "string"), responses = ok(tokens)))
             }
+            if (users.telegram != null) {
+                op("$auth/telegram/link", "post", operation(tr("Hesap"), tr("Telegram'ı bağla: kullanıcı adresi açıp botta Başlat'a dokunur (10 dk, tek kullanımlık)"), public = false,
+                    responses = ok(obj("type" to str("object"), "description" to str("{url, expiresIn}")))))
+                op("$auth/telegram", "get", operation(tr("Hesap"), tr("Telegram bağım"), public = false,
+                    responses = ok(obj("type" to str("object"), "description" to str("{linked, username}")))))
+                op("$auth/telegram", "delete", operation(tr("Hesap"), tr("Telegram bağını kaldır"), public = false, responses = obj("204" to obj("description" to str(tr("Kaldırıldı"))))))
+            }
             if (config.auth.passkeys.enabled) {
                 val options = obj("type" to str("object"), "description" to str(tr("navigator.credentials.create/get için publicKey seçenekleri (challenge ve kimlikler base64url)")))
                 val credential = obj("required" to JsonPrimitive(true), "content" to obj("application/json" to obj("schema" to obj(

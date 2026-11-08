@@ -678,5 +678,9 @@
  "Şu an engelli adres yok.": "Hazırda bloklanmış ünvan yoxdur.",
  "— alma —": "— ötür —",
  "‹ Önceki": "‹ Əvvəlki",
- "● canlı": "● canlı"
+ "● canlı": "● canlı",
+ "Telegram bağını kaldır": "Telegram bağlantısını sil",
+ "Telegram bağlandı": "Telegram bağlandı",
+ "Telegram bağı kaldırıldı": "Telegram bağlantısı silindi",
+ "Kullanıcı Telegram botunu engelledi": "İstifadəçi Telegram botunu blokladı"
 }

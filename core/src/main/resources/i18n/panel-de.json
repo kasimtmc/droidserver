@@ -678,5 +678,9 @@
  "Şu an engelli adres yok.": "Derzeit keine gesperrten Adressen.",
  "— alma —": "— überspringen —",
  "‹ Önceki": "‹ Zurück",
- "● canlı": "● live"
+ "● canlı": "● live",
+ "Telegram bağını kaldır": "Telegram-Verknüpfung aufheben",
+ "Telegram bağlandı": "Telegram verknüpft",
+ "Telegram bağı kaldırıldı": "Telegram-Verknüpfung aufgehoben",
+ "Kullanıcı Telegram botunu engelledi": "Benutzer hat den Telegram-Bot blockiert"
 }

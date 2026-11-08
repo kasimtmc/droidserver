@@ -552,7 +552,18 @@ data class UsersConfig(
     /** Takımlar: kullanıcılar takımlara katılır, kayıtlar bir takıma ait olur (bkz. [CollectionConfig.teamField]). */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val teams: TeamsConfig = TeamsConfig(),
+    /** Kullanıcıların Telegram hesaplarını bağladığı bot; bkz. [UserTelegramConfig]. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val telegram: UserTelegramConfig? = null,
 )
+
+/**
+ * Kullanıcılar için Telegram botu (@BotFather verir; sağlık uyarılarının botundan ayrı olmalı: bir botun mesajlarını
+ * aynı anda tek bir dinleyici alabilir). Kullanıcı hesabını bir kez bağlar (`/auth/telegram/link` → botta "Başlat");
+ * sunucu çalışırken bot uzun yoklamayla dinlenir, telefona dışarıdan bağlantı gerekmez.
+ */
+@Serializable
+data class UserTelegramConfig(val botToken: String)
 
 /**
  * [allowCreate]: kullanıcılar kendi takımlarını kurabilir (kuran takımın sahibi olur); kapalıysa takımları yalnızca

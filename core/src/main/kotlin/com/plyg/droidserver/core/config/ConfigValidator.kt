@@ -93,6 +93,16 @@ object ConfigValidator {
             if (maxTeamsPerUser !in 1..1_000) error("auth.users.teams.maxTeamsPerUser", tr("Kullanıcı başına takım sayısı 1-1000 olmalı"))
             if (maxMembers !in 2..10_000) error("auth.users.teams.maxMembers", tr("Takım başına üye sayısı 2-10000 olmalı"))
         }
+        users.telegram?.let { t ->
+            if (!users.enabled) error("auth.users.telegram", tr("Telegram botu için kullanıcı hesapları açık olmalı"))
+            if (!ConfigSecrets.isRef(t.botToken) && !TELEGRAM_TOKEN.matches(t.botToken)) {
+                error("auth.users.telegram.botToken", tr("Bot token'ı @BotFather'ın verdiği biçimde olmalı (123456789:ABC…)"))
+            }
+            // Aynı bot iki yerde dinlenemez (Telegram ikinci dinleyiciyi reddeder); sır deposundakiler deploy'da karşılaştırılır.
+            if (t.botToken == config.alerts.telegram?.botToken) {
+                error("auth.users.telegram.botToken", tr("Kullanıcı botu sağlık uyarılarının botundan ayrı olmalı; @BotFather'dan yeni bir bot açın"))
+            }
+        }
         if (users.smsLogin) {
             if (!users.enabled) error("auth.users.smsLogin", tr("SMS ile giriş için kullanıcı hesapları açık olmalı"))
             if (!config.phone.sms) error("auth.users.smsLogin", tr("SMS ile giriş için Telefon özellikleri → SMS gönderme açık olmalı"))
@@ -292,6 +302,7 @@ object ConfigValidator {
     private val HOSTNAME = Regex("^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,63}$")
     private val TELEGRAM_CHAT = Regex("^(-?[0-9]{1,20}|@[A-Za-z][A-Za-z0-9_]{4,31})$")
     private val TELEGRAM_ADMIN_CHAT = Regex("^-?[0-9]{1,20}$")
+    private val TELEGRAM_TOKEN = Regex("^[0-9]{5,15}:[A-Za-z0-9_-]{30,64}$")
     private val TEMPLATE_VAR = Regex("\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
     private val CLOCK = Regex("^([01][0-9]|2[0-3]):[0-5][0-9]$")
 
