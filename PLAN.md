@@ -1562,6 +1562,78 @@ modeller veri), ödemeler (Play'in ödeme kuralı uygulamanın kendi dijital sat
 - `play` türünde bileşenler modülden kurulup çalışır (Postgres ile uçtan uca, cihazda); SMS'in üç yolu testli.
 - README (TR/EN) "Dağıtım", "Neden targetSdk 28?" ve SMS bölümleri iki kanala göre; cihaz testi adımları (`play`).
 
+## Faz 20 — Telegram kanalı (sunucunun kullanıcılarına)
+
+Amaç: SIM'e ve ücretli sağlayıcıya gerek kalmadan, ücretsiz ve otomatik bir mesaj yolu; özellikle Play sürümünde SMS'in
+yerini tutması için. Sunucunun kullanıcıları Telegram hesaplarını bir kez bağlar; giriş kodu ve script/otomasyon
+mesajları Telegram'dan gider. GitHub ve Play sürümünde aynı; izin gerektirmez, Play kurallarıyla çakışmaz.
+
+**Bağlam (8 Kasım 2026)**
+- Play'in SMS istisnaları incelendi ("Use of SMS or Call Log permission groups" ve yeni sürüm önizlemesi): "Device
+  automation" maddesi var, ama DroidServer'da SMS temel işlev değil ve başka yol var (sağlayıcı, onaylı SIM). Başvuru
+  yapılmaz (Faz 19 kararıyla aynı).
+- Onaylı SIM'de onay bildirimi sunucu telefonuna çıkar; giriş kodu için sahibinin her seferinde telefon başında olması
+  gerekir. Otomatik ve ücretsiz bir yol eksik.
+- Bugünkü Telegram yalnızca sunucu sahibine: sağlık uyarıları (`alerts.telegram`) ve yönetici sohbetinde komutlar
+  (`TelegramBot`, uzun yoklama). Bir bot belirtecinin güncellemelerini aynı anda tek bir yoklayıcı alabilir.
+- Bot, kendisine hiç yazmamış birine mesaj gönderemez; bu yüzden kullanıcının bir kez bağlaması şart.
+
+**Önerilen kararlar (onay bekliyor)**
+- **Ayrı bot:** kullanıcılar için ayrı bir bot (`auth.users.telegram.botToken`, şifreli depoda); uyarı botuyla aynı
+  belirteç doğrulamada reddedilir. Yönetim komutları ve sahibin uyarıları kullanıcıların konuştuğu botla karışmaz, bot
+  adı ve fotoğrafı sunucunun uygulamasına göre seçilir, tek yoklayıcı sorunu çıkmaz.
+- **Hesap e-postayla bulunur:** Telegram ile giriş `{email}` ile istenir (her hesapta e-posta zorunlu).
+- **Önce kodla giriş;** kod yazmadan "Telegram'da onayla" düğmesi sonraya.
+- **Mesaj dili** sunucunun arayüz dili; metinlerde sunucu adı geçer.
+
+**20.1 Bot ve bağlama**
+- [ ] Konfigürasyon: `auth.users.telegram { botToken, login }`; doğrulama (belirteç biçimi, uyarı botuyla aynı olmaması),
+  sihirbaz özeti.
+- [ ] Sunucu çalışırken kullanıcı botu `getUpdates` ile dinlenir (ağ ve geri çekilme kodu `TelegramBot` ile ortak).
+  Canlı kopyada yalnızca ana sunucu dinler.
+- [ ] Başlarken `getMe` ile botun kullanıcı adı alınır (bağlantı adresi için); belirteç yanlışsa Loglar'da ve sihirbazda
+  açık hata.
+- [ ] `POST /api/auth/telegram/link` (kullanıcı token'ı) → `{url: "https://t.me/<bot>?start=<kod>", expiresIn: 600}`;
+  kod rastgele ve tek kullanımlık, veritabanında yalnızca özeti durur.
+- [ ] Bot `/start <kod>` alınca sohbeti hesaba bağlar (sistem tablosu: kullanıcı, sohbet kimliği, Telegram kullanıcı
+  adı, tarih) ve "Hesabınız bağlandı" yazar. Bir sohbet tek hesaba bağlıdır; yeniden bağlama eskisinin yerine geçer.
+  Kodsuz `/start` gelirse botun ne için olduğunu ve uygulamadan nasıl bağlanılacağını yazar.
+- [ ] `GET /api/auth/telegram` → `{linked, username}`; `DELETE` bağı kaldırır; botta `/ayril` de kaldırır. Kullanıcı
+  botu engellerse (Telegram 403) bağ kendiliğinden düşer.
+- [ ] Yönetici: uygulamadaki Kullanıcılar ekranında ve web panelinde "Telegram bağlı" ve **Bağı kaldır**; bağlama ve
+  kaldırma denetim kaydına yazılır.
+
+**20.2 Telegram ile giriş**
+- [ ] `POST /api/auth/request-telegram-code {email}` → 202; hesap varsa ve Telegram bağlıysa 6 haneli kod (10 dakika,
+  tek kullanımlık) gider; yanıt her durumda aynı.
+- [ ] `POST /api/auth/telegram-code {email, code}` → token çifti; iki adımlı doğrulama açıksa ikinci adım istenir
+  (e-posta koduyla girişte olduğu gibi).
+- [ ] Sınırlar SMS girişiyle aynı: hesap başına dakikada bir ve günde en çok 5 kod, istemci başına saatte 10 istek;
+  hatalı kod girişle aynı deneme sınırına tabi.
+
+**20.3 Script ve otomasyon**
+- [ ] `ctx.telegram.send(kullanıcıId, metin)` → gönderildiyse `true`, kullanıcı bağlı değilse `false`.
+- [ ] Otomasyon eylemi "Telegram mesajı gönder": kaydın sahibine, metinde `{alan}` (web push kuralıyla aynı biçim).
+
+**20.4 Arayüz, SDK, belgeler**
+- [ ] Sihirbaz → Kullanıcılar: "Telegram" bölümü (BotFather adımları, belirteç, "Telegram ile giriş"). Giriş seçenekleri
+  sırası: doğrulayıcı uygulama, e-posta kodu, Telegram, SMS, passkey.
+- [ ] OpenAPI ve istemci SDK'ları (TypeScript, Kotlin, Dart, Swift): bağlama, bağı kaldırma, kod isteme, kodla giriş.
+- [ ] README (TR/EN) bölümü, sitedeki rehber ve SSS'de kısa not. Gizlilik politikası: açılırsa kodlar ve mesajlar
+  sunucu sahibinin botuyla Telegram üzerinden gider, sohbet kimliği sunucuda saklanır.
+
+**Sonraya bırakılanlar**
+- Kod yazmadan "Telegram'da onayla" ile giriş; Telegram'la ikinci adım; parola sıfırlama kodunun Telegram'dan gitmesi.
+- Telegram'ın ücretli Gateway API'si (bağlama gerektirmeden telefon numarasına kod); ayrıntıları incelenmedi.
+- **SMS eklentisi** (Play sürümü için Play dışından kurulan, `SEND_SMS` izinli ve targetSdk 28'li yardımcı uygulama;
+  Play sürümü ona imza izniyle korunan bir servisten bağlanır): kullanıcı kararıyla (8 Kasım 2026) beklemede, Telegram
+  kanalından sonra yeniden düşünülecek. Karar vermeden önce Play'in "Device and Network Abuse" kuralına bakılmalı.
+
+**Kabul**
+- `:core:test`'te sahte Telegram sunucusuyla (`TelegramBotTest` gibi): bağlama, süresi dolmuş ve yeniden kullanılan
+  kod, giriş kodu ve sınırlar, engellenen bot (403) → bağ düşer, aynı belirteç reddi, `ctx.telegram.send`.
+- Cihaz testi: gerçek botla bağlama ve giriş, GitHub ve Play sürümünde.
+
 ## Açık sorular (karar verilmesi gerekenler)
 
 1. Script dili: JavaScript (Rhino/QuickJS) mi, Lua (LuaJ) mi? Kullanıcı kitlesine göre JS daha tanıdık.
