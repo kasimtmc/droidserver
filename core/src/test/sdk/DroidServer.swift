@@ -86,6 +86,8 @@ public final class DroidServerClient: DroidServerBase, @unchecked Sendable {
             client: self, signupPath: "/auth/signup", loginPath: "/auth/login", logoutPath: "/auth/logout", mePath: "/auth/me",
             verify2faPath: nil, requestLoginCodePath: nil, loginCodePath: nil,
             requestSmsCodePath: nil, smsCodePath: nil, usagePath: "/auth/me/usage",
+            telegramPath: nil, telegramLinkPath: nil, telegramUnlinkPath: nil,
+            requestTelegramCodePath: nil, telegramCodePath: nil,
         )
     }
 
@@ -711,6 +713,7 @@ public struct Auth: Sendable {
     let client: DroidServerBase
     let signupPath: String?, loginPath: String?, logoutPath: String?, mePath: String?, verify2faPath: String?
     let requestLoginCodePath: String?, loginCodePath: String?, requestSmsCodePath: String?, smsCodePath: String?, usagePath: String?
+    let telegramPath: String?, telegramLinkPath: String?, telegramUnlinkPath: String?, requestTelegramCodePath: String?, telegramCodePath: String?
 
     private func at(_ p: String?, _ key: String) throws -> String {
         guard let p else { throw DroidServerError(404, "Bu hesap ucu kapalı: \(key)") }
@@ -749,6 +752,23 @@ public struct Auth: Sendable {
 
     public func loginWithSms(_ phone: String, _ code: String) async throws -> LoginResult {
         keep(try await client.object("POST", try at(smsCodePath, "smsCode"), ["phone": .string(phone), "code": .string(code)]))
+    }
+
+    /// Telegram'ı bağlama adresi (`url`, 10 dk, tek kullanımlık): kullanıcı açıp botta Başlat'a dokunur.
+    public func telegramLink() async throws -> [String: JSONValue] { try await client.object("POST", try at(telegramLinkPath, "telegramLink")) }
+
+    /// `{linked, username}`.
+    public func telegram() async throws -> [String: JSONValue] { try await client.object("GET", try at(telegramPath, "telegram")) }
+
+    public func unlinkTelegram() async throws { _ = try await client.request("DELETE", try at(telegramUnlinkPath, "telegramUnlink")) }
+
+    /// Kod, hesabın bağlı Telegram sohbetine gelir.
+    public func requestTelegramCode(_ email: String) async throws {
+        _ = try await client.object("POST", try at(requestTelegramCodePath, "requestTelegramCode"), ["email": .string(email)])
+    }
+
+    public func loginWithTelegram(_ email: String, _ code: String) async throws -> LoginResult {
+        keep(try await client.object("POST", try at(telegramCodePath, "telegramCode"), ["email": .string(email), "code": .string(code)]))
     }
 
     public func logout() async {

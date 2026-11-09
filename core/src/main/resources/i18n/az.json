@@ -4403,5 +4403,12 @@
  "ctx.telegram: Telegram botu kapalı (Sihirbaz → Kullanıcılar → Telegram)": "ctx.telegram: Telegram botu bağlıdır (Sehrbaz → İstifadəçilər → Telegram)",
  "ctx.telegram.send: kullanıcı kimliği gerekli": "ctx.telegram.send: istifadəçi ID-si tələb olunur",
  "ctx.telegram.send: metin gerekli": "ctx.telegram.send: mətn tələb olunur",
- "Kullanıcı Telegram'ı bağlamadıysa mesaj gitmez.": "İstifadəçi Telegram-ı bağlamayıbsa mesaj getmir."
+ "Kullanıcı Telegram'ı bağlamadıysa mesaj gitmez.": "İstifadəçi Telegram-ı bağlamayıbsa mesaj getmir.",
+ "Kullanıcılar Telegram hesaplarını bir kez bağlar; giriş kodları ve script/otomasyon mesajları bu botla ücretsiz gider. Telefona dışarıdan bağlantı gerekmez.": "İstifadəçilər Telegram hesablarını bir dəfə bağlayır; giriş kodları və script/avtomatlaşdırma mesajları bu botla pulsuz gedir. Telefona xaricdən bağlantı lazım deyil.",
+ "1) Telegram'da @BotFather'a /newbot yazıp yeni bir bot oluşturun; sağlık uyarılarının botundan ayrı olmalı. 2) Verdiği token'ı aşağıya yapıştırıp kaydedin. 3) \"Botu denetle\" ile adını görün; kullanıcılar bu botla bağlanır.": "1) Telegram-da @BotFather-ə /newbot yazıb yeni bot yaradın; sağlamlıq xəbərdarlıqlarının botundan ayrı olmalıdır. 2) Verdiyi tokeni aşağıya yapışdırıb yadda saxlayın. 3) \"Botu yoxla\" ilə adını görün; istifadəçilər bu botla bağlanır.",
+ "Telegram ile giriş": "Telegram ilə giriş",
+ "Botu denetle": "Botu yoxla",
+ "Bot hazır: @{0}": "Bot hazırdır: @{0}",
+ "Bota ulaşılamadı: {0}": "Bota çatmaq olmadı: {0}",
+ "Parolasız giriş: Telegram'ı bağlı kullanıcı e-postasıyla kod ister, 6 haneli kod bota gelir (10 dakika, tek kullanımlık).": "Parolsuz giriş: Telegram-ı bağlı istifadəçi e-poçtu ilə kod istəyir, 6 rəqəmli kod bota gəlir (10 dəqiqə, birdəfəlik)."
 }

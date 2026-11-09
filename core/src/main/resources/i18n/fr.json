@@ -4403,5 +4403,12 @@
  "ctx.telegram: Telegram botu kapalı (Sihirbaz → Kullanıcılar → Telegram)": "ctx.telegram : le bot Telegram est désactivé (Assistant → Utilisateurs → Telegram)",
  "ctx.telegram.send: kullanıcı kimliği gerekli": "ctx.telegram.send : identifiant d'utilisateur requis",
  "ctx.telegram.send: metin gerekli": "ctx.telegram.send : texte requis",
- "Kullanıcı Telegram'ı bağlamadıysa mesaj gitmez.": "Si l'utilisateur n'a pas lié Telegram, le message n'est pas envoyé."
+ "Kullanıcı Telegram'ı bağlamadıysa mesaj gitmez.": "Si l'utilisateur n'a pas lié Telegram, le message n'est pas envoyé.",
+ "Kullanıcılar Telegram hesaplarını bir kez bağlar; giriş kodları ve script/otomasyon mesajları bu botla ücretsiz gider. Telefona dışarıdan bağlantı gerekmez.": "Les utilisateurs lient leur compte Telegram une fois ; les codes de connexion et les messages des scripts/automatisations passent gratuitement par ce bot. Aucune connexion entrante vers le téléphone n'est nécessaire.",
+ "1) Telegram'da @BotFather'a /newbot yazıp yeni bir bot oluşturun; sağlık uyarılarının botundan ayrı olmalı. 2) Verdiği token'ı aşağıya yapıştırıp kaydedin. 3) \"Botu denetle\" ile adını görün; kullanıcılar bu botla bağlanır.": "1) Dans Telegram, envoyez /newbot à @BotFather et créez un nouveau bot ; il doit être distinct du bot des alertes de santé. 2) Collez ci-dessous le jeton fourni et enregistrez. 3) « Vérifier le bot » affiche son nom ; les utilisateurs se lient via ce bot.",
+ "Telegram ile giriş": "Connexion avec Telegram",
+ "Botu denetle": "Vérifier le bot",
+ "Bot hazır: @{0}": "Bot prêt : @{0}",
+ "Bota ulaşılamadı: {0}": "Bot injoignable : {0}",
+ "Parolasız giriş: Telegram'ı bağlı kullanıcı e-postasıyla kod ister, 6 haneli kod bota gelir (10 dakika, tek kullanımlık).": "Connexion sans mot de passe : un utilisateur dont Telegram est lié demande un code avec son e-mail ; le code à 6 chiffres arrive dans le bot (10 minutes, usage unique)."
 }

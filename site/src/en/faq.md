@@ -72,6 +72,13 @@ purchase after a one-week trial. The GitHub version is installed as an APK, down
 GitHub and can send SMS directly from the SIM; it has no purchase or trial. The two can't be installed on the same phone
 at the same time.
 
+### How do I send codes to my users for free in the Play version?
+
+Google's rules don't let the Play version send SMS from the SIM automatically. The free, automatic way is Telegram: add
+your own bot in Wizard → Users → **Telegram**; users link their account once, and sign-in codes and notifications go
+through this bot. You can also use e-mail codes, an authenticator app (two-step verification) and SMS providers (Netgsm,
+İleti Merkezi, Twilio).
+
 ### Is the source code open?
 
 Yes. DroidServer is published under GPL-3.0-or-later; the source code is

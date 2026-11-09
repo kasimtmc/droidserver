@@ -2,7 +2,7 @@
 
 [Türkçe](PRIVACY.md) | **English**
 
-Publisher: plyGround · Last updated: 4 November 2026
+Publisher: plyGround · Last updated: 9 November 2026
 
 DroidServer is a server that runs on your phone. The developer collects no data: the app has no analytics, ads, crash
 report uploads or usage tracking. Your server's data (records, files, user accounts, logs, backups) stays on your phone;
@@ -31,10 +31,10 @@ any web request; tile requests reveal the area being viewed).
 ## Features you turn on
 
 The following only work once you configure them, and send data only to the service you configured: internet access
-(Cloudflare, Tailscale, DuckDNS, Let's Encrypt), e-mail (your SMTP server), health alerts and commands (Telegram), cloud
-backup (the S3/WebDAV storage you choose, end-to-end encrypted), web push (browsers' push services), social login
-(Google, GitHub), AI (Claude, OpenAI, Gemini; images too if image tagging and OCR are on), webhooks and the live replica
-(your own servers), SMS (see below), packages (the address or GitHub repository you give).
+(Cloudflare, Tailscale, DuckDNS, Let's Encrypt), e-mail (your SMTP server), health alerts, commands and messages to your
+users (Telegram), cloud backup (the S3/WebDAV storage you choose, end-to-end encrypted), web push (browsers' push
+services), social login (Google, GitHub), AI (Claude, OpenAI, Gemini; images too if image tagging and OCR are on),
+webhooks and the live replica (your own servers), SMS (see below), packages (the address or GitHub repository you give).
 
 - **SMS:** there are three ways and you choose which are on. SMS provider (Netgsm, İleti Merkezi, Twilio): the
   recipient's number and the SMS text are sent to the provider. Directly from the SIM (GitHub version only): the SMS goes
@@ -42,6 +42,10 @@ backup (the S3/WebDAV storage you choose, end-to-end encrypted), web push (brows
   your phone's SMS app opens with the number and text and you send it; in this mode the number and text are only shown
   in the notification and your SMS app and aren't sent anywhere else. In the audit log the last four digits of the
   number are hidden and the text isn't written.
+- **Telegram (your users):** if you let users link their Telegram account, the linked user's Telegram chat ID and
+  username are stored on your server. Sign-in codes and messages from your scripts or automations go through Telegram via
+  your bot; Telegram sees these messages. Users can remove the link at any time (from the app or with `/ayril` in the
+  bot).
 - **On-device AI:** the model you choose is downloaded from Hugging Face (`huggingface.co`); it runs on the phone and your
   prompts and records are not sent anywhere.
 - **Payments (Stripe, iyzico, Paddle):** the buyer enters card details on the provider's own page; card data never passes

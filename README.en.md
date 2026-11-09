@@ -153,6 +153,7 @@ with **Advanced (JSON)**; both share the same draft, and the draft is saved to `
 | `teamField` | Relation field to `_teams` holding the record's team; required for the `team` rule (see Teams) |
 | `auth.users` | `enabled`, `allowSignup` (true), `extraFields` (such as name, phone; cannot be relations), `publicFields` (extra fields visible to others), `minPasswordLength` (8), `accessTokenMinutes` (15), `refreshTokenDays` (30) |
 | `auth.users.teams` | `enabled`, `allowCreate` (true), `maxMembers` (100), `maxTeamsPerUser` (20): teams (see Teams) |
+| `auth.users.telegram` | `botToken` (separate from the alerts bot), `login` (false): users link Telegram, sign-in with Telegram (see Linking Telegram) |
 | `access.mode` | `local`, `direct`, `cloudflare`, `tailscale` (see Internet access) |
 | `access.direct` | `network` (`wifi`/`mobile`), `port` (HTTPS, default 8443), `portMapping` (automatic forwarding on the router), `ddns` (`domain`, `token`: DuckDNS; `certificate`: Let's Encrypt certificate for this name) |
 | `access.cloudflare` | `tunnel`: `quick` (no account) or `named` (token in the `TUNNEL_TOKEN` environment of the `cloudflared` component), `hostname` (for display) |
@@ -500,6 +501,47 @@ POST /api/auth/sms-code         {"phone":"+905551234567","code":"123456"}   # �
 
 **Web panel:** if "Also require authenticator code in the panel" is turned on in the Security step, panel sign-in asks for
 an authenticator code in addition to the pairing code; the key is generated on the phone and kept in encrypted storage ("Add to authenticator app" or copy).
+
+### Linking Telegram, sign-in and messages
+
+A free, automatic way to message your users: no SIM, SMS provider or permission needed (it works in the Play version
+too), and no incoming connection to the phone (the bot is polled). Wizard → Users → **Telegram**:
+
+1. In Telegram, send `/newbot` to @BotFather and create a new bot. It must be separate from the health alerts bot: only
+   one listener can receive a bot's messages at a time, and the same token is rejected by validation.
+2. Paste the token and save (`auth.users.telegram.botToken`; moved to the encrypted store). **Check bot** shows the
+   bot's name.
+3. Optionally turn on **Sign-in with Telegram** (`auth.users.telegram.login`).
+
+The user links their account once:
+
+```bash
+POST   /api/auth/telegram/link   # (user token) → {url: "https://t.me/<bot>?start=…", expiresIn: 600}
+GET    /api/auth/telegram        # {linked, username}
+DELETE /api/auth/telegram        # removes the link
+```
+
+The client opens the address (Telegram opens) and the user taps **Start**; the bot replies "your account is linked" with
+the server's name. The address is valid for 10 minutes and works once; after a server restart a new one is needed. Each
+account links to one chat and each chat to one account. `/ayril` in the bot removes the link; if the user blocks the bot,
+the link is dropped on the next message. The admin can remove a link from the Users screen (or `PATCH
+/auth/users/{id} {"telegram": false}`); linking and unlinking are written to the audit log. The bot only listens to
+private chats and doesn't run on a live replica.
+
+**Sign-in with Telegram:**
+
+```bash
+POST /api/auth/request-telegram-code {"email":"ayse@example.com"}                 # 202; if Telegram is linked, a 6-digit code goes to the bot (10 min)
+POST /api/auth/telegram-code         {"email":"ayse@example.com","code":"123456"}   # → token pair (second step if 2FA is on)
+```
+
+The response is the same whether or not the account exists. Limits are the same as SMS sign-in: one code per minute and at
+most 5 a day per account, 10 requests an hour per client; wrong codes count towards the sign-in attempt limit. Signing in
+this way doesn't mark the e-mail as verified.
+
+**Messages:** from scripts `ctx.telegram.send(userId, "text")` (`true` if sent, `false` if the user hasn't linked
+Telegram), in automations the `telegram` action. In the client SDKs `auth.telegramLink()`, `auth.telegram()`,
+`auth.unlinkTelegram()`, `auth.requestTelegramCode(email)` and `auth.loginWithTelegram(email, code)`.
 
 ### Passkey sign-in
 
@@ -1125,7 +1167,8 @@ cronAdd("0 3 * * *", (ctx) => ctx.log("gece görevi"))   // minute hour day mont
   `list(name, { filter: { "title[like]": "süt" }, q: "search", sort, page, perPage })`; writes also reach realtime
   subscribers), `ctx.http.get/post/request` (only `allowedHosts`, redirects not followed, 10 s, 1 MB; response
   `{ status, body, json }`), `ctx.mail.send(to, subject, text[, html])` (if e-mail is on), `ctx.log(...)`, `ctx.env`,
-  `ctx.auth` (`{ type: "anonymous" | "user" | "admin" | "key", id, key, admin }`), `ctx.push.send(...)` (if web push is on).
+  `ctx.auth` (`{ type: "anonymous" | "user" | "admin" | "key", id, key, admin }`), `ctx.push.send(...)` (if web push is on),
+  `ctx.telegram.send(user, text)` (if the Telegram bot is on).
 - **Security:** no access to Java classes (`java` and `Packages` are undefined, and a `ClassShutter` rejects every class);
   every call has a time limit (`timeoutMs`; `cronTimeoutSec` for scheduled tasks): a script exceeding it is stopped and
   cannot catch this with `try/catch`; recursion depth is limited. A script error returns `500` (details go to the log, not
@@ -1326,6 +1369,7 @@ actions that run in order.
 | Condition | List filter syntax: `status=new`, `qty[gte]=10&paid=true` (no `like` or `@me`) |
 | `email` | `to` (an address or a field like `{email}`), `subject`, `body`; e-mail sending must be on |
 | `push` | `to`: `owner` (the record's owner) or a user id / `{field}`; `subject` as title, `body`, `url` |
+| `telegram` | `to` (as for `push`), `body`; if the user hasn't linked Telegram the message isn't sent and the rule doesn't fail |
 | `webhook` | The name of a defined webhook; event `automation.<rule>`, signing and retries as for webhooks |
 | `update` | `values`: field → value; on an event the triggering record, on a schedule the matching records are updated |
 | `create` | `collection` + `values` |
@@ -2568,4 +2612,5 @@ tools/          package-postgres.sh, package-cloudflared.sh (component packages 
 - [x] **Calendar and contacts:** overlap rule (per resource), `.ics` subscription (with a secret address), two-way sync with the phone's calendar and address book via CalDAV and CardDAV
 - [x] **Location:** `geo` field, `near` (nearest first) and `box` filters, OpenStreetMap map in the panel and the app, picking a location on the map or from the phone
 - [x] **Play version groundwork:** separate build flavor (targetSdk 36), components as on-demand Play modules, SMS provider (Netgsm, İleti Merkezi, Twilio) and confirmed SIM, 16 KB page support, automatic upload to Play, store listing
+- [x] **Telegram channel:** users link their Telegram account with a bot; sign-in with a Telegram code, messages from scripts and automations (free, in the Play version too)
 - [ ] **Release on Google Play:** in closed testing (October 2026); production ([docs/play-yayin.md](docs/play-yayin.md))

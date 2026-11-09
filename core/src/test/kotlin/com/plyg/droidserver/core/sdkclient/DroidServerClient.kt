@@ -88,6 +88,8 @@ class DroidServerClient(
         this, signup = "/auth/signup", login = "/auth/login", logout = "/auth/logout", me = "/auth/me",
         verify2fa = null, requestLoginCode = null, loginCode = null,
         requestSmsCode = null, smsCode = null, usage = "/auth/me/usage",
+        telegram = null, telegramLink = null, telegramUnlink = null,
+        requestTelegramCode = null, telegramCode = null,
     )
     val teams = Teams(
         this, list = "/teams", create = "/teams", get = "/teams/{id}", update = "/teams/{id}", delete = "/teams/{id}",
@@ -489,6 +491,11 @@ class Auth(
     private val requestSmsCode: String?,
     private val smsCode: String?,
     private val usage: String?,
+    private val telegram: String?,
+    private val telegramLink: String?,
+    private val telegramUnlink: String?,
+    private val requestTelegramCode: String?,
+    private val telegramCode: String?,
 ) {
     private fun at(p: String?, key: String) = p ?: throw DroidServerException(404, "Bu hesap ucu kapalı: " + key)
 
@@ -526,6 +533,25 @@ class Auth(
 
     fun loginWithSms(phone: String, code: String): LoginResult = keep(
         client.request("POST", at(smsCode, "smsCode"), json = buildJsonObject { put("phone", JsonPrimitive(phone)); put("code", JsonPrimitive(code)) }),
+    )
+
+    /** Telegram'ı bağlama adresi (`url`, 10 dk, tek kullanımlık): kullanıcı açıp botta Başlat'a dokunur. */
+    fun telegramLink(): JsonObject = client.request("POST", at(telegramLink, "telegramLink"))!!.jsonObject
+
+    /** `{linked, username}`. */
+    fun telegram(): JsonObject = client.request("GET", at(telegram, "telegram"))!!.jsonObject
+
+    fun unlinkTelegram() {
+        client.request("DELETE", at(telegramUnlink, "telegramUnlink"))
+    }
+
+    /** Kod, hesabın bağlı Telegram sohbetine gelir. */
+    fun requestTelegramCode(email: String) {
+        client.request("POST", at(requestTelegramCode, "requestTelegramCode"), json = buildJsonObject { put("email", JsonPrimitive(email)) })
+    }
+
+    fun loginWithTelegram(email: String, code: String): LoginResult = keep(
+        client.request("POST", at(telegramCode, "telegramCode"), json = buildJsonObject { put("email", JsonPrimitive(email)); put("code", JsonPrimitive(code)) }),
     )
 
     fun logout() {

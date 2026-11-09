@@ -151,6 +151,7 @@ yer tutucu anahtar yerine yeni üretilmiş bir anahtarla). Sonrasında **Sunucu*
 | `teamField` | Kaydın takımını tutan, `_teams`'e bağlı ilişki alanı; `team` kuralı için gerekli (bkz. Takımlar) |
 | `auth.users` | `enabled`, `allowSignup` (true), `extraFields` (ad, telefon gibi; ilişki olamaz), `publicFields` (başkalarına görünen ek alanlar), `minPasswordLength` (8), `accessTokenMinutes` (15), `refreshTokenDays` (30) |
 | `auth.users.teams` | `enabled`, `allowCreate` (true), `maxMembers` (100), `maxTeamsPerUser` (20): takımlar (bkz. Takımlar) |
+| `auth.users.telegram` | `botToken` (uyarı botundan ayrı), `login` (false): kullanıcıların Telegram'ı bağlaması, Telegram ile giriş (bkz. Telegram ile hesap bağlama) |
 | `access.mode` | `local`, `direct`, `cloudflare`, `tailscale` (bkz. İnternetten erişim) |
 | `access.direct` | `network` (`wifi`/`mobile`), `port` (HTTPS, varsayılan 8443), `portMapping` (modemde otomatik yönlendirme), `ddns` (`domain`, `token`: DuckDNS; `certificate`: bu ad için Let's Encrypt sertifikası) |
 | `access.cloudflare` | `tunnel`: `quick` (hesapsız) veya `named` (token `cloudflared` bileşeninin `TUNNEL_TOKEN` ortamında), `hostname` (gösterim için) |
@@ -494,6 +495,45 @@ POST /api/auth/sms-code         {"phone":"+905551234567","code":"123456"}   # �
 
 **Web paneli:** Güvenlik adımında "Panelde doğrulayıcı kodu da iste" açılırsa panel girişi eşleştirme koduna ek olarak
 doğrulayıcı kodu ister; anahtar telefonda üretilir, şifreli depoda durur ("Doğrulayıcı uygulamaya ekle" veya kopyala).
+
+### Telegram ile hesap bağlama, giriş ve mesajlar
+
+Kullanıcılara ücretsiz ve otomatik bir mesaj yolu: SIM, SMS sağlayıcısı veya izin gerekmez (Play sürümünde de çalışır),
+telefona dışarıdan bağlantı da gerekmez (bot uzun yoklamayla dinlenir). Sihirbaz → Kullanıcılar → **Telegram**:
+
+1. Telegram'da @BotFather'a `/newbot` yazıp yeni bir bot oluşturun. Sağlık uyarılarının botundan ayrı olmalı: bir botun
+   mesajlarını aynı anda tek bir dinleyici alabilir, aynı token doğrulamada reddedilir.
+2. Token'ı yapıştırıp kaydedin (`auth.users.telegram.botToken`; şifreli depoya taşınır). **Botu denetle** botun adını
+   gösterir.
+3. İsterseniz **Telegram ile giriş**i açın (`auth.users.telegram.login`).
+
+Kullanıcı hesabını bir kez bağlar:
+
+```bash
+POST   /api/auth/telegram/link   # (kullanıcı token'ı) → {url: "https://t.me/<bot>?start=…", expiresIn: 600}
+GET    /api/auth/telegram        # {linked, username}
+DELETE /api/auth/telegram        # bağı kaldırır
+```
+
+İstemci adresi açar (Telegram açılır), kullanıcı **Başlat**'a dokunur; bot sunucunun adıyla "hesabınız bağlandı" yazar.
+Adres 10 dakika geçerli ve tek kullanımlıktır; sunucu yeniden başlarsa yenisi alınır. Her hesap tek sohbete, her sohbet
+tek hesaba bağlıdır. Botta `/ayril` bağı kaldırır; kullanıcı botu engellerse bağ ilk mesajda kendiliğinden düşer. Yönetici
+Kullanıcılar ekranından (veya `PATCH /auth/users/{id} {"telegram": false}`) bağı kaldırabilir; bağlama ve kaldırma
+denetim kaydına yazılır. Bot yalnızca özel sohbetleri dinler ve canlı kopyada çalışmaz.
+
+**Telegram ile giriş:**
+
+```bash
+POST /api/auth/request-telegram-code {"email":"ayse@example.com"}                 # 202; Telegram bağlıysa 6 haneli kod bota gider (10 dk)
+POST /api/auth/telegram-code         {"email":"ayse@example.com","code":"123456"}   # → token çifti (2FA açıksa ikinci adım)
+```
+
+Yanıt hesap olsa da olmasa da aynıdır. Sınırlar SMS girişiyle aynı: hesap başına dakikada bir ve günde en çok 5 kod,
+istemci başına saatte 10 istek; hatalı kod girişle aynı deneme sınırına tabidir. Bu yolla e-posta doğrulanmış sayılmaz.
+
+**Mesajlar:** script'lerden `ctx.telegram.send(kullanıcıId, "metin")` (gönderildiyse `true`, kullanıcı bağlı değilse
+`false`), otomasyonlarda `telegram` eylemi. İstemci SDK'larında `auth.telegramLink()`, `auth.telegram()`,
+`auth.unlinkTelegram()`, `auth.requestTelegramCode(email)` ve `auth.loginWithTelegram(email, code)`.
 
 ### Passkey ile giriş
 
@@ -1111,7 +1151,8 @@ cronAdd("0 3 * * *", (ctx) => ctx.log("gece görevi"))   // dakika saat gün ay 
   `list(ad, { filter: { "title[like]": "süt" }, q: "arama", sort, page, perPage })`; yazmaları canlı abonelere de
   gider), `ctx.http.get/post/request` (yalnızca `allowedHosts`, yönlendirme izlenmez, 10 sn, 1 MB; yanıt
   `{ status, body, json }`), `ctx.mail.send(alıcı, konu, metin[, html])` (e-posta açıksa), `ctx.log(...)`, `ctx.env`,
-  `ctx.auth` (`{ type: "anonymous" | "user" | "admin" | "key", id, key, admin }`), `ctx.push.send(...)` (web push açıksa).
+  `ctx.auth` (`{ type: "anonymous" | "user" | "admin" | "key", id, key, admin }`), `ctx.push.send(...)` (web push açıksa),
+  `ctx.telegram.send(kullanıcı, metin)` (Telegram botu açıksa).
 - **Güvenlik:** Java sınıflarına erişim yok (`java`, `Packages` tanımsız, her sınıfı reddeden `ClassShutter`); her çağrının
   süre sınırı var (`timeoutMs`; zamanlanmış görevde `cronTimeoutSec`): süreyi aşan script durdurulur ve script bunu
   `try/catch` ile yakalayamaz; özyineleme derinliği sınırlı. Script hatası `500` döner (ayrıntı istemciye değil loga:
@@ -1310,6 +1351,7 @@ Sunucu → Otomasyonlar: kod yazmadan "şu olunca şunu yap". Bir kural bir teti
 | Koşul | Liste filtresi sözdizimi: `status=new`, `qty[gte]=10&paid=true` (`like` ve `@me` yok) |
 | `email` | `to` (adres veya `{email}` gibi alan), `subject`, `body`; e-posta gönderimi açık olmalı |
 | `push` | `to`: `owner` (kaydın sahibi) veya kullanıcı kimliği / `{alan}`; `subject` başlık, `body`, `url` |
+| `telegram` | `to` (`push` gibi), `body`; kullanıcı Telegram'ı bağlamadıysa mesaj gitmez, kural hata vermez |
 | `webhook` | Tanımlı bir webhook'un adı; olay `automation.<kural>`, imza ve yeniden deneme webhook'larla aynı |
 | `update` | `values`: alan → değer; olayda tetikleyen kayıt, zamanlamada koşula uyan kayıtlar güncellenir |
 | `create` | `collection` + `values` |
@@ -2519,4 +2561,5 @@ tools/          package-postgres.sh, package-cloudflared.sh (Termux derlemelerin
 - [x] **Takvim ve kişiler:** çakışma kuralı (kaynak başına), `.ics` aboneliği (gizli adresle), CalDAV ve CardDAV ile telefon takvimi ve rehberiyle iki yönlü eşitleme
 - [x] **Konum:** `geo` alanı, `near` (yakından uzağa) ve `box` filtreleri, panelde ve uygulamada OpenStreetMap haritası, haritadan ve telefondan konum seçme
 - [x] **Play sürümü altyapısı:** ayrı yapı türü (targetSdk 36), bileşenler isteğe bağlı Play modülü olarak, SMS sağlayıcısı (Netgsm, İleti Merkezi, Twilio) ve onaylı SIM, 16 KB sayfa uyumu, Play'e otomatik yükleme, mağaza kaydı
+- [x] **Telegram kanalı:** kullanıcılar Telegram hesabını botla bağlar; Telegram ile kodla giriş, script'ten ve otomasyondan mesaj (ücretsiz, Play sürümünde de)
 - [ ] **Google Play'de yayın:** kapalı testte (Ekim 2026); üretim ([docs/play-yayin.md](docs/play-yayin.md))

@@ -7,27 +7,34 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.core.net.toUri
 import com.plyg.droidserver.app.BuildConfig
 import com.plyg.droidserver.app.ui.common.ErrorText
 import com.plyg.droidserver.app.ui.common.copySecret
+import com.plyg.droidserver.core.alerts.TelegramChannel
 import com.plyg.droidserver.core.auth.Totp
 import com.plyg.droidserver.core.config.FieldConfig
 import com.plyg.droidserver.core.config.FieldType
 import com.plyg.droidserver.core.config.ServerConfig
 import com.plyg.droidserver.core.config.SmsSim
 import com.plyg.droidserver.core.i18n.tr
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-/** Kullanıcılar adımı: iki adımlı doğrulama, e-postayla ve SMS ile kodla giriş. */
+/** Kullanıcılar adımı: iki adımlı doğrulama, e-postayla, Telegram ile ve SMS ile kodla giriş. */
 @Composable
 internal fun TwoFactorSection(vm: WizardViewModel, draft: ServerConfig) {
     val users = draft.auth.users
@@ -65,7 +72,54 @@ internal fun TwoFactorSection(vm: WizardViewModel, draft: ServerConfig) {
             modifier = Modifier.fillMaxWidth(),
         )
     }
+    UserTelegramSection(vm, draft)
     SmsLoginSection(vm, draft)
+}
+
+/** Kullanıcıların Telegram botu: token (şifreli depoya), botu denetleme, Telegram ile giriş. */
+@Composable
+private fun UserTelegramSection(vm: WizardViewModel, draft: ServerConfig) {
+    val t = draft.auth.users.telegram
+    val scope = rememberCoroutineScope()
+    var on by remember { mutableStateOf(t != null) }
+    var status by remember { mutableStateOf<String?>(null) }
+    SwitchRow(
+        tr("Telegram"),
+        tr("Kullanıcılar Telegram hesaplarını bir kez bağlar; giriş kodları ve script/otomasyon mesajları bu botla ücretsiz gider. Telefona dışarıdan bağlantı gerekmez."),
+        on,
+    ) { v -> on = v; if (!v) vm.updateUsersSettings { it.copy(telegram = null) } }
+    if (!on) return
+    Text(
+        tr("1) Telegram'da @BotFather'a /newbot yazıp yeni bir bot oluşturun; sağlık uyarılarının botundan ayrı olmalı. " +
+            "2) Verdiği token'ı aşağıya yapıştırıp kaydedin. 3) \"Botu denetle\" ile adını görün; kullanıcılar bu botla bağlanır."),
+        style = MaterialTheme.typography.bodySmall,
+    )
+    // Token ekran durumuna yazılmasın diye rememberSaveable kullanılmaz.
+    var token by remember { mutableStateOf("") }
+    OutlinedTextField(
+        value = token, onValueChange = { token = it.trim() },
+        label = { Text(tr("Bot token'ı") + if (t?.botToken?.isNotBlank() == true) tr(" — kayıtlı; değiştirmek için yazın") else "") },
+        visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth(),
+        isError = vm.errorAt("auth.users.telegram.botToken") != null,
+        supportingText = { Text(vm.errorAt("auth.users.telegram.botToken") ?: tr("Şifreli depoda saklanır, konfigürasyon dosyasına yazılmaz.")) },
+    )
+    if (token.isNotBlank()) TextButton(onClick = { vm.setUserTelegramToken(token); token = "" }) { Text(tr("Kaydet")) }
+    ErrorText(vm.errorAt("auth.users.telegram"))
+    if (t == null) return
+    OutlinedButton(onClick = {
+        val key = vm.userTelegramToken() ?: run { status = tr("Önce token'ı kaydedin."); return@OutlinedButton }
+        status = tr("Denetleniyor…")
+        scope.launch {
+            status = runCatching { withContext(Dispatchers.IO) { TelegramChannel.botName(key) } }
+                .fold({ tr("Bot hazır: @{0}", it ?: "?") }, { tr("Bota ulaşılamadı: {0}", it.message) })
+        }
+    }) { Text(tr("Botu denetle")) }
+    status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    SwitchRow(
+        tr("Telegram ile giriş"),
+        tr("Parolasız giriş: Telegram'ı bağlı kullanıcı e-postasıyla kod ister, 6 haneli kod bota gelir (10 dakika, tek kullanımlık)."),
+        t.login,
+    ) { v -> vm.updateUsersSettings { it.copy(telegram = it.telegram?.copy(login = v)) } }
 }
 
 /** SMS ile kodla giriş: telefon alanı ve Telefon özellikleri → SMS. */

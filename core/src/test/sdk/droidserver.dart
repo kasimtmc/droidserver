@@ -100,7 +100,9 @@ class DroidServerClient extends DroidServerBase {
   late final auth = Auth(this,
       signup: '/auth/signup', login: '/auth/login', logout: '/auth/logout', me: '/auth/me',
       verify2fa: null, requestLoginCode: null, loginCode: null,
-      requestSmsCode: null, smsCode: null, usage: '/auth/me/usage');
+      requestSmsCode: null, smsCode: null, usage: '/auth/me/usage',
+      telegram: null, telegramLink: null, telegramUnlink: null,
+      requestTelegramCode: null, telegramCode: null);
 
   late final teams = Teams(this,
       list: '/teams', create: '/teams', get: '/teams/{id}', update: '/teams/{id}', delete: '/teams/{id}',
@@ -606,6 +608,7 @@ class Teams {
 class Auth {
   final DroidServerBase _client;
   final String? _signup, _login, _logout, _me, _verify2fa, _requestLoginCode, _loginCode, _requestSmsCode, _smsCode, _usage;
+  final String? _telegram, _telegramLink, _telegramUnlink, _requestTelegramCode, _telegramCode;
 
   Auth(this._client,
       {String? signup,
@@ -617,7 +620,12 @@ class Auth {
       String? loginCode,
       String? requestSmsCode,
       String? smsCode,
-      String? usage})
+      String? usage,
+      String? telegram,
+      String? telegramLink,
+      String? telegramUnlink,
+      String? requestTelegramCode,
+      String? telegramCode})
       : _signup = signup,
         _login = login,
         _logout = logout,
@@ -627,7 +635,12 @@ class Auth {
         _loginCode = loginCode,
         _requestSmsCode = requestSmsCode,
         _smsCode = smsCode,
-        _usage = usage;
+        _usage = usage,
+        _telegram = telegram,
+        _telegramLink = telegramLink,
+        _telegramUnlink = telegramUnlink,
+        _requestTelegramCode = requestTelegramCode,
+        _telegramCode = telegramCode;
 
   String _at(String? p, String key) => p ?? (throw DroidServerException(404, 'Bu hesap ucu kapalı: $key'));
 
@@ -662,6 +675,25 @@ class Auth {
 
   Future<LoginResult> loginWithSms(String phone, String code) =>
       _keep(_client.request('POST', _at(_smsCode, 'smsCode'), json: {'phone': phone, 'code': code}));
+
+  /// Telegram'ı bağlama adresi (`url`, 10 dk, tek kullanımlık): kullanıcı açıp botta Başlat'a dokunur.
+  Future<Map<String, dynamic>> telegramLink() async =>
+      await _client.request('POST', _at(_telegramLink, 'telegramLink')) as Map<String, dynamic>;
+
+  /// `{linked, username}`.
+  Future<Map<String, dynamic>> telegram() async => await _client.request('GET', _at(_telegram, 'telegram')) as Map<String, dynamic>;
+
+  Future<void> unlinkTelegram() async {
+    await _client.request('DELETE', _at(_telegramUnlink, 'telegramUnlink'));
+  }
+
+  /// Kod, hesabın bağlı Telegram sohbetine gelir.
+  Future<void> requestTelegramCode(String email) async {
+    await _client.request('POST', _at(_requestTelegramCode, 'requestTelegramCode'), json: {'email': email});
+  }
+
+  Future<LoginResult> loginWithTelegram(String email, String code) =>
+      _keep(_client.request('POST', _at(_telegramCode, 'telegramCode'), json: {'email': email, 'code': code}));
 
   Future<void> logout() async {
     final r = _client.refreshToken;

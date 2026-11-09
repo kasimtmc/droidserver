@@ -117,6 +117,8 @@ object SdkGenerator {
                 appendLine("    signup: ${p(Endpoint.AUTH_SIGNUP)}, login: ${p(Endpoint.AUTH_LOGIN)}, refresh: ${p(Endpoint.AUTH_REFRESH)}, logout: ${p(Endpoint.AUTH_LOGOUT)},")
                 appendLine("    me: ${p(Endpoint.AUTH_ME)}, verify2fa: ${p(Endpoint.AUTH_2FA_VERIFY)}, requestLoginCode: ${p(Endpoint.AUTH_REQUEST_LOGIN_CODE)}, loginCode: ${p(Endpoint.AUTH_LOGIN_CODE)},")
                 appendLine("    requestSmsCode: ${p(Endpoint.AUTH_REQUEST_SMS_CODE)}, smsCode: ${p(Endpoint.AUTH_SMS_CODE)}, usage: ${p(Endpoint.AUTH_USAGE)},")
+                appendLine("    telegram: ${p(Endpoint.AUTH_TELEGRAM)}, telegramLink: ${p(Endpoint.AUTH_TELEGRAM_LINK)}, telegramUnlink: ${p(Endpoint.AUTH_TELEGRAM_UNLINK)},")
+                appendLine("    requestTelegramCode: ${p(Endpoint.AUTH_REQUEST_TELEGRAM_CODE)}, telegramCode: ${p(Endpoint.AUTH_TELEGRAM_CODE)},")
                 appendLine("    passkeyRegisterOptions: ${p(Endpoint.AUTH_PASSKEY_REGISTER_OPTIONS)}, passkeyRegister: ${p(Endpoint.AUTH_PASSKEY_REGISTER)}, passkeys: ${p(Endpoint.AUTH_PASSKEYS)},")
                 appendLine("    passkeyDelete: ${p(Endpoint.AUTH_PASSKEY_DELETE)}, passkeyLoginOptions: ${p(Endpoint.AUTH_PASSKEY_LOGIN_OPTIONS)}, passkeyLogin: ${p(Endpoint.AUTH_PASSKEY_LOGIN)},")
                 appendLine("    sessions: ${p(Endpoint.AUTH_SESSIONS)}, closeSessions: ${p(Endpoint.AUTH_SESSIONS_CLOSE)}, closeSession: ${p(Endpoint.AUTH_SESSION_CLOSE)},")
@@ -429,6 +431,7 @@ object SdkGenerator {
         |}
         |
         |type AuthPaths = Record<"signup" | "login" | "refresh" | "logout" | "me" | "verify2fa" | "requestLoginCode" | "loginCode" | "requestSmsCode" | "smsCode" | "usage"
+        |  | "telegram" | "telegramLink" | "telegramUnlink" | "requestTelegramCode" | "telegramCode"
         |  | "passkeyRegisterOptions" | "passkeyRegister" | "passkeys" | "passkeyDelete" | "passkeyLoginOptions" | "passkeyLogin"
         |  | "sessions" | "closeSessions" | "closeSession", string | null>;
         |
@@ -460,6 +463,13 @@ object SdkGenerator {
         |  /** Numara uluslararası biçimde (+905551234567); kod sunucu telefonundan SMS ile gelir. */
         |  requestSmsCode(phone: string): Promise<void> { return this.ds.request("POST", this.at("requestSmsCode"), { json: { phone } }); }
         |  async loginWithSms(phone: string, code: string): Promise<LoginResult> { return this.keep(await this.ds.request("POST", this.at("smsCode"), { json: { phone, code } })); }
+        |  /** Telegram'ı bağlama adresi (10 dk, tek kullanımlık): kullanıcı açıp botta Başlat'a dokunur. */
+        |  telegramLink(): Promise<{ url: string; expiresIn: number }> { return this.ds.request("POST", this.at("telegramLink")); }
+        |  telegram(): Promise<{ linked: boolean; username: string | null }> { return this.ds.request("GET", this.at("telegram")); }
+        |  unlinkTelegram(): Promise<void> { return this.ds.request("DELETE", this.at("telegramUnlink")); }
+        |  /** Kod, hesabın bağlı Telegram sohbetine gelir. */
+        |  requestTelegramCode(email: string): Promise<void> { return this.ds.request("POST", this.at("requestTelegramCode"), { json: { email } }); }
+        |  async loginWithTelegram(email: string, code: string): Promise<LoginResult> { return this.keep(await this.ds.request("POST", this.at("telegramCode"), { json: { email, code } })); }
         |  async refresh(): Promise<Tokens> { return this.keep(await this.ds.request("POST", this.at("refresh"), { json: { refreshToken: this.ds.refreshToken } }, false)); }
         |  async logout(): Promise<void> {
         |    if (this.ds.refreshToken) await this.ds.request("POST", this.at("logout"), { json: { refreshToken: this.ds.refreshToken } }).catch(() => undefined);
@@ -631,6 +641,8 @@ object SdkGenerator {
                 appendLine("        this, signup = ${p(Endpoint.AUTH_SIGNUP)}, login = ${p(Endpoint.AUTH_LOGIN)}, logout = ${p(Endpoint.AUTH_LOGOUT)}, me = ${p(Endpoint.AUTH_ME)},")
                 appendLine("        verify2fa = ${p(Endpoint.AUTH_2FA_VERIFY)}, requestLoginCode = ${p(Endpoint.AUTH_REQUEST_LOGIN_CODE)}, loginCode = ${p(Endpoint.AUTH_LOGIN_CODE)},")
                 appendLine("        requestSmsCode = ${p(Endpoint.AUTH_REQUEST_SMS_CODE)}, smsCode = ${p(Endpoint.AUTH_SMS_CODE)}, usage = ${p(Endpoint.AUTH_USAGE)},")
+                appendLine("        telegram = ${p(Endpoint.AUTH_TELEGRAM)}, telegramLink = ${p(Endpoint.AUTH_TELEGRAM_LINK)}, telegramUnlink = ${p(Endpoint.AUTH_TELEGRAM_UNLINK)},")
+                appendLine("        requestTelegramCode = ${p(Endpoint.AUTH_REQUEST_TELEGRAM_CODE)}, telegramCode = ${p(Endpoint.AUTH_TELEGRAM_CODE)},")
                 appendLine("    )")
                 if (users.teams.enabled) {
                     appendLine("    val teams = Teams(")
@@ -1075,6 +1087,11 @@ object SdkGenerator {
         |    private val requestSmsCode: String?,
         |    private val smsCode: String?,
         |    private val usage: String?,
+        |    private val telegram: String?,
+        |    private val telegramLink: String?,
+        |    private val telegramUnlink: String?,
+        |    private val requestTelegramCode: String?,
+        |    private val telegramCode: String?,
         |) {
         |    private fun at(p: String?, key: String) = p ?: throw DroidServerException(404, "Bu hesap ucu kapalı: " + key)
         |
@@ -1112,6 +1129,25 @@ object SdkGenerator {
         |
         |    fun loginWithSms(phone: String, code: String): LoginResult = keep(
         |        client.request("POST", at(smsCode, "smsCode"), json = buildJsonObject { put("phone", JsonPrimitive(phone)); put("code", JsonPrimitive(code)) }),
+        |    )
+        |
+        |    /** Telegram'ı bağlama adresi (`url`, 10 dk, tek kullanımlık): kullanıcı açıp botta Başlat'a dokunur. */
+        |    fun telegramLink(): JsonObject = client.request("POST", at(telegramLink, "telegramLink"))!!.jsonObject
+        |
+        |    /** `{linked, username}`. */
+        |    fun telegram(): JsonObject = client.request("GET", at(telegram, "telegram"))!!.jsonObject
+        |
+        |    fun unlinkTelegram() {
+        |        client.request("DELETE", at(telegramUnlink, "telegramUnlink"))
+        |    }
+        |
+        |    /** Kod, hesabın bağlı Telegram sohbetine gelir. */
+        |    fun requestTelegramCode(email: String) {
+        |        client.request("POST", at(requestTelegramCode, "requestTelegramCode"), json = buildJsonObject { put("email", JsonPrimitive(email)) })
+        |    }
+        |
+        |    fun loginWithTelegram(email: String, code: String): LoginResult = keep(
+        |        client.request("POST", at(telegramCode, "telegramCode"), json = buildJsonObject { put("email", JsonPrimitive(email)); put("code", JsonPrimitive(code)) }),
         |    )
         |
         |    fun logout() {
@@ -1354,7 +1390,9 @@ object SdkGenerator {
                 appendLine("  late final auth = Auth(this,")
                 appendLine("      signup: ${p(Endpoint.AUTH_SIGNUP)}, login: ${p(Endpoint.AUTH_LOGIN)}, logout: ${p(Endpoint.AUTH_LOGOUT)}, me: ${p(Endpoint.AUTH_ME)},")
                 appendLine("      verify2fa: ${p(Endpoint.AUTH_2FA_VERIFY)}, requestLoginCode: ${p(Endpoint.AUTH_REQUEST_LOGIN_CODE)}, loginCode: ${p(Endpoint.AUTH_LOGIN_CODE)},")
-                appendLine("      requestSmsCode: ${p(Endpoint.AUTH_REQUEST_SMS_CODE)}, smsCode: ${p(Endpoint.AUTH_SMS_CODE)}, usage: ${p(Endpoint.AUTH_USAGE)});")
+                appendLine("      requestSmsCode: ${p(Endpoint.AUTH_REQUEST_SMS_CODE)}, smsCode: ${p(Endpoint.AUTH_SMS_CODE)}, usage: ${p(Endpoint.AUTH_USAGE)},")
+                appendLine("      telegram: ${p(Endpoint.AUTH_TELEGRAM)}, telegramLink: ${p(Endpoint.AUTH_TELEGRAM_LINK)}, telegramUnlink: ${p(Endpoint.AUTH_TELEGRAM_UNLINK)},")
+                appendLine("      requestTelegramCode: ${p(Endpoint.AUTH_REQUEST_TELEGRAM_CODE)}, telegramCode: ${p(Endpoint.AUTH_TELEGRAM_CODE)});")
                 if (users.teams.enabled) {
                     appendLine()
                     appendLine("  late final teams = Teams(this,")
@@ -1475,6 +1513,8 @@ object SdkGenerator {
                 appendLine("            client: self, signupPath: ${p(Endpoint.AUTH_SIGNUP)}, loginPath: ${p(Endpoint.AUTH_LOGIN)}, logoutPath: ${p(Endpoint.AUTH_LOGOUT)}, mePath: ${p(Endpoint.AUTH_ME)},")
                 appendLine("            verify2faPath: ${p(Endpoint.AUTH_2FA_VERIFY)}, requestLoginCodePath: ${p(Endpoint.AUTH_REQUEST_LOGIN_CODE)}, loginCodePath: ${p(Endpoint.AUTH_LOGIN_CODE)},")
                 appendLine("            requestSmsCodePath: ${p(Endpoint.AUTH_REQUEST_SMS_CODE)}, smsCodePath: ${p(Endpoint.AUTH_SMS_CODE)}, usagePath: ${p(Endpoint.AUTH_USAGE)},")
+                appendLine("            telegramPath: ${p(Endpoint.AUTH_TELEGRAM)}, telegramLinkPath: ${p(Endpoint.AUTH_TELEGRAM_LINK)}, telegramUnlinkPath: ${p(Endpoint.AUTH_TELEGRAM_UNLINK)},")
+                appendLine("            requestTelegramCodePath: ${p(Endpoint.AUTH_REQUEST_TELEGRAM_CODE)}, telegramCodePath: ${p(Endpoint.AUTH_TELEGRAM_CODE)},")
                 appendLine("        )")
                 appendLine("    }")
                 if (users.teams.enabled) {

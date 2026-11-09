@@ -4403,5 +4403,12 @@
  "ctx.telegram: Telegram botu kapalı (Sihirbaz → Kullanıcılar → Telegram)": "ctx.telegram: Telegram-бот выключен (Мастер → Пользователи → Telegram)",
  "ctx.telegram.send: kullanıcı kimliği gerekli": "ctx.telegram.send: нужен ID пользователя",
  "ctx.telegram.send: metin gerekli": "ctx.telegram.send: нужен текст",
- "Kullanıcı Telegram'ı bağlamadıysa mesaj gitmez.": "Если пользователь не привязал Telegram, сообщение не отправляется."
+ "Kullanıcı Telegram'ı bağlamadıysa mesaj gitmez.": "Если пользователь не привязал Telegram, сообщение не отправляется.",
+ "Kullanıcılar Telegram hesaplarını bir kez bağlar; giriş kodları ve script/otomasyon mesajları bu botla ücretsiz gider. Telefona dışarıdan bağlantı gerekmez.": "Пользователи один раз привязывают свой Telegram; коды входа и сообщения из скриптов/автоматизаций бесплатно отправляются через этого бота. Входящее подключение к телефону не нужно.",
+ "1) Telegram'da @BotFather'a /newbot yazıp yeni bir bot oluşturun; sağlık uyarılarının botundan ayrı olmalı. 2) Verdiği token'ı aşağıya yapıştırıp kaydedin. 3) \"Botu denetle\" ile adını görün; kullanıcılar bu botla bağlanır.": "1) В Telegram отправьте /newbot боту @BotFather и создайте нового бота; он должен отличаться от бота оповещений о состоянии. 2) Вставьте полученный токен ниже и сохраните. 3) «Проверить бота» покажет его имя; пользователи привязываются через этого бота.",
+ "Telegram ile giriş": "Вход через Telegram",
+ "Botu denetle": "Проверить бота",
+ "Bot hazır: @{0}": "Бот готов: @{0}",
+ "Bota ulaşılamadı: {0}": "Не удалось связаться с ботом: {0}",
+ "Parolasız giriş: Telegram'ı bağlı kullanıcı e-postasıyla kod ister, 6 haneli kod bota gelir (10 dakika, tek kullanımlık).": "Вход без пароля: пользователь с привязанным Telegram запрашивает код по своему email; 6-значный код приходит в бота (10 минут, однократно)."
 }

@@ -47,6 +47,12 @@ class TelegramChannel(
             return id to name
         }
 
+        /** Botun kullanıcı adı (`getMe`; sihirbazda belirteci denetlemek için). Belirteç geçersizse [IOException]. */
+        fun botName(token: String, base: String = API): String? {
+            val me = Json.parseToJsonElement(call(base, token, "getMe", "")).jsonObject["result"] as? JsonObject
+            return (me?.get("username") as? JsonPrimitive)?.content
+        }
+
         internal fun call(base: String, token: String, method: String, form: String, readTimeoutMs: Int = 15_000): String {
             val conn = URI("${base.trimEnd('/')}/bot$token/$method").toURL().openConnection() as HttpURLConnection
             try {

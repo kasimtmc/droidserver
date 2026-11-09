@@ -20,6 +20,7 @@ import com.plyg.droidserver.core.config.ViewConfig
 import com.plyg.droidserver.core.i18n.tr
 import com.plyg.droidserver.core.replication.ChangeLog
 import com.plyg.droidserver.core.config.TelegramConfig
+import com.plyg.droidserver.core.config.UserTelegramConfig
 import com.plyg.droidserver.core.api.CollectionEndpoint
 import com.plyg.droidserver.core.config.EmailConfig
 import com.plyg.droidserver.core.config.EndpointConfig
@@ -419,6 +420,14 @@ class WizardViewModel(
     fun setTelegramToken(token: String) = updateAlerts { a ->
         a.copy(telegram = TelegramConfig(storeSecret("telegram_token", token.trim()), a.telegram?.chatId.orEmpty()))
     }
+
+    /** Kullanıcıların Telegram botu: token şifreli depoya; giriş seçeneği korunur. */
+    fun setUserTelegramToken(token: String) = updateUsersSettings { u ->
+        u.copy(telegram = UserTelegramConfig(storeSecret("user_telegram_token", token.trim()), login = u.telegram?.login == true))
+    }
+
+    /** Taslaktaki kullanıcı botu token'ı (çözülmüş; botu denetlemek için). */
+    fun userTelegramToken(): String? = _draft.value.auth.users.telegram?.botToken?.let { secretValue(it) ?: it }?.takeIf { it.isNotBlank() && !it.startsWith("secret:") }
 
     /** Taslaktaki Telegram token'ı (çözülmüş; sohbet bulma ve deneme için). */
     fun telegramToken(): String? = _draft.value.alerts.telegram?.botToken?.let { secretValue(it) ?: it }?.takeIf { it.isNotBlank() && !it.startsWith("secret:") }

@@ -1625,12 +1625,16 @@ mesajları Telegram'dan gider. GitHub ve Play sürümünde aynı; izin gerektirm
   ve web panelindeki otomasyon düzenleyicisinde; doğrulama bot ve metin ister.
 - Testler: `AutomationTest` (eylem ve doğrulama), `TelegramUsersTest` (script'ten bağlıyken ve bağsızken).
 
-**20.4 Arayüz, SDK, belgeler**
-- [ ] Sihirbaz → Kullanıcılar: "Telegram" bölümü (BotFather adımları, belirteç, "Telegram ile giriş"). Giriş seçenekleri
-  sırası: doğrulayıcı uygulama, e-posta kodu, Telegram, SMS, passkey.
-- [ ] OpenAPI ve istemci SDK'ları (TypeScript, Kotlin, Dart, Swift): bağlama, bağı kaldırma, kod isteme, kodla giriş.
-- [ ] README (TR/EN) bölümü, sitedeki rehber ve SSS'de kısa not. Gizlilik politikası: açılırsa kodlar ve mesajlar
-  sunucu sahibinin botuyla Telegram üzerinden gider, sohbet kimliği sunucuda saklanır.
+**20.4 Arayüz, SDK, belgeler** (9 Kasım 2026)
+- [x] Sihirbaz → Kullanıcılar → Giriş güvenliği: "Telegram" (BotFather adımları, token şifreli depoya, **Botu denetle**
+  `getMe` ile adını gösterir, "Telegram ile giriş"). Sıra: doğrulayıcı uygulama, e-posta kodu, Telegram, SMS; passkey
+  Güvenlik adımında.
+- [x] OpenAPI ve istemci SDK'ları (TypeScript, Kotlin, Dart, Swift): `telegramLink`, `telegram`, `unlinkTelegram`,
+  `requestTelegramCode`, `loginWithTelegram`; altın dosyalar güncellendi.
+- [x] README (TR/EN): "Telegram ile hesap bağlama, giriş ve mesajlar" bölümü, `auth.users.telegram` satırı, `ctx` ve
+  otomasyon tablosu, yol haritası. Gizlilik politikası (sohbet kimliği ve kullanıcı adı sunucuda; mesajlar Telegram
+  üzerinden). Sitedeki SSS: Play sürümünde ücretsiz kod gönderme.
+- [ ] Cihaz testi: gerçek botla bağlama, Telegram ile giriş, otomasyondan mesaj; GitHub ve Play sürümünde.
 
 **Sonraya bırakılanlar**
 - Kod yazmadan "Telegram'da onayla" ile giriş; Telegram'la ikinci adım; parola sıfırlama kodunun Telegram'dan gitmesi.

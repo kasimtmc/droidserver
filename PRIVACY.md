@@ -2,7 +2,7 @@
 
 **Türkçe** | [English](PRIVACY.en.md)
 
-Yayıncı: plyGround · Son güncelleme: 4 Kasım 2026
+Yayıncı: plyGround · Son güncelleme: 9 Kasım 2026
 
 DroidServer telefonunuzda çalışan bir sunucudur. Geliştirici hiçbir veri toplamaz: uygulamada analiz, reklam, hata
 raporu gönderme veya kullanım takibi yoktur. Sunucunuzun verileri (kayıtlar, dosyalar, kullanıcı hesapları, loglar,
@@ -30,16 +30,21 @@ gibi IP adresinizi görür; karo istekleri haritada bakılan bölgeyi belli eder
 ## Sizin açtığınız özellikler
 
 Aşağıdakiler yalnızca siz ayarlayınca çalışır ve veriyi yalnızca ayarladığınız hizmete gönderir: internetten erişim
-(Cloudflare, Tailscale, DuckDNS, Let's Encrypt), e-posta (SMTP sunucunuz), sağlık uyarıları ve komutlar (Telegram),
-bulut yedeği (seçtiğiniz S3/WebDAV deposu, uçtan uca şifreli), web push (tarayıcıların push servisleri), sosyal giriş
-(Google, GitHub), yapay zekâ (Claude, OpenAI, Gemini; görsel etiketleme ve OCR açıksa görseller de), webhook'lar ve canlı
-kopya (sizin sunucularınız), SMS (aşağıya bakın), paketler (verdiğiniz adres veya GitHub deposu).
+(Cloudflare, Tailscale, DuckDNS, Let's Encrypt), e-posta (SMTP sunucunuz), sağlık uyarıları, komutlar ve
+kullanıcılarınıza mesajlar (Telegram), bulut yedeği (seçtiğiniz S3/WebDAV deposu, uçtan uca şifreli), web push
+(tarayıcıların push servisleri), sosyal giriş (Google, GitHub), yapay zekâ (Claude, OpenAI, Gemini; görsel etiketleme ve
+OCR açıksa görseller de), webhook'lar ve canlı kopya (sizin sunucularınız), SMS (aşağıya bakın), paketler (verdiğiniz
+adres veya GitHub deposu).
 
 - **SMS:** üç yol vardır ve hangisinin açık olduğunu siz seçersiniz. SMS sağlayıcısı (Netgsm, İleti Merkezi, Twilio):
   alıcının numarası ve SMS metni sağlayıcıya gönderilir. SIM'den doğrudan (yalnızca GitHub sürümü): SMS kendi
   hattınızdan gider. SIM'den onayınızla: her SMS için bir bildirim çıkar, "SMS'i gönder"e dokunursanız telefonunuzun SMS
   uygulaması numara ve metinle açılır ve SMS'i siz gönderirsiniz; bu kipte numara ve metin yalnızca bildirimde ve SMS
   uygulamanızda görünür, başka yere gönderilmez. Denetim kaydında numaranın son dört hanesi gizlenir, metin yazılmaz.
+- **Telegram (kullanıcılarınız):** kullanıcıların Telegram hesabını bağlamasını açarsanız, bağlayan kullanıcının Telegram
+  sohbet kimliği ve kullanıcı adı sunucunuzda saklanır. Giriş kodları ve script'lerinizin ya da otomasyonlarınızın
+  mesajları sizin botunuzla Telegram üzerinden gider; Telegram bu mesajları görür. Kullanıcı bağı istediği an
+  kaldırabilir (uygulamadan veya botta `/ayril`).
 - **Telefonda yerel YZ:** seçtiğiniz model Hugging Face'ten (`huggingface.co`) indirilir; model telefonda çalışır,
   istemler ve kayıtlarınız dışarı gönderilmez.
 - **Ödemeler (Stripe, iyzico, Paddle):** alıcı kart bilgisini sağlayıcının kendi sayfasına girer; kart verisi

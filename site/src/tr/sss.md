@@ -72,6 +72,13 @@ denemeden sonra tek seferlik satın alma ister. GitHub sürümü APK olarak kuru
 GitHub'dan indirir, SIM'den doğrudan SMS gönderebilir; satın alma ve deneme yoktur. Aynı telefonda ikisi birlikte
 kurulamaz.
 
+### Play sürümünde kullanıcılarıma kodları ücretsiz nasıl gönderirim?
+
+Google'ın kuralları gereği Play sürümü SIM'den kendiliğinden SMS gönderemez. Ücretsiz ve otomatik yol Telegram:
+Sihirbaz → Kullanıcılar → **Telegram**'da kendi botunuzu ekleyin; kullanıcılar hesaplarını bir kez bağlar, giriş kodları
+ve bildirimler bu botla gider. E-postayla kod, doğrulayıcı uygulama (iki adımlı doğrulama) ve SMS sağlayıcıları (Netgsm,
+İleti Merkezi, Twilio) da kullanılabilir.
+
 ### Kaynak kodu açık mı?
 
 Evet. DroidServer GPL-3.0-or-later lisansıyla yayınlanır; kaynak kodu
